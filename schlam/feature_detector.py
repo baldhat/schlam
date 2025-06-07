@@ -47,7 +47,7 @@ class FAST:
         xs = torch.cat((pos_matches[:, 3], neg_matches[:, 3]))
         ys = torch.cat((pos_matches[:, 2], neg_matches[:, 2]))
 
-        #TODO: eliminate duplicates via NMS 
+        #TODO: eliminate duplicates via NMS
 
         return xs, ys
 
