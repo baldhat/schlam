@@ -10,7 +10,7 @@ class KittiOdometrySequenceDataset(Dataset):
         self.path = path_name
         self.sequence = sequence_name
         self.data = pykitti.odometry(path_name, sequence_name)
-        self.calib = self.data.calib.b_rgb
+        self.calib = self.data.calib
         self.timestamps = self.data.timestamps
         self.cam2 = list(iter(self.data.cam2))
         self.cam3 = list(iter(self.data.cam3))
@@ -23,7 +23,7 @@ class KittiOdometrySequenceDataset(Dataset):
         timestamp: datetime.timedelta = self.timestamps[idx]
         image2 = cv2.cvtColor(np.array(self.cam2[idx]), cv2.COLOR_BGR2GRAY)
         image3 = cv2.cvtColor(np.array(self.cam3[idx]), cv2.COLOR_BGR2GRAY)
-        calib = self.calib
+        calib = self.calib.K_cam2
         pose = self.poses[idx]
         return {
             "timestamp": timestamp.microseconds,

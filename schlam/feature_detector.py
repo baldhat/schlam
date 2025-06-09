@@ -50,5 +50,5 @@ class FAST:
 
         #TODO: eliminate duplicates via NMS
 
-        return xs, ys
+        return torch.stack((xs,ys),dim=-1)
 

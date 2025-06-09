@@ -48,7 +48,7 @@ class LukasKanade():
             delta_flow = pts_new - pts_scaled
             flow += delta_flow
 
-            self.plot_optical_flow(pyramid_new[lvl][0, 0], pyramid_old[lvl][0, 0], pts_new, pts_scaled)
+            #self.plot_optical_flow(pyramid_new[lvl][0, 0], pyramid_old[lvl][0, 0], pts_new, pts_scaled)
             #self.plot_optical_flow(pyramid_new[lvl][0, 0], pyramid_old[lvl][0, 0], pts_new, pts_l)
 
             if lvl > 0:
@@ -68,7 +68,7 @@ class LukasKanade():
         I_x = torch.nn.functional.conv2d(old_img.float(), self.grad_kernel_x, padding="same")
         I_y = torch.nn.functional.conv2d(old_img.float(), self.grad_kernel_y, padding="same")
 
-        index = torch.round(pts[:, 1]).long() * w + torch.round(pts[:, 0]).long()
+        index = torch.clamp(torch.round(pts[:, 1]).long() * w + torch.round(pts[:, 0]).long(), 0, h*w-1)
         I_old_patches = self.unfold(old_img.float())
         I_old_patches = I_old_patches[:, :, index].transpose(1,2).view(-1, self.ws*self.ws)
 
@@ -82,50 +82,21 @@ class LukasKanade():
         S = torch.stack((I_x_patches, I_y_patches), dim=-1)
 
         multiplied = S.transpose(1, 2) @ S
+        inv,info = torch.linalg.inv_ex(multiplied)
+        torch.cuda.current_stream().synchronize()
 
         guess = torch.zeros_like(initial_guess)
-        for k in range(10):
+        for k in range(15):
             new_position = pts + initial_guess + guess
-            new_index = torch.round(new_position[:, 1]).long() * w + torch.round(new_position[:, 0]).long()
+            new_index = torch.clamp(torch.round(new_position[:, 1]).long() * w + torch.round(new_position[:, 0]).long(), 0, h*w-1)
             I_new_patches = I_new_patches_[:, :, new_index].transpose(1, 2).view(-1, self.ws * self.ws)
             I_k = I_old_patches - I_new_patches
 
             b_k = torch.stack(((I_k*I_x_patches).sum(dim=-1),(I_k*I_y_patches).sum(dim=-1)), dim=-1)
 
-            uv = torch.linalg.solve(multiplied, b_k)
+            uv = torch.einsum("bxy,by->bx", inv,b_k)
             guess += uv.squeeze(-1)
         return pts + guess
-
-
-    def optical_flow(self, old_img, new_img, pts):
-        h, w = new_img.shape[-2], new_img.shape[-1]
-
-        # gradients
-        I_x = torch.nn.functional.conv2d(old_img, self.grad_kernel_x, padding="same")
-        I_y = torch.nn.functional.conv2d(old_img, self.grad_kernel_y, padding="same")
-        I_t = (new_img - old_img)
-
-        for k in range(1):
-            index = torch.round(pts[:, 1] * w + pts[:, 0]).long()
-
-            I_x_patches = self.unfold(I_x.float())
-            I_x_patches = I_x_patches[:, :, index].transpose(1,2).view(-1, self.ws*self.ws)
-
-            I_y_patches = self.unfold(I_y.float())
-            I_y_patches = I_y_patches[:, :, index].transpose(1,2).view(-1, self.ws*self.ws)
-
-            I_t_patches = self.unfold(I_t.float())
-            I_t_patches = I_t_patches[:, :, index].transpose(1,2).view(-1, self.ws*self.ws)
-
-            S = torch.stack((I_x_patches, I_y_patches), dim=-1)
-            t = -I_t_patches
-
-            multiplied = S.transpose(1, 2) @ S
-            uv = torch.linalg.solve(multiplied, S.transpose(1,2)@t.unsqueeze(-1))
-            pts += uv.squeeze(-1)
-            #inverse, _ = torch.linalg.inv_ex(multiplied)
-            #uv = (inverse@S.transpose(1,2)@(t.unsqueeze(-1)))
-        return pts
 
     def plot_optical_flow(self, image_new, image_old, new_features, old_features):
         figure = plt.figure(figsize=(24, 12))
@@ -137,7 +108,7 @@ class LukasKanade():
         ]))
         pts = torch.stack((xy0.T, xy1.T), dim=1).round().long().numpy().reshape(-1, 2, 1, 2)
         img = np.vstack((image_old.cpu(), image_new.cpu()))
-        random_indices = random.sample(range(len(pts)), 10)
+        random_indices = random.sample(range(len(pts)), 50)
         drawPts = [pt for pt in pts[random_indices]]
         cv2.polylines(img, drawPts, False, (255, 255, 255))
         ax.imshow(img.astype(np.uint8), cmap='gray', vmin=0, vmax=255)
