@@ -4,7 +4,8 @@ from torchvision.transforms import Pad
 import matplotlib.pyplot as plt
 
 class FAST:
-    def __init__(self, threshold, n):
+    def __init__(self, threshold, n, device):
+        self.device = device
         self.threshold = threshold
         self.n_contiguous = n
         self.point_indices = [
@@ -21,7 +22,7 @@ class FAST:
             filters.append(f)
 
         self.pad = Pad(3, padding_mode="edge")
-        self.filter = torch.Tensor(np.array(filters)).cuda()
+        self.filter = torch.Tensor(np.array(filters)).to(self.device)
         self.unfold = torch.nn.Unfold(kernel_size=7, stride=1, padding=0)  # You can adjust stride/padding
         print()
 
@@ -35,7 +36,7 @@ class FAST:
         current_value = patches[:, 3, 3]
         diff = patches[:, self.point_indices[1], self.point_indices[0]] - current_value
 
-        values = torch.zeros((1, 16, h, w)).cuda()
+        values = torch.zeros((1, 16, h, w)).to(self.device)
         values[diff >= self.threshold] = 1
         values[diff <= -self.threshold] = -1
 
