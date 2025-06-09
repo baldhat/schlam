@@ -48,6 +48,11 @@ if __name__=="__main__":
     print("Feature detector: ", (time.time() - start_time) * 1000, "ms")
 
     for _ in range(len(dataset) - 1):
+        # if len(features) < 300:
+        #     detected_features = feature_extractor(image_old)
+        #     old_features = detected_features + old_features
+        #     old_features = filter_doubles(old_features)
+
         # Load image
         start_time = time.time()
         data = next(data_iter)
@@ -73,3 +78,4 @@ if __name__=="__main__":
 
 
         image_old = image_new
+        old_features = new_features
