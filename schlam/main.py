@@ -17,7 +17,7 @@ print(torch.cuda.is_available())
 show_flow = True
 device = "cuda"
 
-feature_params = dict( maxCorners = 7813,
+feature_params = dict( maxCorners = 200,
                        qualityLevel = 0.3,
                        minDistance = 7,
                        blockSize = 7 )
@@ -43,6 +43,8 @@ if __name__=="__main__":
     # Find FAST features
     start_time = time.time()
     detected_features = feature_extractor(image_old)
+    p0 = cv2.goodFeaturesToTrack(image_old.cpu().numpy(), mask=None, **feature_params)
+    detected_features = torch.tensor(p0[:, 0]).to(device).long()
     old_features = detected_features
     torch.cuda.current_stream().synchronize()
     print("Feature detector: ", (time.time() - start_time) * 1000, "ms")
@@ -56,7 +58,7 @@ if __name__=="__main__":
         # Load image
         start_time = time.time()
         data = next(data_iter)
-        image_new = data["image2"][0].float().to(device)
+        image_new = data["image3"][0].float().to(device)
         torch.cuda.current_stream().synchronize()
         print("Image loading: ", (time.time()-start_time) * 1000, "ms")
 
@@ -66,14 +68,16 @@ if __name__=="__main__":
         valid_flows = torch.isfinite(pred_new_features[:, 0]) & torch.isfinite(pred_new_features[:, 1])
         old_features = old_features[valid_flows]
         new_features = pred_new_features[valid_flows]
-
-        ransac(old_features, new_features)
-
         torch.cuda.current_stream().synchronize()
         print("Optical flow: ", (time.time()-start_time) * 1000, "ms")
 
+        start_time = time.time()
+        R, t, p1s_3D, inlier_mask = ransac(old_features, new_features)
+        torch.cuda.current_stream().synchronize()
+        print("Ransac: ", (time.time() - start_time) * 1000, "ms")
+
         if show_flow:
-            of.plot_optical_flow(image_new, image_old, new_features, old_features)
+            of.plot_optical_flow(image_new, image_old, new_features[inlier_mask], old_features[inlier_mask])
 
 
 

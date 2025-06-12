@@ -108,8 +108,9 @@ class LukasKanade():
         ]))
         pts = torch.stack((xy0.T, xy1.T), dim=1).round().long().numpy().reshape(-1, 2, 1, 2)
         img = np.vstack((image_old.cpu(), image_new.cpu()))
-        random_indices = random.sample(range(len(pts)), 50)
-        drawPts = [pt for pt in pts[random_indices]]
+        #random_indices = random.sample(range(len(pts)), 50)
+        #drawPts = [pt for pt in pts[random_indices]]
+        drawPts = pts
         cv2.polylines(img, drawPts, False, (255, 255, 255))
         ax.imshow(img.astype(np.uint8), cmap='gray', vmin=0, vmax=255)
         plt.show()
