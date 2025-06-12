@@ -12,7 +12,12 @@ class RANSAC:
         self.K_inv = torch.inverse(K).to(device).float()
         self.device = device
 
-    def __call__(self, old_features, feature_preds, normalize=True):
+    def mad(self, x, dim=None):
+        median = x.median(dim=dim, keepdim=True).values if dim is not None else x.median()
+        abs_dev = torch.abs(x - median)
+        return abs_dev.median(dim=dim).values if dim is not None else abs_dev.median()
+
+    def __call__(self, old_features, feature_preds, normalize=False):
         best_model = None
         max_inliers= 0
         inlier_mask = None
@@ -24,22 +29,21 @@ class RANSAC:
                            self.K_inv.float(),
                            torch.concat((feature_preds, torch.ones((feature_preds.shape[0], 1), device=self.device)),
                                         dim=-1).float())
-        for k in range(1000):
+        for k in range(3000):
             feat_indices8 = random.choices(range(old_features.shape[0]), k=8)
 
             current_p1s, current_p2s = p1s[feat_indices8], p2s[feat_indices8]
 
             if normalize:
                 current_p1s, current_p2s, B1, B2 = self.get_normalized_points(current_p1s, current_p2s)
-            A = torch.zeros((8, 9)).to(p1s.device)
-            for i in range(8):
-                A[i] = torch.kron(p1s[i], p2s[i])
-            U, S, V = torch.svd(A)
-            E = V[:, -1].view(3, 3)
+
+            E = self.essential_8_point(current_p1s, current_p2s)
+
             if normalize:
                 E = B2.T @ E @ B1
             errors = self.epipolarDistance(p1s, p2s, E)
-            inlier_mask = (errors < 0.1)
+            threshold = 1.5 * self.mad(errors)
+            inlier_mask = (errors < 0.005)
             num_inliers = inlier_mask.sum()
             if num_inliers > max_inliers:
                 max_inliers = num_inliers
@@ -47,17 +51,25 @@ class RANSAC:
         print(max_inliers)
         #cv2.recoverPose()
         R, t, p1s_3D = self.recoverPose(best_model, p1s[inlier_mask], p2s[inlier_mask])
-        #self.plot_points_3d(p1s_3D.cpu().numpy())
         return R, t, p1s_3D, inlier_mask
 
-    def plot_points_3d(self, p1s_3D):
+    def plot_points_3d(self, p1s_3D, p1s_2D, image_old):
         viewer = o3d.visualization.Visualizer()
         viewer.create_window()
-        pc = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(p1s_3D[:3, :, 0].T))
+        points3d = p1s_3D[:3, :, 0].T
+        mask = (points3d[:, -1] > 0) & (points3d[:, -1] < 200)
+        points3d = points3d[mask]
+        points2d = p1s_2D[mask]
+        h, w = image_old.shape[:2]
+        colors = image_old[np.clip(points2d[:, 1].round().astype(np.int32), 0, h), np.clip(points2d[:, 0].round().astype(np.int32), 0, w)] / 255.0
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(points3d)
+        pc.colors = o3d.utility.Vector3dVector(colors)
         viewer.add_geometry(pc)
-        opt = viewer.get_render_option()
-        opt.show_coordinate_frame = True
-        opt.background_color = np.asarray([0.5, 0.5, 0.5])
+        coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=10, origin=[0, 0, 0]
+        )
+        viewer.add_geometry(coord_frame)
         viewer.run()
         viewer.destroy_window()
         print()
@@ -120,6 +132,14 @@ class RANSAC:
         p1s = B1 @ p1s.T
         p2s = B2 @ p2s.T
         return p1s.T, p2s.T, B1, B2
+
+    def essential_8_point(self, p1s, p2s):
+        A = torch.zeros((8, 9)).to(p1s.device)
+        for i in range(8):
+            A[i] = torch.kron(p1s[i], p2s[i])
+        U, S, V = torch.svd(A)
+        E = V[:, -1].view(3, 3)
+        return E
 
     def recoverPose(self, E, p1s, p2s):
         _, _, VE = torch.svd(E)

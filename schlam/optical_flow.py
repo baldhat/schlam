@@ -102,14 +102,12 @@ class LukasKanade():
         figure = plt.figure(figsize=(24, 12))
         ax = figure.gca()
         w, h = image_new.shape[-1], image_new.shape[-2]
-        xy0, xy1 = torch.tensor(np.array([
-            [old_features[:, 0].cpu().numpy(), old_features[:, 1].cpu().numpy()],
-            [new_features[:, 0].cpu().numpy(), (new_features[:, 1] + h).cpu().numpy()]
-        ]))
-        pts = torch.stack((xy0.T, xy1.T), dim=1).round().long().numpy().reshape(-1, 2, 1, 2)
-        img = np.vstack((image_old.cpu(), image_new.cpu()))
-        #random_indices = random.sample(range(len(pts)), 50)
-        #drawPts = [pt for pt in pts[random_indices]]
+        xy0, xy1 = np.array([
+            [old_features[:, 0], old_features[:, 1]],
+            [new_features[:, 0], (new_features[:, 1] + h)]
+        ])
+        pts = np.stack((xy0.T, xy1.T), axis=1).round().astype(np.int64).reshape(-1, 2, 1, 2)
+        img = np.vstack((image_old, image_new))
         drawPts = pts
         cv2.polylines(img, drawPts, False, (255, 255, 255))
         ax.imshow(img.astype(np.uint8), cmap='gray', vmin=0, vmax=255)

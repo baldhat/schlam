@@ -14,13 +14,8 @@ import random
 from schlam.optical_flow import LukasKanade
 
 print(torch.cuda.is_available())
-show_flow = True
+show_flow = False
 device = "cuda"
-
-feature_params = dict( maxCorners = 200,
-                       qualityLevel = 0.3,
-                       minDistance = 7,
-                       blockSize = 7 )
 
 lk_params = dict( winSize  = (15, 15),
                   maxLevel = 5,
@@ -37,17 +32,19 @@ if __name__=="__main__":
     data_iter = iter(dataloader)
     data = next(data_iter)
     image_old = data["image2"][0].float().to(device)
+    image_old_color = data["image2color"][0].float().to(device)
     K = data["calib"][0]
     ransac = RANSAC(K, device)
 
     # Find FAST features
     start_time = time.time()
     detected_features = feature_extractor(image_old)
-    p0 = cv2.goodFeaturesToTrack(image_old.cpu().numpy(), mask=None, **feature_params)
+    p0 = cv2.goodFeaturesToTrack(image_old.cpu().numpy(), 300, 0.01, 10)
     detected_features = torch.tensor(p0[:, 0]).to(device).long()
     old_features = detected_features
     torch.cuda.current_stream().synchronize()
     print("Feature detector: ", (time.time() - start_time) * 1000, "ms")
+    Rs, ts = [], []
 
     for _ in range(len(dataset) - 1):
         # if len(features) < 300:
@@ -58,7 +55,8 @@ if __name__=="__main__":
         # Load image
         start_time = time.time()
         data = next(data_iter)
-        image_new = data["image3"][0].float().to(device)
+        image_new = data["image2"][0].float().to(device)
+        image_new_color = data["image2color"][0].float().to(device)
         torch.cuda.current_stream().synchronize()
         print("Image loading: ", (time.time()-start_time) * 1000, "ms")
 
@@ -66,20 +64,42 @@ if __name__=="__main__":
         start_time = time.time()
         pred_new_features = of.pyramidal_of(image_old, image_new, old_features, levels=5)
         valid_flows = torch.isfinite(pred_new_features[:, 0]) & torch.isfinite(pred_new_features[:, 1])
-        old_features = old_features[valid_flows]
-        new_features = pred_new_features[valid_flows]
+        old_features_ = old_features[valid_flows]
+        new_features_ = pred_new_features[valid_flows]
+
+        # pred_new_features, st, err = cv2.calcOpticalFlowPyrLK(image_old.cpu().numpy().astype(np.uint8), image_new.cpu().numpy().astype(np.uint8), old_features.float().cpu().numpy(), None, **lk_params)
+        # valid_flows = (st == 1)[:, 0]
+        # if old_features_ is not None:
+        #     old_features_ = torch.tensor(old_features[valid_flows]).to(image_old.device)
+        #     new_features_ = torch.tensor(pred_new_features[valid_flows]).to(image_old.device)
+
         torch.cuda.current_stream().synchronize()
         print("Optical flow: ", (time.time()-start_time) * 1000, "ms")
 
         start_time = time.time()
-        R, t, p1s_3D, inlier_mask = ransac(old_features, new_features)
+        R, t, p1s_3D, inlier_mask = ransac(torch.tensor(old_features_).to(image_new.device), torch.tensor(new_features_).to(image_new.device))
         torch.cuda.current_stream().synchronize()
         print("Ransac: ", (time.time() - start_time) * 1000, "ms")
 
+        if len(Rs) > 0:
+            Rs.append(Rs[-1]@(R.cpu().numpy()))
+            ts.append(ts[-1] + t.cpu().numpy())
+
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            plt.plot(np.array(ts)[:, 0], np.array(ts)[:, 0], np.array(ts)[:, 0], marker="o")
+            #plt.show()
+            print()
+        else:
+            Rs.append(R.cpu().numpy())
+            ts.append(t.cpu().numpy())
+
         if show_flow:
-            of.plot_optical_flow(image_new, image_old, new_features[inlier_mask], old_features[inlier_mask])
-
-
+            ransac.plot_points_3d(p1s_3D.cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
+            of.plot_optical_flow(image_new.cpu().numpy(), image_old.cpu().numpy(),
+                                 new_features_[inlier_mask.cpu().numpy()].cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy())
 
         image_old = image_new
-        old_features = new_features
+        old_features = new_features_
+        image_old_color = image_new_color
+

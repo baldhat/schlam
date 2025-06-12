@@ -21,13 +21,15 @@ class KittiOdometrySequenceDataset(Dataset):
 
     def __getitem__(self, idx):
         timestamp: datetime.timedelta = self.timestamps[idx]
-        image2 = cv2.cvtColor(np.array(self.cam2[idx]), cv2.COLOR_BGR2GRAY)
+        image2color = np.array(self.cam2[idx])
+        image2 = cv2.cvtColor(image2color, cv2.COLOR_BGR2GRAY)
         image3 = cv2.cvtColor(np.array(self.cam3[idx]), cv2.COLOR_BGR2GRAY)
         calib = self.calib.K_cam2
         pose = self.poses[idx]
         return {
             "timestamp": timestamp.microseconds,
             "image2": image2,
+            "image2color": image2color,
             "image3": image3,
             "calib": calib,
             "pose": pose
