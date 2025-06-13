@@ -29,7 +29,9 @@ class RANSAC:
                            self.K_inv.float(),
                            torch.concat((feature_preds, torch.ones((feature_preds.shape[0], 1), device=self.device)),
                                         dim=-1).float())
-        for k in range(3000):
+        outlier_prob = 0.6
+        num_iters = torch.log(1-outlier_prob) / torch.log(1 - (1-outlier_prob)**8)
+        for k in range(num_iters):
             feat_indices8 = random.choices(range(old_features.shape[0]), k=8)
 
             current_p1s, current_p2s = p1s[feat_indices8], p2s[feat_indices8]
