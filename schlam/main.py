@@ -3,37 +3,15 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from feature_detector import FAST
-from optical_flow import LukasKanade
 from ransac import RANSAC
 from kitti_odometry_dataset import KittiOdometrySequenceDataset
 import torch
 import time
-from mpl_toolkits.mplot3d import Axes3D
 import cv2
-import random
+from helpers import plot_path, rodrigues, inverse_rodrigues
+from optical_flow import LukasKanade
+from local_bundle_adjustment import LBA
 
-def set_axes_equal(ax):
-    """Set 3D plot axes to equal scale."""
-    x_limits = ax.get_xlim3d()
-    y_limits = ax.get_ylim3d()
-    z_limits = ax.get_zlim3d()
-
-    x_range = x_limits[1] - x_limits[0]
-    x_middle = np.mean(x_limits)
-    y_range = y_limits[1] - y_limits[0]
-    y_middle = np.mean(y_limits)
-    z_range = z_limits[1] - z_limits[0]
-    z_middle = np.mean(z_limits)
-
-    plot_radius = 0.5 * max([x_range, y_range, z_range])
-
-    ax.set_xlim3d([x_middle - plot_radius, x_middle + plot_radius])
-    ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
-    ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
-
-
-
-from schlam.optical_flow import LukasKanade
 
 print(torch.cuda.is_available())
 show_flow = True
@@ -57,6 +35,7 @@ if __name__=="__main__":
     image_old_color = data["image2color"][0].float().to(device)
     K = data["calib"][0]
     ransac = RANSAC(K, device)
+    lba = LBA(K, device)
 
     # Find FAST features
     start_time = time.time()
@@ -66,8 +45,8 @@ if __name__=="__main__":
     old_features = detected_features
     torch.cuda.current_stream().synchronize()
     print("Feature detector: ", (time.time() - start_time) * 1000, "ms")
-    Rs, ts, Ts = [], [], []
-    ps = [np.array([0, 0, 0, 1])]
+    RTs, ts, Ts = [], [], []
+    ps = [np.array([0, 0, 0])]
     global_points = None
 
     for _ in range(len(dataset) - 1):
@@ -106,37 +85,42 @@ if __name__=="__main__":
         torch.cuda.current_stream().synchronize()
         print("Ransac: ", (time.time() - start_time) * 1000, "ms")
 
-        T = torch.eye(4)
-        T[:3, :3] = R
-        T[:3, 3] = t
-        if len(Ts) > 0:
-            Ts.append(Ts[-1]@T.cpu().numpy())
-            #Rs.append(Rs[-1]@(R.cpu().numpy()))
-            ts.append(ts[-1] + t.cpu().numpy())
-            ps.append(Ts[-1] @ ps[0])
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-            ax.plot(np.array(ps)[:, 0], np.array(ps)[:, 1], np.array(ps)[:, 2], marker="o")
-            set_axes_equal(ax)
-            plt.show()
-            print()
+
+        # T expresses points in c1 in c2
+        #T = torch.eye(4).to(R.device)
+        #T[:3, :3] = R
+        #T[:3, 3] = t
+        if len(ps) > 1:
+            RTs.append((RTs[-1] @ R.T)) # Orientation of coordinate frame Cx expressed in C0
+            ps.append(RTs[-2] @ t + ps[-1])
         else:
-            Ts.append(T.cpu().numpy())
-            #Rs.append(R.cpu().numpy())
-            ts.append(t.cpu().numpy())
-            ps.append(Ts[-1] @ ps[0])
+            RTs.append(R.T)
+            ps.append(t)
+
+        #lba.reprojection_error(p1s_3D, old_features_[inlier_mask])
+        #lba.reprojection_error((R@(p1s_3D.T[:3]) - R@t.unsqueeze(-1)).T, new_features_)
+
+
+
+        # pts3d: [num_features, 3]
+        # pts2d: [num_frames, num_features, 2]
+        # R_vec: [num_frames, 3]
+        # t_vec: [num_frames, 3]
+        lba.bundle_adjustment(p1s_3D.cpu().numpy().astype(np.float64),
+                              torch.stack([old_features_[inlier_mask], new_features_], dim=0).cpu().numpy().astype(np.float64),
+                              torch.stack([rodrigues(torch.eye(3).to(R.device)), rodrigues(R)], dim=0).cpu().numpy().astype(np.float64),
+                              torch.stack([torch.zeros(3).to(R.device), t], dim=0).cpu().numpy().astype(np.float64))
 
         if show_flow:
-            if global_points is None:
-                global_points = p1s_3D.cpu().numpy()
-            else:
-                global_points = np.concat((global_points.T, Ts[-2] @ p1s_3D.T.cpu().numpy()), axis=-1).T
+            #if global_points is None:
+                #global_points = p1s_3D.cpu().numpy()
+            #else:
+                #global_points = np.concat((global_points.T, Ts[-2] @ p1s_3D.T.cpu().numpy()), axis=-1).T
 
-            ransac.plot_points_3d(global_points, old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
+            #ransac.plot_points_3d(global_points, old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
             #of.plot_optical_flow(image_new.cpu().numpy(), image_old.cpu().numpy(), new_features_.cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy())
+            plot_path(ps)
 
         image_old = image_new
         old_features = new_features_
         image_old_color = image_new_color
-
-

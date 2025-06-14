@@ -17,7 +17,12 @@ class RANSAC:
         abs_dev = torch.abs(x - median)
         return abs_dev.median(dim=dim).values if dim is not None else abs_dev.median()
 
+
+
     def __call__(self, old_features, feature_preds, normalize=False):
+        '''
+        :return: R expresses points in c1 in c2
+        '''
         best_model = None
         max_inliers= 0
         best_inlier_mask = None
@@ -52,7 +57,6 @@ class RANSAC:
                 best_model = E
                 best_inlier_mask = inlier_mask
         print(max_inliers)
-        #cv2.recoverPose()
         R, t, p1s_3D = self.recoverPose(best_model, p1s[best_inlier_mask], p2s[best_inlier_mask])
         points3d = p1s_3D[:3, :].T[0]
         mask = points3d[:, -1] > 0
@@ -60,7 +64,7 @@ class RANSAC:
         full_mask = best_inlier_mask.clone()
         full_mask[best_inlier_mask] = mask
         points_homo = torch.cat((points3d, torch.ones(points3d.shape[0], 1).to(points3d.device)), dim=-1)
-        return R, t, points_homo, best_inlier_mask
+        return R[0], t[0], points_homo, full_mask
 
     def plot_points_3d(self, p1s_3D, p1s_2D, image_old):
         viewer = o3d.visualization.Visualizer()
@@ -165,12 +169,14 @@ class RANSAC:
         X = torch.zeros((4, p1s.shape[0], 4)).to(p1s.device)
         Y = torch.zeros((4, p1s.shape[0], 4)).to(p1s.device)
         for k in range(4):
+            # G expresses points in c1 in c2
             G = torch.eye(4).to(p1s.device)
             G[:3, :3] = Rs[k]
             G[:3, 3] = -Rs[k]@ts[k]
             X[:, :, k], Y[:, :, k] = self.triangulate(p1s, p2s, G)
             npd[k] = ((X[2, :, k] > 0) & (Y[2, :, k] > 0)).sum()
         best = torch.max(npd, dim=0)[1]
+        # Return the 3D points expressed in the coordinate frame of the first camera
         return Rs[best], ts[best], X[:, :, best]
 
 
@@ -197,6 +203,7 @@ class RANSAC:
 
         X = self.homogeneous(self.euclidean(X))
         Y = self.homogeneous(self.euclidean(Y))
+        # X are the points in c1, Y are the points in c2
         return X, Y
 
     def homogeneous(self, e):
