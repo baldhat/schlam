@@ -54,20 +54,23 @@ class RANSAC:
         print(max_inliers)
         #cv2.recoverPose()
         R, t, p1s_3D = self.recoverPose(best_model, p1s[best_inlier_mask], p2s[best_inlier_mask])
-        return R, t, p1s_3D, best_inlier_mask
+        points3d = p1s_3D[:3, :].T[0]
+        mask = points3d[:, -1] > 0
+        points3d = points3d[mask]
+        full_mask = best_inlier_mask.clone()
+        full_mask[best_inlier_mask] = mask
+        points_homo = torch.cat((points3d, torch.ones(points3d.shape[0], 1).to(points3d.device)), dim=-1)
+        return R, t, points_homo, best_inlier_mask
 
     def plot_points_3d(self, p1s_3D, p1s_2D, image_old):
         viewer = o3d.visualization.Visualizer()
         viewer.create_window()
-        points3d = p1s_3D[:3, :].T
-        mask = (points3d[:, -1] > 0) & (points3d[:, -1] < 200)
-        points3d = points3d[mask]
-        points2d = p1s_2D[mask]
+        points2d = p1s_2D
         h, w = image_old.shape[:2]
-        colors = image_old[np.clip(points2d[:, 1].round().astype(np.int32), 0, h), np.clip(points2d[:, 0].round().astype(np.int32), 0, w)] / 255.0
+        #colors = image_old[np.clip(points2d[:, 1].round().astype(np.int32), 0, h), np.clip(points2d[:, 0].round().astype(np.int32), 0, w)] / 255.0
         pc = o3d.geometry.PointCloud()
-        pc.points = o3d.utility.Vector3dVector(points3d)
-        pc.colors = o3d.utility.Vector3dVector(colors)
+        pc.points = o3d.utility.Vector3dVector(p1s_3D[:, :3])
+        #pc.colors = o3d.utility.Vector3dVector(colors)
         viewer.add_geometry(pc)
         coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
             size=10, origin=[0, 0, 0]

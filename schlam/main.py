@@ -128,9 +128,10 @@ if __name__=="__main__":
 
         if show_flow:
             if global_points is None:
-                global_points = p1s_3D[:, :, 0].cpu().numpy()
+                global_points = p1s_3D.cpu().numpy()
             else:
-                global_points = np.concat((global_points, Ts[-2] @ p1s_3D[:, :, 0].cpu().numpy()), axis=1)
+                global_points = np.concat((global_points.T, Ts[-2] @ p1s_3D.T.cpu().numpy()), axis=-1).T
+
             ransac.plot_points_3d(global_points, old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
             #of.plot_optical_flow(image_new.cpu().numpy(), image_old.cpu().numpy(), new_features_.cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy())
 

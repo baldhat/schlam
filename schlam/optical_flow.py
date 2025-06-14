@@ -68,9 +68,17 @@ class LukasKanade():
         I_x = torch.nn.functional.conv2d(old_img.float(), self.grad_kernel_x, padding="same")
         I_y = torch.nn.functional.conv2d(old_img.float(), self.grad_kernel_y, padding="same")
 
+        l_x = torch.floor(pts[:, 0]).long()
+        u_x = torch.ceil(pts[:, 0]).long()
+        l_y = torch.floor(pts[:, 1]).long()
+        u_y = torch.ceil(pts[:, 1]).long()
+        w_x = pts[:, 0] - l_x
+        w_y = pts[:, 1] - l_y
+
         index = torch.clamp(torch.round(pts[:, 1]).long() * w + torch.round(pts[:, 0]).long(), 0, h*w-1)
         I_old_patches = self.unfold(old_img.float())
-        I_old_patches = I_old_patches[:, :, index].transpose(1,2).view(-1, self.ws*self.ws)
+        print()
+        I_old_patches = self.interpolate(I_old_patches, l_x, u_x, l_y, u_y, w_x, w_y, w, h)[0].transpose(0, 1)
 
         I_new_patches_ = self.unfold(new_img.float())
 
@@ -111,3 +119,9 @@ class LukasKanade():
         cv2.polylines(img, drawPts, False, (255, 255, 255))
         ax.imshow(img.astype(np.uint8), cmap='gray', vmin=0, vmax=255)
         plt.show()
+
+    def interpolate(self, tensor, l_x, u_x, l_y, u_y, w_x, w_y, w, h):
+        return ((w_x * w_y).unsqueeze(0) * tensor[:, :, (l_y * w + l_x).clamp(0, w*h-1)] \
+         + ((1 - w_x) * w_y).unsqueeze(0) * tensor[:, :, (l_y * w + u_x).clamp(0, w*h-1)] \
+         + ((1 - w_x) * (1 - w_y)).unsqueeze(0) * tensor[:, :, (u_y * w + u_x).clamp(0, w*h-1)] \
+         + (w_x * (1 - w_y)).unsqueeze(0) * tensor[:, :, (u_y * w + l_x).clamp(0, w*h-1)])
