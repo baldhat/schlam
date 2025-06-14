@@ -75,15 +75,14 @@ class LukasKanade():
         I_new_patches_ = self.unfold(new_img.float())
 
         I_x_patches = self.unfold(I_x.float())
-        I_x_patches = I_x_patches[:, :, index].transpose(1, 2).view(-1, self.ws * self.ws)
+        I_x_patches = self.interpolate(I_x_patches, l_x, u_x, l_y, u_y, w_x, w_y, w, h)[0].transpose(0, 1)
 
         I_y_patches = self.unfold(I_y.float())
-        I_y_patches = I_y_patches[:, :, index].transpose(1, 2).view(-1, self.ws * self.ws)
+        I_y_patches = self.interpolate(I_y_patches, l_x, u_x, l_y, u_y, w_x, w_y, w, h)[0].transpose(0, 1)
         S = torch.stack((I_x_patches, I_y_patches), dim=-1)
 
         multiplied = S.transpose(1, 2) @ S
         inv,info = torch.linalg.inv_ex(multiplied)
-        torch.cuda.current_stream().synchronize()
 
         guess = torch.zeros_like(initial_guess)
         for k in range(15):

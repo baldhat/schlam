@@ -4,7 +4,7 @@ from torchvision.transforms import Pad
 import matplotlib.pyplot as plt
 
 class FAST:
-    def __init__(self, threshold, n, device):
+    def __init__(self, threshold, n, min_distance, device):
         self.device = device
         self.threshold = threshold
         self.n_contiguous = n
@@ -24,9 +24,10 @@ class FAST:
         self.pad = Pad(3, padding_mode="edge")
         self.filter = torch.Tensor(np.array(filters)).to(self.device)
         self.unfold = torch.nn.Unfold(kernel_size=7, stride=1, padding=0)  # You can adjust stride/padding
+        self.min_distance = min_distance
         print()
 
-    def __call__(self, image):
+    def __call__(self, image, n=500):
         h, w = image.shape[0], image.shape[1]
 
         padded = self.pad(image)
@@ -48,7 +49,34 @@ class FAST:
         xs = torch.cat((pos_matches[:, 3], neg_matches[:, 3]))
         ys = torch.cat((pos_matches[:, 2], neg_matches[:, 2]))
 
-        #TODO: eliminate duplicates via NMS
+        values = diff[0, :, ys, xs].abs().sum(dim=0)
+        points = torch.stack((xs,ys),dim=-1)
 
-        return torch.stack((xs,ys),dim=-1)
+        indices = self.filter_pixels(points, values)[:n]
+
+        return points[indices]
+
+    def filter_pixels(self, points, values):
+        # Sort pixels by value descending
+        sorted_indices = torch.argsort(values, descending=True)
+        points = points[sorted_indices]
+
+        selected_mask = torch.zeros(len(points), dtype=torch.bool)
+        selected_positions = []
+
+        for i in range(len(points)):
+            pos = points[i]
+
+            if len(selected_positions) > 0:
+                selected = points[selected_mask]
+                dists = torch.norm(selected - pos.float(), dim=1)
+                if (dists < self.min_distance).any():
+                    continue
+
+            selected_mask[i] = True
+            selected_positions.append(pos)
+
+        # Map back to original indices
+        selected_original_indices = sorted_indices[selected_mask]
+        return selected_original_indices
 

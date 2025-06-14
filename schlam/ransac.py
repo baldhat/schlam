@@ -20,7 +20,7 @@ class RANSAC:
     def __call__(self, old_features, feature_preds, normalize=False):
         best_model = None
         max_inliers= 0
-        inlier_mask = None
+        best_inlier_mask = None
         p1s = torch.einsum("ij,bj->bi",
                            self.K_inv.float(),
                            torch.concat((old_features, torch.ones((old_features.shape[0], 1), device=self.device)),
@@ -29,9 +29,9 @@ class RANSAC:
                            self.K_inv.float(),
                            torch.concat((feature_preds, torch.ones((feature_preds.shape[0], 1), device=self.device)),
                                         dim=-1).float())
-        outlier_prob = 0.6
-        num_iters = torch.log(1-outlier_prob) / torch.log(1 - (1-outlier_prob)**8)
-        for k in range(num_iters):
+        outlier_prob = torch.tensor(0.6)
+        num_iters = torch.log(1-outlier_prob) / torch.log(1 - (1-outlier_prob)**8) # TODO
+        for k in range(3000):
             feat_indices8 = random.choices(range(old_features.shape[0]), k=8)
 
             current_p1s, current_p2s = p1s[feat_indices8], p2s[feat_indices8]
@@ -50,15 +50,16 @@ class RANSAC:
             if num_inliers > max_inliers:
                 max_inliers = num_inliers
                 best_model = E
+                best_inlier_mask = inlier_mask
         print(max_inliers)
         #cv2.recoverPose()
-        R, t, p1s_3D = self.recoverPose(best_model, p1s[inlier_mask], p2s[inlier_mask])
-        return R, t, p1s_3D, inlier_mask
+        R, t, p1s_3D = self.recoverPose(best_model, p1s[best_inlier_mask], p2s[best_inlier_mask])
+        return R, t, p1s_3D, best_inlier_mask
 
     def plot_points_3d(self, p1s_3D, p1s_2D, image_old):
         viewer = o3d.visualization.Visualizer()
         viewer.create_window()
-        points3d = p1s_3D[:3, :, 0].T
+        points3d = p1s_3D[:3, :].T
         mask = (points3d[:, -1] > 0) & (points3d[:, -1] < 200)
         points3d = points3d[mask]
         points2d = p1s_2D[mask]
