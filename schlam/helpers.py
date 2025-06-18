@@ -55,8 +55,6 @@ def rodrigues(R: torch.Tensor) -> torch.Tensor:
         return theta * r_hat
 
 def inverse_rodrigues(r):
-    assert r.shape == (3,), "Input must be a 3D vector"
-
     theta = torch.norm(r)
     if torch.isclose(theta, torch.tensor(0.0, dtype=r.dtype, device=r.device), atol=1e-6):
         return torch.eye(3, dtype=r.dtype, device=r.device)
@@ -72,4 +70,23 @@ def inverse_rodrigues(r):
 
     I = torch.eye(3, dtype=r.dtype, device=r.device)
     R = I + torch.sin(theta) * K + (1 - torch.cos(theta)) * K @ K
+    return R
+
+def inverse_rodrigues_np(r):
+
+    theta = np.linalg.norm(r)
+    if np.isclose(theta, 0, atol=1e-6):
+        return torch.eye(3, dtype=r.dtype, device=r.device)
+
+    r_hat = r / theta
+
+    # Skew-symmetric matrix of r̂
+    K = np.array([
+        [0, -r_hat[2], r_hat[1]],
+        [r_hat[2], 0, -r_hat[0]],
+        [-r_hat[1], r_hat[0], 0]
+    ], dtype=r.dtype)
+
+    I = np.eye(3, dtype=r.dtype)
+    R = I + np.sin(theta) * K + (1 - np.cos(theta)) * K @ K
     return R
