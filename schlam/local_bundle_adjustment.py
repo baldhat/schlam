@@ -105,8 +105,8 @@ class LBA():
 
         summary = ceres.SolverSummary()
         ceres.solve(options, problem, summary)
-
-        print(summary.FullReport())
+        print(summary.BriefReport())
+        return  pts3d.reshape(-1, 3), np.array([inverse_rodrigues(torch.tensor(rvec)) for rvec in R_vec]), t_vec
 
 
     def reprojection_residual(self, pts2d, K):
@@ -123,38 +123,3 @@ class LBA():
 
         return residual
 
-    # pts3d: [num_features, 3]
-    # pts2d: [num_frames, num_features, 2]
-    # R_vec: [num_frames, 3]
-    # t_vec: [num_frames, 3]
-    def bundle_adjustment2(self, pts3d, pts2d, R_vec, t_vec):
-        problem = ceres.Problem()
-
-        # Flatten all parameters for Ceres
-        cameras = self.K.reshape(-1).astype(np.float64)
-        points = pts3d[:, :3].astype(np.float64)
-
-        for obs in observations:
-            cam_idx, pt_idx, x_2d = obs
-            cam_param = cameras[cam_idx]
-            pt_3d = points[pt_idx]
-
-            # Each residual block is 9 params: 3 rvec, 3 tvec, 3 X
-            params = np.hstack([cam_param, pt_3d])
-            problem.add_residual_block(
-                cost_functor=self.reprojection_residual(x_2d, K),
-                parameter_blocks=[params],
-                loss=ceres.HuberLoss(1.0)
-            )
-
-        # Solve the problem
-        options = ceres.SolverOptions()
-        options.linear_solver_type = ceres.LinearSolverType.DENSE_SCHUR
-        options.minimizer_progress_to_stdout = True
-
-        summary = ceres.Summary()
-        ceres.Solve(options, problem, summary)
-        print(summary.BriefReport())
-
-        # Return optimized camera parameters and points
-        return cameras, points

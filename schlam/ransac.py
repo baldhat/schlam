@@ -83,6 +83,31 @@ class RANSAC:
         viewer.run()
         viewer.destroy_window()
 
+    def plot_points_3d_comparison(self, p1s_3D, p2s_3D):
+        viewer = o3d.visualization.Visualizer()
+        viewer.create_window()
+
+        colors1 = np.ones_like(p1s_3D[:, :3])
+        colors1[:, 1] = 0
+        pc1 = o3d.geometry.PointCloud()
+        pc1.points = o3d.utility.Vector3dVector(p1s_3D[:, :3])
+        pc1.colors = o3d.utility.Vector3dVector(colors1)
+        viewer.add_geometry(pc1)
+
+        colors2 = np.ones_like(p2s_3D[:, :3])
+        colors2[:, 0] = 0
+        pc2 = o3d.geometry.PointCloud()
+        pc2.points = o3d.utility.Vector3dVector(p2s_3D[:, :3])
+        pc2.colors = o3d.utility.Vector3dVector(colors2)
+        viewer.add_geometry(pc2)
+
+        coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=10, origin=[0, 0, 0]
+        )
+        viewer.add_geometry(coord_frame)
+        viewer.run()
+        viewer.destroy_window()
+
     def epipolarDistance(self, p1s, p2s, E):
         p1s, p2s = p1s.unsqueeze(-1), p2s.unsqueeze(-1)
         distance1 = torch.abs(p2s.transpose(-2, -1)@E@p1s)[:, 0, 0] / torch.sqrt((E@p1s)[:, 0]**2 + (E@p1s)[:, 1]**2)[:, 0]

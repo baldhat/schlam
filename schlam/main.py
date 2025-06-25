@@ -48,8 +48,8 @@ if __name__=="__main__":
     track_ids = np.arange(detected_features.shape[0])
     tracks = {i: [detected_features[i]] for i in range(detected_features.shape[0])}
     active_points = track_ids
-    RTs, ts, Ts = [], [], []
-    ps = [np.array([0, 0, 0])]
+    RTs = [np.eye(3)]
+    ts = [np.array([0, 0, 0])]
     global_points = None
 
     for frame_idx in range(len(dataset) - 1):
@@ -85,6 +85,7 @@ if __name__=="__main__":
 
         start_time = time.time()
         R, t, p1s_3D, inlier_mask = ransac(torch.tensor(old_features_).to(image_new.device), torch.tensor(new_features_).to(image_new.device))
+        p1s_3D = torch.einsum("ij,nj->ni", torch.tensor(RTs[-1], device=device).float(), p1s_3D[:, :3].float()) + torch.tensor(ts[-1], device=device)
         new_features_ = new_features_[inlier_mask]
         active_points = active_points[inlier_mask.cpu().numpy()]
         torch.cuda.current_stream().synchronize()
@@ -95,38 +96,42 @@ if __name__=="__main__":
         #T = torch.eye(4).to(R.device)
         #T[:3, :3] = R
         #T[:3, 3] = t
-        if len(ps) > 1:
+        if len(ts) > 1:
             RTs.append((RTs[-1] @ R.T)) # Orientation of coordinate frame Cx expressed in C0
-            ps.append(RTs[-2] @ t + ps[-1])
+            ts.append(RTs[-2] @ t + ts[-1])
         else:
             RTs.append(R.T)
-            ps.append(t)
+            ts.append(t)
 
         #lba.reprojection_error(p1s_3D, old_features_[inlier_mask])
         #lba.reprojection_error((R@(p1s_3D.T[:3]) - R@t.unsqueeze(-1)).T, new_features_)
 
 
+        for i, j in enumerate(active_points):
+            tracks[j].append(new_features_[i])
 
         # pts3d: [num_features, 3]
         # pts2d: [num_frames, num_features, 2]
         # R_vec: [num_frames, 3]
         # t_vec: [num_frames, 3]
-        if frame_idx >= 3:
+        if frame_idx >= 1:
             # bundle_adjustment_mask = torch.zeros_like(active_points)
             # for i, j in enumerate(active_points):
             #     bundle_adjustment_mask[i] = 1 if len(tracks[j]) == frame_idx else 0
 
             features = []
-            for i in range(frame_idx):
+            for i in range(frame_idx + 2):
                 frame_features = []
                 for j in active_points:
                     frame_features.append(tracks[j][i].cpu().numpy())
                 features.append(frame_features)
             features = torch.tensor(np.array(features))
-            lba.bundle_adjustment(p1s_3D.cpu().numpy().astype(np.float64),
+            optim_pts3d, optim_Rs, optim_ts = lba.bundle_adjustment(p1s_3D.cpu().numpy().astype(np.float64),
                                   features.cpu().numpy().astype(np.float64),
-                                  torch.stack([rodrigues(torch.eye(3).to(R.device)), rodrigues(R)], dim=0).cpu().numpy().astype(np.float64),
-                                  torch.stack([torch.zeros(3).to(R.device), t], dim=0).cpu().numpy().astype(np.float64))
+                                  torch.stack([rodrigues(torch.tensor(R_.T, device=R.device).float()) for R_ in RTs], dim=0).cpu().numpy().astype(np.float64),
+                                  torch.stack([torch.tensor(t, device=R.device) for t in ts], dim=0).cpu().numpy().astype(np.float64))
+            ransac.plot_points_3d_comparison(p1s_3D.cpu().numpy(), optim_pts3d)
+
 
         if show_flow:
             #if global_points is None:
@@ -134,14 +139,13 @@ if __name__=="__main__":
             #else:
                 #global_points = np.concat((global_points.T, Ts[-2] @ p1s_3D.T.cpu().numpy()), axis=-1).T
 
-            #ransac.plot_points_3d(global_points, old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
+            #ransac.plot_points_3d(p1s_3D.cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
+            #ransac.plot_points_3d(optim_pts3d, old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
             #of.plot_optical_flow(image_new.cpu().numpy(), image_old.cpu().numpy(), new_features_.cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy())
-            plot_path(ps)
+            plot_path(ts)
 
         image_old = image_new
         old_features = new_features_
         image_old_color = image_new_color
 
-        for i, j in enumerate(active_points):
-            tracks[j].append(new_features_[i])
 
