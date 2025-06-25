@@ -25,7 +25,6 @@ class FAST:
         self.filter = torch.Tensor(np.array(filters)).to(self.device)
         self.unfold = torch.nn.Unfold(kernel_size=7, stride=1, padding=0)  # You can adjust stride/padding
         self.min_distance = min_distance
-        print()
 
     def __call__(self, image, n=500):
         h, w = image.shape[0], image.shape[1]

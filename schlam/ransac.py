@@ -82,7 +82,6 @@ class RANSAC:
         viewer.add_geometry(coord_frame)
         viewer.run()
         viewer.destroy_window()
-        print()
 
     def epipolarDistance(self, p1s, p2s, E):
         p1s, p2s = p1s.unsqueeze(-1), p2s.unsqueeze(-1)
@@ -183,7 +182,6 @@ class RANSAC:
     def calc_essential_mat(self, old_features, new_features):
         cv_essential_mat, mask = cv2.findEssentialMat(old_features.cpu().numpy(), new_features.cpu().numpy(), self.K.cpu().numpy())
         R1, R2, t = cv2.decomposeEssentialMat(cv_essential_mat)
-        print()
 
     def triangulate(self, p1s, p2s, G):
         n = p1s.shape[0]

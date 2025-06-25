@@ -9,13 +9,27 @@ class ReprojectionErrorCostFunction(ceres.CostFunction):
         ceres.CostFunction.__init__(self)
         self.set_num_residuals(2)
         self.K = camera_intrinsics.to(device=device).double()
+        self.K_inv = torch.linalg.inv(self.K)
+        self.device = device
+
+    def normalize(self, pred_pts, gt_pts):
+        p1s = torch.einsum("ij,bj->bi",
+                           self.K_inv.float(),
+                           torch.concat((pred_pts, torch.ones((pred_pts.shape[0], 1), device=self.device)),
+                                        dim=-1).float())
+        p2s = torch.einsum("ij,bj->bi",
+                           self.K_inv.float(),
+                           torch.concat((gt_pts, torch.ones((gt_pts.shape[0], 1), device=self.device)),
+                                        dim=-1).float())
+        return p1s[:, :2], p2s[:, :2]
 
     def f(self, r_vec, t, pts3d, pts2d):
         R = inverse_rodrigues(r_vec)
         p_camera = (R @ (pts3d.T[:3]) - R @ t.unsqueeze(-1))
         pred_pts2d = (self.K @ p_camera)
         pred_pts2d = pred_pts2d[:2] / pred_pts2d[2]
-        residuals = (pred_pts2d[:2].T - pts2d).sum(dim=0)
+        pred_pts, gt_pts = self.normalize(pred_pts2d.T, pts2d)
+        residuals = (pred_pts - gt_pts).sum(dim=0)
         return residuals
 
     def Evaluate(self, parameters, residuals, jacobian):
@@ -93,6 +107,7 @@ class LBA():
         ceres.solve(options, problem, summary)
 
         print(summary.FullReport())
+
 
     def reprojection_residual(self, pts2d, K):
         def residual(params):

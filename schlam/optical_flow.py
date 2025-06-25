@@ -55,8 +55,6 @@ class LukasKanade():
                 flow *= 2.0
                 pts_scaled *= 2.0
 
-            print()
-
         tracked_pts = pts + flow
         return tracked_pts
 
@@ -77,7 +75,6 @@ class LukasKanade():
 
         index = torch.clamp(torch.round(pts[:, 1]).long() * w + torch.round(pts[:, 0]).long(), 0, h*w-1)
         I_old_patches = self.unfold(old_img.float())
-        print()
         I_old_patches = self.interpolate(I_old_patches, l_x, u_x, l_y, u_y, w_x, w_y, w, h)[0].transpose(0, 1)
 
         I_new_patches_ = self.unfold(new_img.float())
