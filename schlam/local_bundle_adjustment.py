@@ -34,7 +34,12 @@ class ReprojectionErrorCostFunction(ceres.CostFunction):
         residual = result.detach().cpu().numpy()
         residuals[0], residuals[1] = residual[0], residual[1]
         if jacobian is not None:
-            jacobian[0], jacobian[1], jacobian[2], jacobian[3] = r_jac.cpu().numpy().flatten(), t_jac.cpu().numpy().flatten(), pts3d_jac.cpu().numpy().flatten(), pts2d_jac.cpu().numpy().flatten()
+            # jacobian[0][0] = 1.0
+            w, x, y, z= r_jac.cpu().numpy().flatten(), t_jac.cpu().numpy().flatten(), pts3d_jac.cpu().numpy().flatten(), pts2d_jac.cpu().numpy().flatten()
+            np.copyto(jacobian[0], w)
+            np.copyto(jacobian[1], x)
+            np.copyto(jacobian[2], y)
+            np.copyto(jacobian[3], z)
         return True
 
 

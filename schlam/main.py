@@ -14,7 +14,7 @@ from local_bundle_adjustment import LBA
 
 
 print(torch.cuda.is_available())
-show_flow = True
+show_flow = False
 device = "cuda"
 
 lk_params = dict( winSize  = (15, 15),
@@ -42,14 +42,17 @@ if __name__=="__main__":
     detected_features = feature_extractor(image_old)
     p0 = cv2.goodFeaturesToTrack(image_old.cpu().numpy(), 500, 0.01, 10)
     detected_features = torch.tensor(p0[:, 0]).to(device).long()
-    old_features = detected_features
     torch.cuda.current_stream().synchronize()
     print("Feature detector: ", (time.time() - start_time) * 1000, "ms")
+    old_features = detected_features
+    track_ids = np.arange(detected_features.shape[0])
+    tracks = {i: [detected_features[i]] for i in range(detected_features.shape[0])}
+    active_points = track_ids
     RTs, ts, Ts = [], [], []
     ps = [np.array([0, 0, 0])]
     global_points = None
 
-    for _ in range(len(dataset) - 1):
+    for frame_idx in range(len(dataset) - 1):
         # if len(features) < 100:
         #     detected_features = feature_extractor(image_old)
         #     old_features = detected_features + old_features
@@ -69,6 +72,7 @@ if __name__=="__main__":
         valid_flows = torch.isfinite(pred_new_features[:, 0]) & torch.isfinite(pred_new_features[:, 1])
         old_features_ = old_features[valid_flows]
         new_features_ = pred_new_features[valid_flows]
+        active_points = active_points[valid_flows.cpu().numpy()]
 
         # pred_new_features, st, err = cv2.calcOpticalFlowPyrLK(image_old.cpu().numpy().astype(np.uint8), image_new.cpu().numpy().astype(np.uint8), old_features.float().cpu().numpy(), None, **lk_params)
         # valid_flows = (st == 1)[:, 0]
@@ -82,6 +86,7 @@ if __name__=="__main__":
         start_time = time.time()
         R, t, p1s_3D, inlier_mask = ransac(torch.tensor(old_features_).to(image_new.device), torch.tensor(new_features_).to(image_new.device))
         new_features_ = new_features_[inlier_mask]
+        active_points = active_points[inlier_mask.cpu().numpy()]
         torch.cuda.current_stream().synchronize()
         print("Ransac: ", (time.time() - start_time) * 1000, "ms")
 
@@ -106,10 +111,22 @@ if __name__=="__main__":
         # pts2d: [num_frames, num_features, 2]
         # R_vec: [num_frames, 3]
         # t_vec: [num_frames, 3]
-        lba.bundle_adjustment(p1s_3D.cpu().numpy().astype(np.float64),
-                              torch.stack([old_features_[inlier_mask], new_features_], dim=0).cpu().numpy().astype(np.float64),
-                              torch.stack([rodrigues(torch.eye(3).to(R.device)), rodrigues(R)], dim=0).cpu().numpy().astype(np.float64),
-                              torch.stack([torch.zeros(3).to(R.device), t], dim=0).cpu().numpy().astype(np.float64))
+        if frame_idx >= 3:
+            # bundle_adjustment_mask = torch.zeros_like(active_points)
+            # for i, j in enumerate(active_points):
+            #     bundle_adjustment_mask[i] = 1 if len(tracks[j]) == frame_idx else 0
+
+            features = []
+            for i in range(frame_idx):
+                frame_features = []
+                for j in active_points:
+                    frame_features.append(tracks[j][i].cpu().numpy())
+                features.append(frame_features)
+            features = torch.tensor(np.array(features))
+            lba.bundle_adjustment(p1s_3D.cpu().numpy().astype(np.float64),
+                                  features.cpu().numpy().astype(np.float64),
+                                  torch.stack([rodrigues(torch.eye(3).to(R.device)), rodrigues(R)], dim=0).cpu().numpy().astype(np.float64),
+                                  torch.stack([torch.zeros(3).to(R.device), t], dim=0).cpu().numpy().astype(np.float64))
 
         if show_flow:
             #if global_points is None:
@@ -124,3 +141,7 @@ if __name__=="__main__":
         image_old = image_new
         old_features = new_features_
         image_old_color = image_new_color
+
+        for i, j in enumerate(active_points):
+            tracks[j].append(new_features_[i])
+
