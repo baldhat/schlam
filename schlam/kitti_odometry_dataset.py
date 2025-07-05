@@ -25,6 +25,7 @@ class KittiOdometrySequenceDataset(Dataset):
         image2 = cv2.cvtColor(image2color, cv2.COLOR_BGR2GRAY)
         image3 = cv2.cvtColor(np.array(self.cam3[idx]), cv2.COLOR_BGR2GRAY)
         calib = self.calib.K_cam2
+        projection = self.calib.P_rect_20
         pose = self.poses[idx]
         return {
             "timestamp": timestamp.microseconds,
@@ -32,5 +33,7 @@ class KittiOdometrySequenceDataset(Dataset):
             "image2color": image2color,
             "image3": image3,
             "calib": calib,
-            "pose": pose
+            "pose": pose,
+            "projection": projection
+
         }

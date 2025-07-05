@@ -5,9 +5,10 @@ import torch
 
 
 class ReprojectionErrorCostFunction(ceres.CostFunction):
-    def __init__(self, camera_intrinsics, device):
+    def __init__(self, camera_intrinsics, device, img_indx):
         ceres.CostFunction.__init__(self)
         self.set_num_residuals(2)
+        self.img_indx = img_indx
         self.K = camera_intrinsics.to(device=device).double()
         self.K_inv = torch.linalg.inv(self.K)
         self.device = device
@@ -29,8 +30,8 @@ class ReprojectionErrorCostFunction(ceres.CostFunction):
         pred_pts2d = (self.K @ p_camera)
         pred_pts2d = pred_pts2d[:2] / pred_pts2d[2]
         pred_pts, gt_pts = self.normalize(pred_pts2d.T, pts2d)
-        residuals = (pred_pts - gt_pts).sum(dim=0)
-        return residuals
+        residuals = (pred_pts - gt_pts)
+        return residuals.sum(dim=0)
 
     def Evaluate(self, parameters, residuals, jacobian):
         '''
@@ -83,12 +84,12 @@ class LBA():
         problem.set_parameter_block_constant(t_vec[0])
 
 
-        cost_function = ReprojectionErrorCostFunction(self.K, "cpu")
 
-        cost_function.set_parameter_block_sizes([3, 3, pts3d.shape[0], pts2d[0].shape[0]])
         # ceres.AutoDiffCostFunction(cost_function)
         # The cost function takes parameters in the order specified here
         for i in range(len(pts2d)):
+            cost_function = ReprojectionErrorCostFunction(self.K, "cpu", i)
+            cost_function.set_parameter_block_sizes([3, 3, pts3d.shape[0], pts2d[0].shape[0]])
             problem.add_residual_block(
                 cost_function,
                 None,
@@ -100,7 +101,7 @@ class LBA():
 
         options = ceres.SolverOptions()
         options.max_num_iterations = 100
-        options.linear_solver_type = ceres.LinearSolverType.SPARSE_SCHUR  # Good for BA
+        options.linear_solver_type = ceres.LinearSolverType.DENSE_SCHUR  # Good for BA
         options.minimizer_progress_to_stdout = True  # See optimization progress
 
         summary = ceres.SolverSummary()

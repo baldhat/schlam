@@ -1,9 +1,12 @@
 import os
+import threading
 
+import rclpy
 import numpy as np
 import matplotlib.pyplot as plt
 from feature_detector import FAST
 from ransac import RANSAC
+from visualizer import run_async
 from kitti_odometry_dataset import KittiOdometrySequenceDataset
 import torch
 import time
@@ -11,7 +14,8 @@ import cv2
 from helpers import plot_path, rodrigues, inverse_rodrigues
 from optical_flow import LukasKanade
 from local_bundle_adjustment import LBA
-
+from sensor_msgs.msg import Image
+# from rclpy import
 
 print(torch.cuda.is_available())
 show_flow = False
@@ -26,6 +30,7 @@ if __name__=="__main__":
     dataset = KittiOdometrySequenceDataset(path, "04")
     feature_extractor = FAST(20, 12, 10, device)
     of = LukasKanade(15, device)
+    visualizer = run_async()
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
 
@@ -34,6 +39,8 @@ if __name__=="__main__":
     image_old = data["image2"][0].float().to(device)
     image_old_color = data["image2color"][0].float().to(device)
     K = data["calib"][0]
+    P = data["projection"][0]
+    pose = data["pose"][0]
     ransac = RANSAC(K, device)
     lba = LBA(K, device)
 
@@ -51,8 +58,15 @@ if __name__=="__main__":
     RTs = [np.eye(3)]
     ts = [np.array([0, 0, 0])]
     global_points = None
+    p1s_3D = None
 
+    t = threading.Thread(target=rclpy.spin, args=[visualizer])
+    t.start()
     for frame_idx in range(len(dataset) - 1):
+        if p1s_3D is not None:
+            visualizer.publish_camera(image_old_color, RTs[-1].T, ts[-1], K, P, p1s_3D[:, :3], old_features)
+            visualizer.publish_gt(pose[:3, :3], pose[:3, 3])
+
         # if len(features) < 100:
         #     detected_features = feature_extractor(image_old)
         #     old_features = detected_features + old_features
@@ -63,6 +77,7 @@ if __name__=="__main__":
         data = next(data_iter)
         image_new = data["image2"][0].float().to(device)
         image_new_color = data["image2color"][0].float().to(device)
+        pose = data["pose"][0]
         torch.cuda.current_stream().synchronize()
         print("Image loading: ", (time.time()-start_time) * 1000, "ms")
 
@@ -114,7 +129,7 @@ if __name__=="__main__":
         # pts2d: [num_frames, num_features, 2]
         # R_vec: [num_frames, 3]
         # t_vec: [num_frames, 3]
-        if frame_idx >= 1:
+        if frame_idx >= 5:
             # bundle_adjustment_mask = torch.zeros_like(active_points)
             # for i, j in enumerate(active_points):
             #     bundle_adjustment_mask[i] = 1 if len(tracks[j]) == frame_idx else 0
@@ -130,8 +145,11 @@ if __name__=="__main__":
                                   features.cpu().numpy().astype(np.float64),
                                   torch.stack([rodrigues(torch.tensor(R_.T, device=R.device).float()) for R_ in RTs], dim=0).cpu().numpy().astype(np.float64),
                                   torch.stack([torch.tensor(t, device=R.device) for t in ts], dim=0).cpu().numpy().astype(np.float64))
-            ransac.plot_points_3d_comparison(p1s_3D.cpu().numpy(), optim_pts3d)
 
+            #ransac.plot_points_3d_comparison(p1s_3D.cpu().numpy(), optim_pts3d)
+            p1s_3D = torch.tensor(optim_pts3d, device=device).float()
+            ts = [torch.tensor(t, device=device).float() for t in optim_ts]
+            RTs = [torch.tensor(R.T, device=device).float() for R in optim_Rs]
 
         if show_flow:
             #if global_points is None:
