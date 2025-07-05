@@ -25,9 +25,10 @@ lk_params = dict( winSize  = (15, 15),
                   maxLevel = 5,
                   criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
+
 if __name__=="__main__":
     path = os.environ["KITTI_ODOMETRY_PATH"] # /home/baldhat/dev/data/KittiOdometry
-    dataset = KittiOdometrySequenceDataset(path, "04")
+    dataset = KittiOdometrySequenceDataset(path, "5")
     feature_extractor = FAST(20, 12, 10, device)
     of = LukasKanade(15, device)
     visualizer = run_async()
@@ -47,8 +48,8 @@ if __name__=="__main__":
     # Find FAST features
     start_time = time.time()
     detected_features = feature_extractor(image_old)
-    p0 = cv2.goodFeaturesToTrack(image_old.cpu().numpy(), 500, 0.01, 10)
-    detected_features = torch.tensor(p0[:, 0]).to(device).long()
+    #p0 = cv2.goodFeaturesToTrack(image_old.cpu().numpy(), 200, 0.01, 10)
+    #detected_features = torch.tensor(p0[:, 0]).to(device).long()
     torch.cuda.current_stream().synchronize()
     print("Feature detector: ", (time.time() - start_time) * 1000, "ms")
     old_features = detected_features
@@ -59,6 +60,7 @@ if __name__=="__main__":
     ts = [np.array([0, 0, 0])]
     global_points = None
     p1s_3D = None
+    h, w = min(image_old.shape), max(image_old.shape)
 
     t = threading.Thread(target=rclpy.spin, args=[visualizer])
     t.start()
@@ -67,10 +69,16 @@ if __name__=="__main__":
             visualizer.publish_camera(image_old_color, [R.T for R in RTs], ts, K, P, p1s_3D[:, :3], old_features)
             visualizer.publish_gt(pose[:3, :3], pose[:3, 3])
 
-        # if len(features) < 100:
-        #     detected_features = feature_extractor(image_old)
-        #     old_features = detected_features + old_features
-        #     old_features = filter_doubles(old_features)
+        if len(active_points) < 100:
+            detected_features = feature_extractor(image_old)
+            old_features = torch.cat((old_features, detected_features), dim=0)
+            latest_track_id = max(list(tracks.keys()))
+            track_id = latest_track_id + 1
+            for new_feature in detected_features:
+                tracks[track_id] = [new_feature]
+                track_id += 1
+            new_points = torch.arange(latest_track_id + 1, track_id)
+            active_points = np.concatenate((active_points, new_points.cpu().numpy()))
 
         # Load image
         start_time = time.time()
@@ -84,7 +92,9 @@ if __name__=="__main__":
         # Calculate optical flow
         start_time = time.time()
         pred_new_features = of.pyramidal_of(image_old, image_new, old_features, levels=5)
-        valid_flows = torch.isfinite(pred_new_features[:, 0]) & torch.isfinite(pred_new_features[:, 1])
+        valid_flows = (torch.isfinite(pred_new_features[:, 0]) & torch.isfinite(pred_new_features[:, 1]) &
+                       (pred_new_features[:, 0] >= 0) & (pred_new_features[:, 1] >= 0) &
+                       (pred_new_features[:, 0] < w)  & (pred_new_features[:, 1] < h))
         old_features_ = old_features[valid_flows]
         new_features_ = pred_new_features[valid_flows]
         active_points = active_points[valid_flows.cpu().numpy()]
@@ -130,27 +140,26 @@ if __name__=="__main__":
         # pts2d: [num_frames, num_features, 2]
         # R_vec: [num_frames, 3]
         # t_vec: [num_frames, 3]
-        if frame_idx >= 10:
+        bundle_adjustment_frames = 5
+        if frame_idx >= 5:
             # bundle_adjustment_mask = torch.zeros_like(active_points)
             # for i, j in enumerate(active_points):
             #     bundle_adjustment_mask[i] = 1 if len(tracks[j]) == frame_idx else 0
 
             features = []
-            for i in range(frame_idx + 2):
-                frame_features = []
-                for j in active_points:
-                    frame_features.append(tracks[j][i].cpu().numpy())
-                features.append(frame_features)
-            features = torch.tensor(np.array(features))
+            for i in active_points:
+                track = tracks[i]
+                features.append([x.cpu().numpy().astype(np.float64) for x in track[-bundle_adjustment_frames:]])
+            #features = torch.tensor(np.array(features)).transpose(0, 1)
             optim_pts3d, optim_Rs, optim_ts = lba.bundle_adjustment(p1s_3D.cpu().numpy().astype(np.float64),
-                                  features.cpu().numpy().astype(np.float64),
-                                  torch.stack([rodrigues(torch.tensor(R_.T, device=R.device).float()) for R_ in RTs], dim=0).cpu().numpy().astype(np.float64),
-                                  torch.stack([torch.tensor(t, device=R.device) for t in ts], dim=0).cpu().numpy().astype(np.float64))
+                                  features,
+                                  torch.stack([rodrigues(torch.tensor(RT_.T, device=R.device).float()) for RT_ in RTs[-bundle_adjustment_frames:]], dim=0).cpu().numpy().astype(np.float64),
+                                  torch.stack([torch.tensor(t, device=R.device) for t in ts[-bundle_adjustment_frames:]], dim=0).cpu().numpy().astype(np.float64))
 
             #ransac.plot_points_3d_comparison(p1s_3D.cpu().numpy(), optim_pts3d)
             p1s_3D = torch.tensor(optim_pts3d, device=device).float()
-            ts = [torch.tensor(t, device=device).float() for t in optim_ts]
-            RTs = [torch.tensor(R.T, device=device).float() for R in optim_Rs]
+            ts[-bundle_adjustment_frames:] = [torch.tensor(t, device=device).float() for t in optim_ts]
+            RTs[-bundle_adjustment_frames:] = [torch.tensor(R.T, device=device).float() for R in optim_Rs]
 
         if show_flow:
             #if global_points is None:

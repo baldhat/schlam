@@ -57,12 +57,24 @@ class RVizVisualizer(Node):
             transform.transform.translation.x = float(t[0])
             transform.transform.translation.y = float(t[1])
             transform.transform.translation.z = float(t[2])
-            quat = Rotation.from_matrix(R).as_quat().astype(np.float32)
+            quat = Rotation.from_matrix(R.T).as_quat().astype(np.float32)
             transform.transform.rotation.x = float(quat[0])
             transform.transform.rotation.y = float(quat[1])
             transform.transform.rotation.z = float(quat[2])
             transform.transform.rotation.w = float(quat[3])
             self.br.sendTransform(transform)
+
+
+            pose = PoseStamped()
+            pose.header.frame_id = 'world'
+            pose.pose.position.x = float(t[0])
+            pose.pose.position.y = float(t[1])
+            pose.pose.position.z = float(t[2])
+            pose.pose.orientation.x = float(quat[0])
+            pose.pose.orientation.y = float(quat[1])
+            pose.pose.orientation.z = float(quat[2])
+            pose.pose.orientation.w = float(quat[3])
+            self.pose_publisher.publish(pose)
 
             camera_msg = CameraInfo()
             camera_msg.header.frame_id = 'world'
@@ -72,19 +84,19 @@ class RVizVisualizer(Node):
             camera_msg.p = P.cpu().numpy().flatten().astype(np.float64)
             self.camera_publisher.publish(camera_msg)
 
-            img_msg = self.bridge.cv2_to_imgmsg(img, encoding='rgb8')
-            img_msg.header.stamp = self.get_clock().now().to_msg()
-            img_msg.header.frame_id = 'camera' + str(self.frame_idx)
-            self.image_publisher.publish(img_msg)
-
-            self.point_publisher.publish(self.create_pointcloud2(points3d))
-
-            feat_img_msg = self.bridge.cv2_to_imgmsg(self.plot_features(img, features), encoding='rgb8')
-            feat_img_msg.header.stamp = self.get_clock().now().to_msg()
-            feat_img_msg.header.frame_id = 'camera' + str(self.frame_idx)
-            self.feature_image_publisher.publish(feat_img_msg)
-
             self.frame_idx += 1
+
+        img_msg = self.bridge.cv2_to_imgmsg(img, encoding='rgb8')
+        img_msg.header.stamp = self.get_clock().now().to_msg()
+        img_msg.header.frame_id = 'camera' + str(self.frame_idx - 1)
+        self.image_publisher.publish(img_msg)
+
+        self.point_publisher.publish(self.create_pointcloud2(points3d))
+
+        feat_img_msg = self.bridge.cv2_to_imgmsg(self.plot_features(img, features), encoding='rgb8')
+        feat_img_msg.header.stamp = self.get_clock().now().to_msg()
+        feat_img_msg.header.frame_id = 'camera' + str(self.frame_idx - 1)
+        self.feature_image_publisher.publish(feat_img_msg)
 
     def plot_features(self, image, features):
         figure = plt.figure(figsize=(24, 12))
@@ -100,6 +112,7 @@ class RVizVisualizer(Node):
         buf = figure.canvas.tostring_argb()
         ncols, nrows = figure.canvas.get_width_height()
         img = np.frombuffer(buf, dtype=np.uint8).reshape(nrows, ncols, 4)[:, :, 1:]
+        plt.close()
         return img
 
     def publish_gt(self, R, t):

@@ -9,7 +9,7 @@ class KittiOdometrySequenceDataset(Dataset):
     def __init__(self, path_name, sequence_name):
         self.path = path_name
         self.sequence = sequence_name
-        self.data = pykitti.odometry(path_name, sequence_name, frames=range(20))
+        self.data = pykitti.odometry(path_name, sequence_name, frames=range(100))
         self.calib = self.data.calib
         self.timestamps = self.data.timestamps
         self.cam2 = list(iter(self.data.cam2))

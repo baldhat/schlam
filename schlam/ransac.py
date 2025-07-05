@@ -1,4 +1,5 @@
 import random
+random.seed(1234)
 import torch
 import matplotlib.pyplot as plt
 import numpy as np

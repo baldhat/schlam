@@ -66,43 +66,53 @@ class LBA():
         pass
 
     # pts3d: [num_features, 3]
-    # pts2d: [num_frames, num_features, 2]
+    # pts2d: [num_features, num_frames, 2]
     # R_vec: [num_frames, 3]
     # t_vec: [num_frames, 3]
     def bundle_adjustment(self, pts3d, pts2d, R_vec, t_vec):
         pts3d = pts3d[:, :3].astype(np.float64).copy()
-        pts2d = [pts2d_.astype(np.float64) for pts2d_ in pts2d]
+        pts2d = [np.array(pts2d_).astype(np.float64).copy() for pts2d_ in pts2d]
         problem = ceres.Problem()
-        for i in range(len(pts2d)):
+        for i in range(R_vec.shape[0]):
             problem.add_parameter_block(R_vec[i], 3)
             problem.add_parameter_block(t_vec[i], 3)
-            for j in range(pts3d.shape[0]):
+        for i in range(len(pts2d)):
+            for j in range(pts2d[i].shape[0]):
                 problem.add_parameter_block(pts2d[i][j], 2)
                 problem.set_parameter_block_constant(pts2d[i][j])
-            # problem.SetLocalParameterization(cameras[i * 2], ceres.QuaternionParameterization())
 
         for j in range(pts3d.shape[0]):
             problem.add_parameter_block(pts3d[j], 3)
 
-        problem.set_parameter_block_constant(R_vec[0])
-        problem.set_parameter_block_constant(t_vec[0])
-
-
-
-        # ceres.AutoDiffCostFunction(cost_function)
-        # The cost function takes parameters in the order specified here
         for i in range(len(pts2d)):
-            for j in range(pts3d.shape[0]):
+            for j in range(pts2d[i].shape[0]):
                 cost_function = ReprojectionErrorCostFunction(self.K, "cpu", i)
                 cost_function.set_parameter_block_sizes([3, 3, 3, 2])
+                start = 5 - pts2d[i].shape[0]
                 problem.add_residual_block(
                     cost_function,
                     None,
-                    [R_vec[i],
-                    t_vec[i],
-                    pts3d[j],
-                     pts2d[i][j]]
+                    [R_vec[start + j],
+                    t_vec[start + j],
+                    pts3d[i],
+                    pts2d[i][j]]
                 )
+
+        #
+        # # ceres.AutoDiffCostFunction(cost_function)
+        # # The cost function takes parameters in the order specified here
+        # for i in range(R_vec.shape[0]):
+        #     for j in range(len(pts2d[i])):
+        #         cost_function = ReprojectionErrorCostFunction(self.K, "cpu", i)
+        #         cost_function.set_parameter_block_sizes([3, 3, 3, 2])
+        #         problem.add_residual_block(
+        #             cost_function,
+        #             None,
+        #             [R_vec[i],
+        #             t_vec[i],
+        #             pts3d[j],
+        #              pts2d[j][i]]
+        #         )
 
         options = ceres.SolverOptions()
         options.max_num_iterations = 100
