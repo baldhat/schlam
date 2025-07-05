@@ -31,58 +31,60 @@ class RVizVisualizer(Node):
         self.camera_publisher = self.create_publisher(CameraInfo, "/camera/camera_info", qos_profile)
         self.br = StaticTransformBroadcaster(self)
         self.pose_publisher = self.create_publisher(PoseStamped, "/pose", qos_profile)
-        self.frame_idx = 0
-        self.gt_idx = 0
         self.bridge = CvBridge()
         self.point_publisher = self.create_publisher(PointCloud2, "/points", qos_profile)
+        self.frame_idx = 0
+        self.gt_idx = 0
 
 
-    def publish_camera(self, img, R, t, K, P, points3d, features):
-        if isinstance(img, torch.Tensor):
-            img = img.cpu().numpy().astype(np.uint8)
-        if isinstance(R, torch.Tensor):
-            R = R.float().cpu().numpy()
-        if isinstance(t, torch.Tensor):
-            t = t.float().cpu().numpy()
-        if isinstance(points3d, torch.Tensor):
-            points3d = points3d.float().cpu().numpy()
-        if isinstance(features, torch.Tensor):
-            features = features.float().cpu().numpy()
+    def publish_camera(self, img, Rs, ts, K, P, points3d, features):
+        self.frame_idx = 0
+        for R, t in zip(Rs, ts):
+            if isinstance(img, torch.Tensor):
+                img = img.cpu().numpy().astype(np.uint8)
+            if isinstance(R, torch.Tensor):
+                R = R.float().cpu().numpy()
+            if isinstance(t, torch.Tensor):
+                t = t.float().cpu().numpy()
+            if isinstance(points3d, torch.Tensor):
+                points3d = points3d.float().cpu().numpy()
+            if isinstance(features, torch.Tensor):
+                features = features.float().cpu().numpy()
 
-        transform = TransformStamped()
-        transform.header.frame_id = 'world'
-        transform.child_frame_id = 'camera' + str(self.frame_idx)
-        transform.transform.translation.x = float(t[0])
-        transform.transform.translation.y = float(t[1])
-        transform.transform.translation.z = float(t[2])
-        quat = Rotation.from_matrix(R).as_quat().astype(np.float32)
-        transform.transform.rotation.x = float(quat[0])
-        transform.transform.rotation.y = float(quat[1])
-        transform.transform.rotation.z = float(quat[2])
-        transform.transform.rotation.w = float(quat[3])
-        self.br.sendTransform(transform)
+            transform = TransformStamped()
+            transform.header.frame_id = 'world'
+            transform.child_frame_id = 'camera' + str(self.frame_idx)
+            transform.transform.translation.x = float(t[0])
+            transform.transform.translation.y = float(t[1])
+            transform.transform.translation.z = float(t[2])
+            quat = Rotation.from_matrix(R).as_quat().astype(np.float32)
+            transform.transform.rotation.x = float(quat[0])
+            transform.transform.rotation.y = float(quat[1])
+            transform.transform.rotation.z = float(quat[2])
+            transform.transform.rotation.w = float(quat[3])
+            self.br.sendTransform(transform)
 
-        camera_msg = CameraInfo()
-        camera_msg.header.frame_id = 'world'
-        camera_msg.height = int(img.shape[0])
-        camera_msg.width = int(img.shape[1])
-        camera_msg.k = K.cpu().numpy().flatten().astype(np.float64)
-        camera_msg.p = P.cpu().numpy().flatten().astype(np.float64)
-        self.camera_publisher.publish(camera_msg)
+            camera_msg = CameraInfo()
+            camera_msg.header.frame_id = 'world'
+            camera_msg.height = int(img.shape[0])
+            camera_msg.width = int(img.shape[1])
+            camera_msg.k = K.cpu().numpy().flatten().astype(np.float64)
+            camera_msg.p = P.cpu().numpy().flatten().astype(np.float64)
+            self.camera_publisher.publish(camera_msg)
 
-        img_msg = self.bridge.cv2_to_imgmsg(img, encoding='rgb8')
-        img_msg.header.stamp = self.get_clock().now().to_msg()
-        img_msg.header.frame_id = 'camera' + str(self.frame_idx)
-        self.image_publisher.publish(img_msg)
+            img_msg = self.bridge.cv2_to_imgmsg(img, encoding='rgb8')
+            img_msg.header.stamp = self.get_clock().now().to_msg()
+            img_msg.header.frame_id = 'camera' + str(self.frame_idx)
+            self.image_publisher.publish(img_msg)
 
-        self.point_publisher.publish(self.create_pointcloud2(points3d))
+            self.point_publisher.publish(self.create_pointcloud2(points3d))
 
-        feat_img_msg = self.bridge.cv2_to_imgmsg(self.plot_features(img, features), encoding='rgb8')
-        feat_img_msg.header.stamp = self.get_clock().now().to_msg()
-        feat_img_msg.header.frame_id = 'camera' + str(self.frame_idx)
-        self.feature_image_publisher.publish(feat_img_msg)
+            feat_img_msg = self.bridge.cv2_to_imgmsg(self.plot_features(img, features), encoding='rgb8')
+            feat_img_msg.header.stamp = self.get_clock().now().to_msg()
+            feat_img_msg.header.frame_id = 'camera' + str(self.frame_idx)
+            self.feature_image_publisher.publish(feat_img_msg)
 
-        self.frame_idx += 1
+            self.frame_idx += 1
 
     def plot_features(self, image, features):
         figure = plt.figure(figsize=(24, 12))

@@ -64,7 +64,7 @@ if __name__=="__main__":
     t.start()
     for frame_idx in range(len(dataset) - 1):
         if p1s_3D is not None:
-            visualizer.publish_camera(image_old_color, RTs[-1].T, ts[-1], K, P, p1s_3D[:, :3], old_features)
+            visualizer.publish_camera(image_old_color, [R.T for R in RTs], ts, K, P, p1s_3D[:, :3], old_features)
             visualizer.publish_gt(pose[:3, :3], pose[:3, 3])
 
         # if len(features) < 100:
@@ -100,6 +100,7 @@ if __name__=="__main__":
 
         start_time = time.time()
         R, t, p1s_3D, inlier_mask = ransac(torch.tensor(old_features_).to(image_new.device), torch.tensor(new_features_).to(image_new.device))
+        # TODO: check if this is correctly transforming into the world frame
         p1s_3D = torch.einsum("ij,nj->ni", torch.tensor(RTs[-1], device=device).float(), p1s_3D[:, :3].float()) + torch.tensor(ts[-1], device=device)
         new_features_ = new_features_[inlier_mask]
         active_points = active_points[inlier_mask.cpu().numpy()]
@@ -112,8 +113,8 @@ if __name__=="__main__":
         #T[:3, :3] = R
         #T[:3, 3] = t
         if len(ts) > 1:
+            ts.append(RTs[-1] @ t + ts[-1])
             RTs.append((RTs[-1] @ R.T)) # Orientation of coordinate frame Cx expressed in C0
-            ts.append(RTs[-2] @ t + ts[-1])
         else:
             RTs.append(R.T)
             ts.append(t)
@@ -129,7 +130,7 @@ if __name__=="__main__":
         # pts2d: [num_frames, num_features, 2]
         # R_vec: [num_frames, 3]
         # t_vec: [num_frames, 3]
-        if frame_idx >= 5:
+        if frame_idx >= 10:
             # bundle_adjustment_mask = torch.zeros_like(active_points)
             # for i, j in enumerate(active_points):
             #     bundle_adjustment_mask[i] = 1 if len(tracks[j]) == frame_idx else 0
