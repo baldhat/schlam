@@ -18,8 +18,6 @@ class RANSAC:
         abs_dev = torch.abs(x - median)
         return abs_dev.median(dim=dim).values if dim is not None else abs_dev.median()
 
-
-
     def __call__(self, old_features, feature_preds, normalize=False):
         '''
         :return: R expresses points in c1 in c2
@@ -35,30 +33,42 @@ class RANSAC:
                            self.K_inv.float(),
                            torch.concat((feature_preds, torch.ones((feature_preds.shape[0], 1), device=self.device)),
                                         dim=-1).float())
-        outlier_prob = torch.tensor(0.6)
-        num_iters = torch.log(1-outlier_prob) / torch.log(1 - (1-outlier_prob)**8) # TODO
-        for k in range(3000):
-            feat_indices8 = random.choices(range(old_features.shape[0]), k=8)
-
-            current_p1s, current_p2s = p1s[feat_indices8], p2s[feat_indices8]
-
-            if normalize:
-                current_p1s, current_p2s, B1, B2 = self.get_normalized_points(current_p1s, current_p2s)
-
-            E = self.essential_8_point(current_p1s, current_p2s)
-
-            if normalize:
-                E = B2.T @ E @ B1
-            errors = self.epipolarDistance(p1s, p2s, E)
-            threshold = 1.5 * self.mad(errors)
-            inlier_mask = (errors < 0.005)
-            num_inliers = inlier_mask.sum()
-            if num_inliers > max_inliers:
-                max_inliers = num_inliers
-                best_model = E
-                best_inlier_mask = inlier_mask
+        # outlier_prob = torch.tensor(0.7)
+        # num_iters = torch.log(1-outlier_prob) / torch.log(1 - (1-outlier_prob)**8) # TODO
+        # threshold = None
+        # for k in range(num_iters.int().item()):
+        #     feat_indices8 = random.choices(range(old_features.shape[0]), k=8)
+        #
+        #     current_p1s, current_p2s = p1s[feat_indices8], p2s[feat_indices8]
+        #
+        #     if normalize:
+        #         current_p1s, current_p2s, B1, B2 = self.get_normalized_points(current_p1s, current_p2s)
+        #
+        #     E = self.essential_8_point(current_p1s, current_p2s)
+        #
+        #     if normalize:
+        #         E = B2.T @ E @ B1
+        #     errors = self.epipolarDistance(p1s, p2s, E)
+        #     if threshold is None:
+        #         threshold = 1.5 * self.mad(errors)
+        #     inlier_mask = (errors < threshold)
+        #     num_inliers = inlier_mask.sum()
+        #     if num_inliers > max_inliers:
+        #         max_inliers = num_inliers
+        #         best_model = E
+        #         best_inlier_mask = inlier_mask
         print(max_inliers)
+
+        best_model, best_inlier_mask = cv2.findEssentialMat(old_features.float().cpu().numpy()[:, :2], feature_preds.float().cpu().numpy()[:, :2], self.K.cpu().numpy())
+        best_model = torch.tensor(best_model, device=self.device)
+        best_inlier_mask = torch.tensor(best_inlier_mask, device=self.device).bool()[:, 0]
+
         R, t, p1s_3D = self.recoverPose(best_model, p1s[best_inlier_mask], p2s[best_inlier_mask])
+
+        # rt_, R, t, _ = cv2.recoverPose(best_model.cpu().numpy(), p1s[:, :2][best_inlier_mask].cpu().numpy(), p2s[:, :2][best_inlier_mask].cpu().numpy(), self.K.cpu().numpy())
+        # R = [R]
+        # t = [t]
+
         points3d = p1s_3D[:3, :].T[0]
         mask = points3d[:, -1] > 0
         points3d = points3d[mask]
@@ -200,7 +210,7 @@ class RANSAC:
             G[:3, 3] = -Rs[k]@ts[k]
             X[:, :, k], Y[:, :, k] = self.triangulate(p1s, p2s, G)
             npd[k] = ((X[2, :, k] > 0) & (Y[2, :, k] > 0)).sum()
-        best = torch.max(npd, dim=0)[1]
+        best = torch.max(npd, dim=0)[1].cpu()
         # Return the 3D points expressed in the coordinate frame of the first camera
         return Rs[best], ts[best], X[:, :, best]
 

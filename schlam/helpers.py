@@ -23,6 +23,8 @@ def set_axes_equal(ax):
 
 
 def plot_path(ps):
+    if isinstance(ps, torch.Tensor):
+        ps = ps.cpu().numpy()
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.plot(np.array(ps)[:, 0], np.array(ps)[:, 1], np.array(ps)[:, 2], marker="o")

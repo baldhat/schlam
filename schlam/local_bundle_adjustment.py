@@ -45,7 +45,7 @@ class ReprojectionErrorCostFunction(ceres.CostFunction):
                                   torch.tensor(parameters[1], requires_grad=True),
                                   torch.tensor(parameters[2], requires_grad=True),
                                   torch.tensor(parameters[3]))
-
+        pts3d = pts3d * 100
         result = self.f(r_vec, t, pts3d, pts2d)
         r_jac, t_jac, pts3d_jac, pts2d_jac = torch.autograd.functional.jacobian(self.f, (r_vec, t, pts3d, pts2d))
         residual = result.detach().cpu().numpy()
@@ -70,7 +70,7 @@ class LBA():
     # R_vec: [num_frames, 3]
     # t_vec: [num_frames, 3]
     def bundle_adjustment(self, pts3d, pts2d, R_vec, t_vec):
-        pts3d = pts3d[:, :3].astype(np.float64).copy()
+        pts3d = (pts3d[:, :3].astype(np.float64) / 100.0).copy()
         pts2d = [np.array(pts2d_).astype(np.float64).copy() for pts2d_ in pts2d]
         problem = ceres.Problem()
         for i in range(R_vec.shape[0]):
@@ -98,24 +98,8 @@ class LBA():
                     pts2d[i][j]]
                 )
 
-        #
-        # # ceres.AutoDiffCostFunction(cost_function)
-        # # The cost function takes parameters in the order specified here
-        # for i in range(R_vec.shape[0]):
-        #     for j in range(len(pts2d[i])):
-        #         cost_function = ReprojectionErrorCostFunction(self.K, "cpu", i)
-        #         cost_function.set_parameter_block_sizes([3, 3, 3, 2])
-        #         problem.add_residual_block(
-        #             cost_function,
-        #             None,
-        #             [R_vec[i],
-        #             t_vec[i],
-        #             pts3d[j],
-        #              pts2d[j][i]]
-        #         )
-
         options = ceres.SolverOptions()
-        options.max_num_iterations = 100
+        options.max_num_iterations = 200
         options.num_threads = 8
         options.linear_solver_type = ceres.LinearSolverType.DENSE_SCHUR  # Good for BA
         options.minimizer_progress_to_stdout = True  # See optimization progress
@@ -127,7 +111,7 @@ class LBA():
         summary = ceres.SolverSummary()
         ceres.solve(options, problem, summary)
         print(summary.BriefReport())
-        return  pts3d.reshape(-1, 3), np.array([inverse_rodrigues(torch.tensor(rvec)) for rvec in R_vec]), t_vec
+        return  pts3d.reshape(-1, 3) * 100.0, np.array([inverse_rodrigues(torch.tensor(rvec)) for rvec in R_vec]), t_vec
 
 
     def reprojection_residual(self, pts2d, K):

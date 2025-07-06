@@ -2,13 +2,66 @@ import torch
 from torchvision.transforms import Pad
 import time
 import numpy as np
+from feature_detectors import createFeatureDetector
 import cv2
 import random
 import matplotlib.pyplot as plt
 
-class LukasKanade():
 
-    def __init__(self, window_size=21, device="cuda"):
+def createMatcher(name, cv, device):
+    if name == "LK":
+        return LukasKanade(window_size=21, device=device, cv=cv)
+    elif name == "FLANN":
+        return FLANN(device=device)
+    else:
+        raise RuntimeError("Unknown feature detector: " + name)
+
+class FLANN:
+    def __init__(self, device):
+        self.device = device
+        # FLANN parameters
+        self.FLANN_INDEX_KDTREE = 1
+        self.index_params = dict(algorithm=self.FLANN_INDEX_KDTREE, trees=5)
+        self.search_params = dict(checks=50)  # or pass empty dictionary
+
+        self.flann = cv2.FlannBasedMatcher(self.index_params, self.search_params)
+        self.sift = cv2.SIFT_create()
+
+    def getSiftDescriptors(self, img, pts):
+        img = img.cpu().numpy().astype(np.uint8)
+        pts = pts.round().cpu().numpy().astype(np.uint8)
+        keypoints = []
+        for point in pts:
+            kp = cv2.KeyPoint()
+            kp.pt = (int(point[0]), int(point[1]))
+            kp.size = 3
+            kp.angle = 0
+            keypoints.append(kp)
+        keypoints = tuple(keypoints)
+        kps, des = self.sift.compute(img, keypoints)
+        return des, kps
+
+    def __call__(self, old_img, new_img, pts, levels=None):
+        new_feats = createFeatureDetector("GFTT", False, self.device)(new_img)
+        des1, kps1 = self.getSiftDescriptors(old_img, pts)
+        des2, kps2 = self.getSiftDescriptors(new_img, new_feats)
+        #
+        # kps1, des1 = self.sift.detectAndCompute(old_img.cpu().numpy().astype(np.uint8), None)
+        # kps2, des2 = self.sift.detectAndCompute(new_img.cpu().numpy().astype(np.uint8), None)
+        #
+
+        matches = self.flann.knnMatch(des1, des2, k=2)
+        matchesMask = [[0, 0] for i in range(len(matches))]
+        # ratio test as per Lowe's paper
+        for i, (m, n) in enumerate(matches):
+            if m.distance < 0.7 * n.distance:
+                matchesMask[i] = [1, 0]
+        valid = torch.tensor(matchesMask, device=self.device)
+        new_feat_pos = torch.tensor([[kp.pt[0], kp.pt[1]] for kp in kps2], device=self.device)
+        return new_feat_pos, valid[:, 0].bool()
+
+class LukasKanade:
+    def __init__(self, window_size=21, device="cuda", cv=False):
         self.device = device
         self.grad_kernel_x = torch.tensor([
             [-1, 0, 1],
@@ -23,6 +76,11 @@ class LukasKanade():
         self.pad = Pad(1, padding_mode="edge")
         self.ws = window_size
         self.unfold = torch.nn.Unfold(kernel_size=self.ws, stride=1, padding=self.ws//2)
+        self.cv = cv
+
+        self.lk_params = dict(winSize=(15, 15),
+                         maxLevel=5,
+                         criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 
     def inv(self, A):
         a, b, c, d = A[:,0, 0], A[:,0, 1], A[:,1, 0], A[:,1, 1]
@@ -35,6 +93,20 @@ class LukasKanade():
         for _ in range(1, levels):
             pyramid.append(torch.nn.functional.avg_pool2d(pyramid[-1], 2))
         return pyramid
+
+    def __call__(self, old_img, new_img, pts, levels):
+        if self.cv:
+            pred_new_features, st, err = cv2.calcOpticalFlowPyrLK(old_img.cpu().numpy().astype(np.uint8),
+                                                                  new_img.cpu().numpy().astype(np.uint8),
+                                                                  pts.float().cpu().numpy(), None, **self.lk_params)
+            valid_flows = (st == 1)[:, 0]
+            return torch.tensor(pred_new_features, device=self.device), torch.tensor(valid_flows, device=self.device)
+        else:
+            pred_new_features = self.pyramidal_of(old_img, new_img, pts, levels=5)
+            valid_flows = (torch.isfinite(pred_new_features[:, 0]) & torch.isfinite(pred_new_features[:, 1]) &
+                           (pred_new_features[:, 0] >= 0) & (pred_new_features[:, 1] >= 0) &
+                           (pred_new_features[:, 0] < old_img.shape[1]) & (pred_new_features[:, 1] < old_img.shape[0]))
+            return pred_new_features, valid_flows
 
     def pyramidal_of(self, old_img, new_img, pts, levels=2):
         pyramid_old = self.build_pyramid(old_img.unsqueeze(0).unsqueeze(0).float().to(self.device), levels)

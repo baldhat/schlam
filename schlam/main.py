@@ -4,33 +4,29 @@ import threading
 import rclpy
 import numpy as np
 import matplotlib.pyplot as plt
-from feature_detector import FAST
+from feature_detectors import FAST
 from ransac import RANSAC
+from schlam.feature_detectors import createFeatureDetector
 from visualizer import run_async
 from kitti_odometry_dataset import KittiOdometrySequenceDataset
 import torch
 import time
 import cv2
 from helpers import plot_path, rodrigues, inverse_rodrigues
-from optical_flow import LukasKanade
+from matcher import createMatcher
 from local_bundle_adjustment import LBA
 from sensor_msgs.msg import Image
 # from rclpy import
 
 print(torch.cuda.is_available())
-show_flow = False
+show_flow = True
 device = "cuda"
-
-lk_params = dict( winSize  = (15, 15),
-                  maxLevel = 5,
-                  criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-
 
 if __name__=="__main__":
     path = os.environ["KITTI_ODOMETRY_PATH"] # /home/baldhat/dev/data/KittiOdometry
-    dataset = KittiOdometrySequenceDataset(path, "5")
-    feature_extractor = FAST(20, 12, 10, device)
-    of = LukasKanade(15, device)
+    dataset = KittiOdometrySequenceDataset(path, "10")
+    feature_extractor = createFeatureDetector("FAST", False, device)
+    matcher = createMatcher("LK", cv=False, device=device)
     visualizer = run_async()
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
@@ -48,8 +44,6 @@ if __name__=="__main__":
     # Find FAST features
     start_time = time.time()
     detected_features = feature_extractor(image_old)
-    #p0 = cv2.goodFeaturesToTrack(image_old.cpu().numpy(), 200, 0.01, 10)
-    #detected_features = torch.tensor(p0[:, 0]).to(device).long()
     torch.cuda.current_stream().synchronize()
     print("Feature detector: ", (time.time() - start_time) * 1000, "ms")
     old_features = detected_features
@@ -91,43 +85,29 @@ if __name__=="__main__":
 
         # Calculate optical flow
         start_time = time.time()
-        pred_new_features = of.pyramidal_of(image_old, image_new, old_features, levels=5)
-        valid_flows = (torch.isfinite(pred_new_features[:, 0]) & torch.isfinite(pred_new_features[:, 1]) &
-                       (pred_new_features[:, 0] >= 0) & (pred_new_features[:, 1] >= 0) &
-                       (pred_new_features[:, 0] < w)  & (pred_new_features[:, 1] < h))
+        pred_new_features, valid_flows = matcher(image_old, image_new, old_features, levels=5)
         old_features_ = old_features[valid_flows]
         new_features_ = pred_new_features[valid_flows]
         active_points = active_points[valid_flows.cpu().numpy()]
-
-        # pred_new_features, st, err = cv2.calcOpticalFlowPyrLK(image_old.cpu().numpy().astype(np.uint8), image_new.cpu().numpy().astype(np.uint8), old_features.float().cpu().numpy(), None, **lk_params)
-        # valid_flows = (st == 1)[:, 0]
-        # if old_features_ is not None:
-        #     old_features_ = torch.tensor(old_features[valid_flows]).to(image_old.device)
-        #     new_features_ = torch.tensor(pred_new_features[valid_flows]).to(image_old.device)
 
         torch.cuda.current_stream().synchronize()
         print("Optical flow: ", (time.time()-start_time) * 1000, "ms")
 
         start_time = time.time()
         R, t, p1s_3D, inlier_mask = ransac(torch.tensor(old_features_).to(image_new.device), torch.tensor(new_features_).to(image_new.device))
-        # TODO: check if this is correctly transforming into the world frame
+
         p1s_3D = torch.einsum("ij,nj->ni", torch.tensor(RTs[-1], device=device).float(), p1s_3D[:, :3].float()) + torch.tensor(ts[-1], device=device)
-        new_features_ = new_features_[inlier_mask]
+        new_features_ = new_features_[inlier_mask.cpu()]
         active_points = active_points[inlier_mask.cpu().numpy()]
         torch.cuda.current_stream().synchronize()
         print("Ransac: ", (time.time() - start_time) * 1000, "ms")
 
-
-        # T expresses points in c1 in c2
-        #T = torch.eye(4).to(R.device)
-        #T[:3, :3] = R
-        #T[:3, 3] = t
         if len(ts) > 1:
-            ts.append(RTs[-1] @ t + ts[-1])
-            RTs.append((RTs[-1] @ R.T)) # Orientation of coordinate frame Cx expressed in C0
+            ts.append((RTs[-1] @ t.float() + ts[-1]).float())
+            RTs.append((RTs[-1] @ R.T.float()).float()) # Orientation of coordinate frame Cx expressed in C0
         else:
-            RTs.append(R.T)
-            ts.append(t)
+            RTs.append(R.T.float())
+            ts.append(t.float())
 
         #lba.reprojection_error(p1s_3D, old_features_[inlier_mask])
         #lba.reprojection_error((R@(p1s_3D.T[:3]) - R@t.unsqueeze(-1)).T, new_features_)
@@ -141,7 +121,7 @@ if __name__=="__main__":
         # R_vec: [num_frames, 3]
         # t_vec: [num_frames, 3]
         bundle_adjustment_frames = 5
-        if frame_idx >= 5:
+        if frame_idx >= 500:
             # bundle_adjustment_mask = torch.zeros_like(active_points)
             # for i, j in enumerate(active_points):
             #     bundle_adjustment_mask[i] = 1 if len(tracks[j]) == frame_idx else 0
@@ -169,8 +149,9 @@ if __name__=="__main__":
 
             #ransac.plot_points_3d(p1s_3D.cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
             #ransac.plot_points_3d(optim_pts3d, old_features_[inlier_mask.cpu().numpy()].cpu().numpy(), image_old_color.cpu().numpy())
-            #of.plot_optical_flow(image_new.cpu().numpy(), image_old.cpu().numpy(), new_features_.cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy())
-            plot_path(ts)
+            # matcher.plot_optical_flow(image_new.cpu().numpy(), image_old.cpu().numpy(), new_features_.cpu().numpy(), old_features_[inlier_mask.cpu().numpy()].cpu().numpy())
+            #plot_path(ts)
+            pass
 
         image_old = image_new
         old_features = new_features_
