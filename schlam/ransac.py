@@ -18,7 +18,7 @@ class RANSAC:
         abs_dev = torch.abs(x - median)
         return abs_dev.median(dim=dim).values if dim is not None else abs_dev.median()
 
-    def __call__(self, old_features, feature_preds, normalize=False):
+    def __call__(self, old_features, feature_preds, normalize=True, method=8):
         '''
         :return: R expresses points in c1 in c2
         '''
@@ -33,18 +33,18 @@ class RANSAC:
                            self.K_inv.float(),
                            torch.concat((feature_preds, torch.ones((feature_preds.shape[0], 1), device=self.device)),
                                         dim=-1).float())
-        # outlier_prob = torch.tensor(0.7)
-        # num_iters = torch.log(1-outlier_prob) / torch.log(1 - (1-outlier_prob)**8) # TODO
+        # outlier_prob = torch.tensor(0.5)
+        # num_iters = torch.log(1-outlier_prob) / torch.log(1 - (1-outlier_prob)**method) # TODO
         # threshold = None
         # for k in range(num_iters.int().item()):
-        #     feat_indices8 = random.choices(range(old_features.shape[0]), k=8)
+        #     feat_indices = random.choices(range(old_features.shape[0]), k=method)
         #
-        #     current_p1s, current_p2s = p1s[feat_indices8], p2s[feat_indices8]
+        #     current_p1s, current_p2s = p1s[feat_indices], p2s[feat_indices]
         #
         #     if normalize:
         #         current_p1s, current_p2s, B1, B2 = self.get_normalized_points(current_p1s, current_p2s)
         #
-        #     E = self.essential_8_point(current_p1s, current_p2s)
+        #     E = self.essential_8_point(current_p1s, current_p2s) if method==8 else self.essential_5point(current_p1s, current_p2s)
         #
         #     if normalize:
         #         E = B2.T @ E @ B1
@@ -57,13 +57,13 @@ class RANSAC:
         #         max_inliers = num_inliers
         #         best_model = E
         #         best_inlier_mask = inlier_mask
-        print(max_inliers)
+        # print(max_inliers)
 
-        best_model, best_inlier_mask = cv2.findEssentialMat(old_features.float().cpu().numpy()[:, :2], feature_preds.float().cpu().numpy()[:, :2], self.K.cpu().numpy())
-        best_model = torch.tensor(best_model, device=self.device)
-        best_inlier_mask = torch.tensor(best_inlier_mask, device=self.device).bool()[:, 0]
+        cv_best_model, cv_best_inlier_mask = cv2.findEssentialMat(old_features.float().cpu().numpy()[:, :2], feature_preds.float().cpu().numpy()[:, :2], self.K.cpu().numpy())
+        cv_best_model = torch.tensor(cv_best_model, device=self.device)
+        cv_best_inlier_mask = torch.tensor(cv_best_inlier_mask, device=self.device).bool()[:, 0]
 
-        R, t, p1s_3D = self.recoverPose(best_model, p1s[best_inlier_mask], p2s[best_inlier_mask])
+        R, t, p1s_3D = self.recoverPose(cv_best_model, p1s[cv_best_inlier_mask], p2s[cv_best_inlier_mask])
 
         # rt_, R, t, _ = cv2.recoverPose(best_model.cpu().numpy(), p1s[:, :2][best_inlier_mask].cpu().numpy(), p2s[:, :2][best_inlier_mask].cpu().numpy(), self.K.cpu().numpy())
         # R = [R]
@@ -72,8 +72,8 @@ class RANSAC:
         points3d = p1s_3D[:3, :].T[0]
         mask = points3d[:, -1] > 0
         points3d = points3d[mask]
-        full_mask = best_inlier_mask.clone()
-        full_mask[best_inlier_mask] = mask
+        full_mask = cv_best_inlier_mask.clone()
+        full_mask[cv_best_inlier_mask] = mask
         points_homo = torch.cat((points3d, torch.ones(points3d.shape[0], 1).to(points3d.device)), dim=-1)
         return R[0], t[0], points_homo, full_mask
 
@@ -125,17 +125,21 @@ class RANSAC:
         distance2 = torch.abs(p1s.transpose(-2, -1)@E.T@p2s)[:, 0, 0] / torch.sqrt((E.T@p2s)[:, 0]**2 + (E.T@p2s)[:, 1]**2)[:, 0]
         return distance1 + distance2
 
-    def essential_5point(self, old_features, new_features):
-        normalized_feature_pairs = zip(self.K_inv @ old_features, self.K_inv @ new_features)
-        A = []
-        for pair in normalized_feature_pairs:
-            q_1 = pair[0].expand((pair[0].shape[0], 9))
-            q_2 = pair[1].expand((pair[1].shape[0], 9))
-            A.append(q_1 * q_2)
+    def essential_5point(self, q_prime, q):
+        #normalized_feature_pairs = zip(self.K_inv @ old_features, self.K_inv @ new_features)
+        # A = []
+        # for pair in normalized_feature_pairs:
+        #     q_1 = pair[0].expand((pair[0].shape[0], 9))
+        #     q_2 = pair[1].expand((pair[1].shape[0], 9))
+        #     A.append(q_1 * q_2)
+        # A = torch.stack(A)
 
-        A = torch.stack(A)
-
-        svd = torch.lingalg.svd(A)
+        # [5, 3], [5,3]
+        A = q.repeat(1, 3) * q_prime.repeat_interleave(3, dim=-1)
+        U, S, VT = torch.linalg.svd(A)
+        # X, Y, Z, W = VT[:, -4], VT[:, -3], VT[:, -2], VT[:, -1] # Either this or the next line
+        X, Y, Z, W = VT[-4], VT[-3], VT[-2], VT[-1] # Maybe use columns instead of rows?
+        w = 1
 
         G = []
         for i in range(4):
@@ -187,11 +191,13 @@ class RANSAC:
         return E
 
     def recoverPose(self, E, p1s, p2s):
-        _, _, VE = torch.svd(E)
+        _, _, VE = torch.svd(E, some=False)
+        #VE = VE.T
         t = VE[:, 2]
 
         tx = self.skewmat(t)
-        UR, _, VR = torch.svd(E @ tx)
+        UR, _, VR = torch.svd(E @ tx, some=False)
+        #VR = VR.T
         R1 = UR @ (VR.T)
         R1 = R1 * torch.linalg.det(R1)
         UR[:, 2] = -UR[:, 2]
@@ -230,7 +236,8 @@ class RANSAC:
         A_3 = p2s[:,1].unsqueeze(-1) * phi[2, :].unsqueeze(0) - phi[1, :]
 
         A = torch.stack([A_0, A_1, A_2, A_3], dim=1)
-        _, _, V = torch.svd(A)
+        _, _, V = torch.svd(A, some=False)
+        #V = V.transpose(-1, -2)
 
         X = V[:, :, -1].T
         Y = G @ X
