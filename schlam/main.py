@@ -6,38 +6,60 @@ import numpy as np
 import matplotlib.pyplot as plt
 from feature_detectors import FAST
 from ransac import RANSAC
-from schlam.feature_detectors import createFeatureDetector
+from feature_detectors import createFeatureDetector
+from schlam.mav_dataset_parser import MAVImageDataset, MAVIMUDataset
+from imu_calc import IMUCalculator
 from visualizer import run_async
 from kitti_odometry_dataset import KittiOdometrySequenceDataset
 import torch
 import time
-import cv2
 from helpers import plot_path, rodrigues, inverse_rodrigues
 from matcher import createMatcher
 from local_bundle_adjustment import LBA
-from sensor_msgs.msg import Image
 # from rclpy import
 
 print(torch.cuda.is_available())
 show_flow = True
 device = "cuda"
 
+
+'''
+Body Coordinate System:
+- x right
+- y down
+- z front
+
+Camera Coordinate System:
+- x right
+- y down
+- z front
+'''
+
 if __name__=="__main__":
     path = os.environ["KITTI_ODOMETRY_PATH"] # /home/baldhat/dev/data/KittiOdometry
-    dataset = KittiOdometrySequenceDataset(path, "10")
+    #dataset = KittiOdometrySequenceDataset(path, "04", 100)
+    imageDataset = MAVImageDataset()
+    imuDataset = MAVIMUDataset()
     feature_extractor = createFeatureDetector("FAST", False, device)
     matcher = createMatcher("LK", cv=False, device=device)
     visualizer = run_async()
 
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
+    imageDataloader = torch.utils.data.DataLoader(imageDataset, batch_size=1, shuffle=False)
+    imuDataloader = torch.utils.data.DataLoader(imuDataset, batch_size=1, shuffle=False)
 
-    data_iter = iter(dataloader)
-    data = next(data_iter)
-    image_old = data["image2"][0].float().to(device)
-    image_old_color = data["image2color"][0].float().to(device)
+    image_data_iter = iter(imageDataloader)
+    imu_data_iter = iter(imuDataloader)
+
+    imuCalc = IMUCalculator(imu_data_iter)
+    initialPose = imuCalc.last_gt
+    imu_Rs, imu_ts = [initialPose[:3, :3].cuda()], [initialPose[:3, 3].cuda()]
+
+    data = next(image_data_iter)
+    image_old = data["image"][0].float().to(device)
+    image_old_color = data["image_color"][0].float().to(device)
     K = data["calib"][0]
     P = data["projection"][0]
-    pose = data["pose"][0]
+
     ransac = RANSAC(K, device)
     lba = LBA(K, device)
 
@@ -50,18 +72,25 @@ if __name__=="__main__":
     track_ids = np.arange(detected_features.shape[0])
     tracks = {i: [detected_features[i]] for i in range(detected_features.shape[0])}
     active_points = track_ids
-    RTs = [np.eye(3)]
-    ts = [np.array([0, 0, 0])]
+
+    # Camera frame expressed in world coordinate frame
+    RTs = [(P[:3, :3] @ initialPose[:3, :3]).T.cuda()]
+    ts = [initialPose[:3, 3].cuda() + RTs[0]@P[:3, 3].cuda()]
+
     global_points = None
     p1s_3D = None
     h, w = min(image_old.shape), max(image_old.shape)
 
     t = threading.Thread(target=rclpy.spin, args=[visualizer])
     t.start()
-    for frame_idx in range(len(dataset) - 1):
+    for frame_idx in range(len(imageDataset) - 1):
         if p1s_3D is not None:
             visualizer.publish_camera(image_old_color, [R.T for R in RTs], ts, K, P, p1s_3D[:, :3], old_features)
-            visualizer.publish_gt(pose[:3, :3], pose[:3, 3])
+            visualizer.publish_camera_path([R.T for R in RTs], ts)
+            visualizer.publish_imu(imu_Rs, imu_ts)
+
+            visualizer.publish_gt(imuCalc.gts)
+            pass
 
         if len(active_points) < 100:
             detected_features = feature_extractor(image_old)
@@ -76,12 +105,19 @@ if __name__=="__main__":
 
         # Load image
         start_time = time.time()
-        data = next(data_iter)
-        image_new = data["image2"][0].float().to(device)
-        image_new_color = data["image2color"][0].float().to(device)
-        pose = data["pose"][0]
+        data = next(image_data_iter)
+        image_new = data["image"][0].float().to(device)
+        image_new_color = data["image_color"][0].float().to(device)
+        #pose = data["pose"][0]
         torch.cuda.current_stream().synchronize()
         print("Image loading: ", (time.time()-start_time) * 1000, "ms")
+
+        # IMU
+        start_time = time.time()
+        imu_R, imu_t = imuCalc.preintegrateUntil(data["timestamp"][0])
+        imu_Rs.append(imu_R)
+        imu_ts.append(imu_t)
+        print("IMU Preintegration: ", (time.time()-start_time) * 1000, "ms")
 
         # Calculate optical flow
         start_time = time.time()
@@ -102,7 +138,7 @@ if __name__=="__main__":
         torch.cuda.current_stream().synchronize()
         print("Ransac: ", (time.time() - start_time) * 1000, "ms")
 
-        if len(ts) > 1:
+        if len(ts) >= 1:
             ts.append((RTs[-1] @ t.float() + ts[-1]).float())
             RTs.append((RTs[-1] @ R.T.float()).float()) # Orientation of coordinate frame Cx expressed in C0
         else:
@@ -121,7 +157,7 @@ if __name__=="__main__":
         # R_vec: [num_frames, 3]
         # t_vec: [num_frames, 3]
         bundle_adjustment_frames = 5
-        if frame_idx >= 500:
+        if frame_idx >= 600:
             # bundle_adjustment_mask = torch.zeros_like(active_points)
             # for i, j in enumerate(active_points):
             #     bundle_adjustment_mask[i] = 1 if len(tracks[j]) == frame_idx else 0

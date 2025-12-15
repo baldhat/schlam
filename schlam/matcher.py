@@ -5,7 +5,7 @@ import numpy as np
 from feature_detectors import createFeatureDetector
 import cv2
 import random
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 
 def createMatcher(name, cv, device):
@@ -175,19 +175,20 @@ class LukasKanade:
         return pts + guess
 
     def plot_optical_flow(self, image_new, image_old, new_features, old_features):
-        figure = plt.figure(figsize=(24, 12))
-        ax = figure.gca()
-        w, h = image_new.shape[-1], image_new.shape[-2]
-        xy0, xy1 = np.array([
-            [old_features[:, 0], old_features[:, 1]],
-            [new_features[:, 0], (new_features[:, 1] + h)]
-        ])
-        pts = np.stack((xy0.T, xy1.T), axis=1).round().astype(np.int64).reshape(-1, 2, 1, 2)
-        img = np.vstack((image_old, image_new))
-        drawPts = pts
-        cv2.polylines(img, drawPts, False, (255, 255, 255))
-        ax.imshow(img.astype(np.uint8), cmap='gray', vmin=0, vmax=255)
-        plt.show()
+        pass
+        # figure = plt.figure(figsize=(24, 12))
+        # ax = figure.gca()
+        # w, h = image_new.shape[-1], image_new.shape[-2]
+        # xy0, xy1 = np.array([
+        #     [old_features[:, 0], old_features[:, 1]],
+        #     [new_features[:, 0], (new_features[:, 1] + h)]
+        # ])
+        # pts = np.stack((xy0.T, xy1.T), axis=1).round().astype(np.int64).reshape(-1, 2, 1, 2)
+        # img = np.vstack((image_old, image_new))
+        # drawPts = pts
+        # cv2.polylines(img, drawPts, False, (255, 255, 255))
+        # ax.imshow(img.astype(np.uint8), cmap='gray', vmin=0, vmax=255)
+        # plt.show()
 
     def interpolate(self, tensor, l_x, u_x, l_y, u_y, w_x, w_y, w, h):
         return ((w_x * w_y).unsqueeze(0) * tensor[:, :, (l_y * w + l_x).clamp(0, w*h-1)] \
