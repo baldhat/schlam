@@ -147,10 +147,12 @@ class RANSAC:
             G.append(basis_vector.reshape((basis_vector.shape[0], 3, 3)))
 
         # E=c_0 *G[0] + c_1 *G[1] + c_2 *G[2] + c_3 *G[3] ; E*E.T*E=1/2 * trace(E.T*E) * E ; det(E)=0
-
+        # 2 * E*E.T - trace(E.T*E) * E = 0
         G = torch.stack(G)
 
+        # M =
 
+        E = x*X + y*Y + z*Z + w*W
 
         pass
 
@@ -186,8 +188,8 @@ class RANSAC:
         A = torch.zeros((8, 9)).to(p1s.device)
         for i in range(8):
             A[i] = torch.kron(p1s[i], p2s[i])
-        U, S, V = torch.svd(A)
-        E = V[:, -1].view(3, 3)
+        U, S, V = torch.svd(A, some=False)
+        E = V[:, -1].reshape(3, 3)
         return E
 
     def recoverPose(self, E, p1s, p2s):

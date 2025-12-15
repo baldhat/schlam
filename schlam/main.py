@@ -9,6 +9,8 @@ from ransac import RANSAC
 from feature_detectors import createFeatureDetector
 from schlam.mav_dataset_parser import MAVImageDataset, MAVIMUDataset
 from imu_calc import IMUCalculator
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import  TransformListener
 from visualizer import run_async
 from kitti_odometry_dataset import KittiOdometrySequenceDataset
 import torch
@@ -38,11 +40,15 @@ Camera Coordinate System:
 if __name__=="__main__":
     path = os.environ["KITTI_ODOMETRY_PATH"] # /home/baldhat/dev/data/KittiOdometry
     #dataset = KittiOdometrySequenceDataset(path, "04", 100)
-    imageDataset = MAVImageDataset()
-    imuDataset = MAVIMUDataset()
+    visualizer = run_async()
+    tf_buffer = Buffer()
+    tf_listener = TransformListener(tf_buffer, visualizer)
+
+    imageDataset = MAVImageDataset(visualizer)
+    imuDataset = MAVIMUDataset(visualizer)
+
     feature_extractor = createFeatureDetector("FAST", False, device)
     matcher = createMatcher("LK", cv=False, device=device)
-    visualizer = run_async()
 
     imageDataloader = torch.utils.data.DataLoader(imageDataset, batch_size=1, shuffle=False)
     imuDataloader = torch.utils.data.DataLoader(imuDataset, batch_size=1, shuffle=False)
@@ -50,11 +56,14 @@ if __name__=="__main__":
     image_data_iter = iter(imageDataloader)
     imu_data_iter = iter(imuDataloader)
 
-    imuCalc = IMUCalculator(imu_data_iter)
+    imuCalc = IMUCalculator(imu_data_iter, tf_listener)
     initialPose = imuCalc.last_gt
     imu_Rs, imu_ts = [initialPose[:3, :3].cuda()], [initialPose[:3, 3].cuda()]
 
+    # skip the first second
     data = next(image_data_iter)
+    for i in range(59):
+        data = next(image_data_iter)
     image_old = data["image"][0].float().to(device)
     image_old_color = data["image_color"][0].float().to(device)
     K = data["calib"][0]
@@ -89,6 +98,9 @@ if __name__=="__main__":
             visualizer.publish_camera_path([R.T for R in RTs], ts)
             visualizer.publish_imu(imu_Rs, imu_ts)
 
+            visualizer.publish_transform(imu_Rs[-1], imu_ts[-1], "world", "pred/body")
+
+            visualizer.publish_transform(imuCalc.gts[-1][:3, :3], imuCalc.gts[-1][:3, 3], "world", "gt/body")
             visualizer.publish_gt(imuCalc.gts)
             pass
 

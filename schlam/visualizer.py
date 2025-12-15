@@ -8,6 +8,7 @@ from tf2_geometry_msgs import PoseStamped
 import torch
 from scipy.spatial.transform import Rotation
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
+from tf2_ros.transform_broadcaster import TransformBroadcaster
 from tf2_geometry_msgs import TransformStamped
 from cv_bridge import CvBridge
 import numpy as np
@@ -32,6 +33,7 @@ class RVizVisualizer(Node):
         self.feature_image_publisher = self.create_publisher(Image, "/camera/feature_img", qos_profile)
         self.camera_publisher = self.create_publisher(CameraInfo, "/camera/camera_info", qos_profile)
         self.br = StaticTransformBroadcaster(self)
+        self.tp = TransformBroadcaster(self)
         self.bridge = CvBridge()
         self.point_publisher = self.create_publisher(PointCloud2, "/points", qos_profile)
         self.camera_path_publisher = self.create_publisher(Path, "/camera_path", qos_profile)
@@ -44,6 +46,31 @@ class RVizVisualizer(Node):
     def publish_imu(self, Rs, ts):
         path = self.create_path(Rs, ts)
         self.imu_path_publisher.publish(path)
+
+    def create_transform(self, R, t, base, child):
+        trans = TransformStamped()
+        trans.header.frame_id = base
+        trans.child_frame_id = child
+        trans.transform.translation.x = float(t[0])
+        trans.transform.translation.y = float(t[1])
+        trans.transform.translation.z = float(t[2])
+        quat = Rotation.from_matrix(R).as_quat().astype(np.float32)
+        trans.transform.rotation.x = float(quat[0])
+        trans.transform.rotation.y = float(quat[1])
+        trans.transform.rotation.z = float(quat[2])
+        trans.transform.rotation.w = float(quat[3])
+        trans.header.stamp = self.get_clock().now().to_msg()
+        return trans
+
+    def publish_transform(self, R, t, base, child):
+        # ROS2 Transforms transform data represented in frame A to their representation in frame B
+        trans = self.create_transform(R, t, base, child)
+        self.tp.sendTransform(trans)
+
+    def publish_static_transform(self, R, t, base, child):
+        # ROS2 Transforms transform data represented in frame A to their representation in frame B
+        trans = self.create_transform(R, t, base, child)
+        self.br.sendTransform(trans)
 
     def create_path(self, Rs, ts):
         path = Path()
@@ -87,7 +114,7 @@ class RVizVisualizer(Node):
 
         transform = TransformStamped()
         transform.header.frame_id = 'world'
-        transform.child_frame_id = 'camera'
+        transform.child_frame_id = 'pred/camera'
         transform.transform.translation.x = float(t[0])
         transform.transform.translation.y = float(t[1])
         transform.transform.translation.z = float(t[2])
@@ -99,23 +126,23 @@ class RVizVisualizer(Node):
         self.br.sendTransform(transform)
 
         camera_msg = CameraInfo()
-        camera_msg.header.frame_id = 'camera'
+        camera_msg.header.frame_id = 'pred/camera'
         camera_msg.height = int(img.shape[0])
         camera_msg.width = int(img.shape[1])
         camera_msg.k = K.cpu().numpy().flatten().astype(np.float64)
-        camera_msg.p = P.cpu().numpy().flatten().astype(np.float64)
+        camera_msg.p = np.eye(4).flatten().astype(np.float64)
         self.camera_publisher.publish(camera_msg)
 
         img_msg = self.bridge.cv2_to_imgmsg(img)
         img_msg.header.stamp = self.get_clock().now().to_msg()
-        img_msg.header.frame_id = 'camera'
+        img_msg.header.frame_id = 'pred/camera'
         self.image_publisher.publish(img_msg)
 
         self.point_publisher.publish(self.create_pointcloud2(points3d))
 
         feat_img_msg = self.bridge.cv2_to_imgmsg(self.plot_features(img, features), encoding='rgb8')
         feat_img_msg.header.stamp = self.get_clock().now().to_msg()
-        feat_img_msg.header.frame_id = 'camera'
+        feat_img_msg.header.frame_id = 'pred/camera'
         self.feature_image_publisher.publish(feat_img_msg)
 
     def plot_features(self, image, features):

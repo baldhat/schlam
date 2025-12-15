@@ -99,8 +99,8 @@ class LBA():
                 )
 
         options = ceres.SolverOptions()
-        options.max_num_iterations = 200
-        options.num_threads = 8
+        options.max_num_iterations = 50
+        options.num_threads = 10
         options.linear_solver_type = ceres.LinearSolverType.DENSE_SCHUR  # Good for BA
         options.minimizer_progress_to_stdout = True  # See optimization progress
 
