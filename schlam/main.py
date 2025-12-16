@@ -83,8 +83,9 @@ if __name__=="__main__":
     active_points = track_ids
 
     # Camera frame expressed in world coordinate frame
-    RTs = [(P[:3, :3] @ initialPose[:3, :3]).T.cuda()]
-    ts = [initialPose[:3, 3].cuda() + RTs[0]@P[:3, 3].cuda()]
+    RTs = [initialPose[:3, :3].cuda() @ P[:3, :3].cuda()]
+    ts = [initialPose[:3, 3].cuda() + initialPose[:3, :3].cuda()@P[:3, 3].cuda()]
+    frame_counter = 1
 
     global_points = None
     p1s_3D = None
@@ -94,8 +95,8 @@ if __name__=="__main__":
     t.start()
     for frame_idx in range(len(imageDataset) - 1):
         if p1s_3D is not None:
-            visualizer.publish_camera(image_old_color, [R.T for R in RTs], ts, K, P, p1s_3D[:, :3], old_features)
-            visualizer.publish_camera_path([R.T for R in RTs], ts)
+            visualizer.publish_camera(image_old_color, [R for R in RTs], ts, K, P, p1s_3D[:, :3], old_features)
+            visualizer.publish_camera_path([R for R in RTs], ts)
             visualizer.publish_imu(imu_Rs, imu_ts)
 
             visualizer.publish_transform(imu_Rs[-1], imu_ts[-1], "world", "pred/body")
@@ -128,9 +129,14 @@ if __name__=="__main__":
         start_time = time.time()
         imu_R, imu_t = imuCalc.preintegrateUntil(data["timestamp"][0])
         imu_Rs.append(imu_R)
+        imu_t_delta = torch.tensor(imu_t.cpu() - imu_ts[-1].cpu(), device=RTs[-1].device)
         imu_ts.append(imu_t)
         print("IMU Preintegration: ", (time.time()-start_time) * 1000, "ms")
 
+        movement_since_last_frame = torch.linalg.norm(imu_t.cpu() - ts[-1].cpu()).item()
+        print(movement_since_last_frame)
+        #if movement_since_last_frame > 0.1:
+        #    frame_counter += 1
         # Calculate optical flow
         start_time = time.time()
         pred_new_features, valid_flows = matcher(image_old, image_new, old_features, levels=5)
@@ -143,6 +149,7 @@ if __name__=="__main__":
 
         start_time = time.time()
         R, t, p1s_3D, inlier_mask = ransac(torch.tensor(old_features_).to(image_new.device), torch.tensor(new_features_).to(image_new.device))
+        #t = t * torch.linalg.norm(imu_t_delta) # TODO remove me
 
         p1s_3D = torch.einsum("ij,nj->ni", torch.tensor(RTs[-1], device=device).float(), p1s_3D[:, :3].float()) + torch.tensor(ts[-1], device=device)
         new_features_ = new_features_[inlier_mask.cpu()]
@@ -169,7 +176,7 @@ if __name__=="__main__":
         # R_vec: [num_frames, 3]
         # t_vec: [num_frames, 3]
         bundle_adjustment_frames = 5
-        if frame_idx >= 600:
+        if frame_idx >= bundle_adjustment_frames:
             # bundle_adjustment_mask = torch.zeros_like(active_points)
             # for i, j in enumerate(active_points):
             #     bundle_adjustment_mask[i] = 1 if len(tracks[j]) == frame_idx else 0
