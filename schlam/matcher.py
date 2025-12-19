@@ -5,6 +5,7 @@ import numpy as np
 from feature_detectors import createFeatureDetector
 import cv2
 import random
+from util import build_pyramid
 # import matplotlib.pyplot as plt
 
 
@@ -88,12 +89,6 @@ class LukasKanade:
         inv = torch.stack((torch.stack((d, -b), dim=-1), torch.stack((-c, a), dim=-1)), dim=-1) / det.unsqueeze(-1).unsqueeze(-1)
         return inv
 
-    def build_pyramid(self, image, levels):
-        pyramid = [image]
-        for _ in range(1, levels):
-            pyramid.append(torch.nn.functional.avg_pool2d(pyramid[-1], 2))
-        return pyramid
-
     def __call__(self, old_img, new_img, pts, levels):
         if self.cv:
             pred_new_features, st, err = cv2.calcOpticalFlowPyrLK(old_img.cpu().numpy().astype(np.uint8),
@@ -109,8 +104,8 @@ class LukasKanade:
             return pred_new_features, valid_flows
 
     def pyramidal_of(self, old_img, new_img, pts, levels=2):
-        pyramid_old = self.build_pyramid(old_img.unsqueeze(0).unsqueeze(0).float().to(self.device), levels)
-        pyramid_new = self.build_pyramid(new_img.unsqueeze(0).unsqueeze(0).float().to(self.device), levels)
+        pyramid_old = build_pyramid(old_img.unsqueeze(0).unsqueeze(0).float().to(self.device), levels)
+        pyramid_new = build_pyramid(new_img.unsqueeze(0).unsqueeze(0).float().to(self.device), levels)
 
         pts_scaled = pts.float() / (2**(levels-1))
         flow = torch.zeros_like(pts_scaled)

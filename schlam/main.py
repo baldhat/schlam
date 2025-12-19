@@ -47,7 +47,7 @@ if __name__=="__main__":
     imageDataset = MAVImageDataset(visualizer)
     imuDataset = MAVIMUDataset(visualizer)
 
-    feature_extractor = createFeatureDetector("FAST", False, device)
+    feature_extractor = createFeatureDetector("ORB", False, device)
     matcher = createMatcher("LK", cv=False, device=device)
 
     imageDataloader = torch.utils.data.DataLoader(imageDataset, batch_size=1, shuffle=False)
