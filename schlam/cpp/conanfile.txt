@@ -1,0 +1,11 @@
+[requires]
+fmt/10.2.1
+eigen/5.0.1
+opencv/4.12.0
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout
