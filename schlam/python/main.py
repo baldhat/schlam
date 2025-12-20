@@ -3,19 +3,16 @@ import threading
 
 import rclpy
 import numpy as np
-import matplotlib.pyplot as plt
-from feature_detectors import FAST
 from ransac import RANSAC
 from feature_detectors import createFeatureDetector
-from schlam.mav_dataset_parser import MAVImageDataset, MAVIMUDataset
+from schlam.python.mav_dataset_parser import MAVImageDataset, MAVIMUDataset
 from imu_calc import IMUCalculator
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import  TransformListener
 from visualizer import run_async
-from kitti_odometry_dataset import KittiOdometrySequenceDataset
 import torch
 import time
-from helpers import plot_path, rodrigues, inverse_rodrigues
+from helpers import rodrigues
 from matcher import createMatcher
 from local_bundle_adjustment import LBA
 # from rclpy import
