@@ -201,6 +201,7 @@ class ORB:
     def calcOwn(self, fullimage, n, nlevels=8, factor = 1/1.2):
         pyramid = build_pyramid(fullimage, nlevels, factor)
         features = self.getFeatures(pyramid, n, nlevels, factor)
+        return features
 
     def getFeatures(self, pyramid, n, nlevels=8, factor=1/1.2, octree_per_level=True):
         ndesiredFeaturesPerScale = n * (1 - factor) / (1 - factor ** nlevels)
@@ -229,7 +230,7 @@ class ORB:
             features, nodes = self.buildFeatureOctree(features, originalImageSizeWidth, originalImageSizeHeight, n)
             #plot_octree(pyramid[0], features, nodes)
         oriented_features = self.calcOrientation(pyramid, features, factor)
-        #plot_features(pyramid[0], oriented_features)
+        plot_features(pyramid[0], oriented_features)
         described_features = self.calcDescriptors(pyramid, oriented_features, factor)
 
         return described_features

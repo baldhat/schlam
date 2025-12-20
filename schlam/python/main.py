@@ -13,13 +13,29 @@ from visualizer import run_async
 import torch
 import time
 from helpers import rodrigues
-from matcher import createMatcher
+from matcher import LukasKanade, FLANN
 from local_bundle_adjustment import LBA
-# from rclpy import
+import matplotlib.pyplot as plt
+import cv2
 
 print(torch.cuda.is_available())
 show_flow = True
 device = "cuda"
+
+def plot_tracked_features(image_new, image_old, new_features, old_features):
+    figure = plt.figure(figsize=(24, 12))
+    ax = figure.gca()
+    w, h = image_new.shape[-1], image_new.shape[-2]
+    xy0, xy1 = np.array([
+        [[kp.x for kp in old_features], [kp.y for kp in old_features]],
+        [[kp.x for kp in new_features], [kp.y + h for kp in new_features]]
+    ])
+    pts = np.stack((xy0.T, xy1.T), axis=1).round().astype(np.int64).reshape(-1, 2, 1, 2)
+    img = np.vstack((image_old, image_new))
+    drawPts = pts
+    cv2.polylines(img, drawPts, False, (255, 255, 255))
+    ax.imshow(img.astype(np.uint8), cmap='gray', vmin=0, vmax=255)
+    plt.show()
 
 
 '''
@@ -45,7 +61,8 @@ if __name__=="__main__":
     imuDataset = MAVIMUDataset(visualizer)
 
     feature_extractor = createFeatureDetector("ORB", False, device)
-    matcher = createMatcher("LK", cv=False, device=device)
+    #matcher = LukasKanade(window_size=21, device=device, cv=cv)
+    matcher = FLANN()
 
     imageDataloader = torch.utils.data.DataLoader(imageDataset, batch_size=1, shuffle=False)
     imuDataloader = torch.utils.data.DataLoader(imuDataset, batch_size=1, shuffle=False)
@@ -75,8 +92,8 @@ if __name__=="__main__":
     torch.cuda.current_stream().synchronize()
     print("Feature detector: ", (time.time() - start_time) * 1000, "ms")
     old_features = detected_features
-    track_ids = np.arange(detected_features.shape[0])
-    tracks = {i: [detected_features[i]] for i in range(detected_features.shape[0])}
+    track_ids = np.arange(len(detected_features))
+    tracks = {i: [detected_features[i]] for i in range(len(detected_features))}
     active_points = track_ids
 
     # Camera frame expressed in world coordinate frame
@@ -102,7 +119,8 @@ if __name__=="__main__":
             visualizer.publish_gt(imuCalc.gts)
             pass
 
-        if len(active_points) < 100:
+        if len(active_points) < 1:
+            raise RuntimeError("Not implemented")
             detected_features = feature_extractor(image_old)
             old_features = torch.cat((old_features, detected_features), dim=0)
             latest_track_id = max(list(tracks.keys()))
@@ -130,16 +148,17 @@ if __name__=="__main__":
         imu_ts.append(imu_t)
         print("IMU Preintegration: ", (time.time()-start_time) * 1000, "ms")
 
+        new_features = feature_extractor(image_new)
+
         movement_since_last_frame = torch.linalg.norm(imu_t.cpu() - ts[-1].cpu()).item()
-        print(movement_since_last_frame)
-        #if movement_since_last_frame > 0.1:
-        #    frame_counter += 1
         # Calculate optical flow
         start_time = time.time()
-        pred_new_features, valid_flows = matcher(image_old, image_new, old_features, levels=5)
-        old_features_ = old_features[valid_flows]
-        new_features_ = pred_new_features[valid_flows]
-        active_points = active_points[valid_flows.cpu().numpy()]
+        #pred_new_features, valid_flows = matcher(image_old, image_new, old_features, levels=5)
+        old_features_mask, new_features_mask = matcher(old_features, new_features)
+        plot_tracked_features(image_new, image_old, new_features[new_features_mask], old_features[old_features_mask])
+        old_features_ = old_features[old_features_mask]
+        new_features_ = new_features[new_features_mask]
+        #active_points = active_points[valid_flows.cpu().numpy()]
 
         torch.cuda.current_stream().synchronize()
         print("Optical flow: ", (time.time()-start_time) * 1000, "ms")

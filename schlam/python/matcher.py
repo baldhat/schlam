@@ -2,64 +2,33 @@ import torch
 from torchvision.transforms import Pad
 import time
 import numpy as np
-from feature_detectors import createFeatureDetector
+from feature_detectors import createFeatureDetector, KeyPoint
 import cv2
 import random
 from util import build_pyramid
-# import matplotlib.pyplot as plt
 
-
-def createMatcher(name, cv, device):
-    if name == "LK":
-        return LukasKanade(window_size=21, device=device, cv=cv)
-    elif name == "FLANN":
-        return FLANN(device=device)
-    else:
-        raise RuntimeError("Unknown feature detector: " + name)
 
 class FLANN:
-    def __init__(self, device):
-        self.device = device
+    def __init__(self):
         # FLANN parameters
-        self.FLANN_INDEX_KDTREE = 1
-        self.index_params = dict(algorithm=self.FLANN_INDEX_KDTREE, trees=5)
-        self.search_params = dict(checks=50)  # or pass empty dictionary
+        self.index_params = dict(algorithm=6, table_number=6, key_size=12, multi_probe_level=1)
+        self.search_params = dict(checks=50)
 
         self.flann = cv2.FlannBasedMatcher(self.index_params, self.search_params)
-        self.sift = cv2.SIFT_create()
 
-    def getSiftDescriptors(self, img, pts):
-        img = img.cpu().numpy().astype(np.uint8)
-        pts = pts.round().cpu().numpy().astype(np.uint8)
-        keypoints = []
-        for point in pts:
-            kp = cv2.KeyPoint()
-            kp.pt = (int(point[0]), int(point[1]))
-            kp.size = 3
-            kp.angle = 0
-            keypoints.append(kp)
-        keypoints = tuple(keypoints)
-        kps, des = self.sift.compute(img, keypoints)
-        return des, kps
-
-    def __call__(self, old_img, new_img, pts, levels=None):
-        new_feats = createFeatureDetector("GFTT", False, self.device)(new_img)
-        des1, kps1 = self.getSiftDescriptors(old_img, pts)
-        des2, kps2 = self.getSiftDescriptors(new_img, new_feats)
-        #
-        # kps1, des1 = self.sift.detectAndCompute(old_img.cpu().numpy().astype(np.uint8), None)
-        # kps2, des2 = self.sift.detectAndCompute(new_img.cpu().numpy().astype(np.uint8), None)
-        #
-
-        matches = self.flann.knnMatch(des1, des2, k=2)
-        matchesMask = [[0, 0] for i in range(len(matches))]
-        # ratio test as per Lowe's paper
-        for i, (m, n) in enumerate(matches):
+    def __call__(self, old_features: list[KeyPoint], new_features: list[KeyPoint], levels=None):
+        old_desc = np.array([np.frombuffer(old_feature.descriptor.tobytes(), dtype=np.uint8) for old_feature in old_features])
+        new_desc = np.array([np.frombuffer(new_feature.descriptor.tobytes(), dtype=np.uint8) for new_feature in new_features])
+        matches = self.flann.knnMatch(new_desc, old_desc, k=2)
+        tracked_old_mask = []
+        tracked_new_mask = []
+        for m, n in matches:
             if m.distance < 0.7 * n.distance:
-                matchesMask[i] = [1, 0]
-        valid = torch.tensor(matchesMask, device=self.device)
-        new_feat_pos = torch.tensor([[kp.pt[0], kp.pt[1]] for kp in kps2], device=self.device)
-        return new_feat_pos, valid[:, 0].bool()
+                tracked_old_mask.append(m.trainIdx)
+                tracked_new_mask.append(m.queryIdx)
+        return tracked_old_mask, tracked_new_mask
+
+
 
 class LukasKanade:
     def __init__(self, window_size=21, device="cuda", cv=False):
@@ -168,22 +137,6 @@ class LukasKanade:
             uv = torch.einsum("bxy,by->bx", inv,b_k)
             guess += uv.squeeze(-1)
         return pts + guess
-
-    def plot_optical_flow(self, image_new, image_old, new_features, old_features):
-        pass
-        # figure = plt.figure(figsize=(24, 12))
-        # ax = figure.gca()
-        # w, h = image_new.shape[-1], image_new.shape[-2]
-        # xy0, xy1 = np.array([
-        #     [old_features[:, 0], old_features[:, 1]],
-        #     [new_features[:, 0], (new_features[:, 1] + h)]
-        # ])
-        # pts = np.stack((xy0.T, xy1.T), axis=1).round().astype(np.int64).reshape(-1, 2, 1, 2)
-        # img = np.vstack((image_old, image_new))
-        # drawPts = pts
-        # cv2.polylines(img, drawPts, False, (255, 255, 255))
-        # ax.imshow(img.astype(np.uint8), cmap='gray', vmin=0, vmax=255)
-        # plt.show()
 
     def interpolate(self, tensor, l_x, u_x, l_y, u_y, w_x, w_y, w, h):
         return ((w_x * w_y).unsqueeze(0) * tensor[:, :, (l_y * w + l_x).clamp(0, w*h-1)] \
