@@ -6,8 +6,8 @@ namespace tft {
     RigidTransform3D::RigidTransform3D(
             const std::string& aSource, 
             const std::string& aTarget, 
-            const Eigen::Matrix3f& aRotation, 
-            const Eigen::Vector3f& aTranslation
+            const Eigen::Matrix3d& aRotation, 
+            const Eigen::Vector3d& aTranslation
         ) : Transform(aSource, aTarget)
           , rotation(aRotation)
           , translation(aTranslation) {
@@ -20,7 +20,7 @@ namespace tft {
                 "' to CF '" + target + "' to Transformable3D in CF '" 
                 +  aTransformable.getCF() + "'!");
         }
-        return Transformable3D(rotation * aTransformable.vector + translation, target);
+        return Transformable3D(rotation * (aTransformable.vector + translation), target);
     }
 
     Transformable3D RigidTransform3D::apply(const Transformable3D&& aTransformable) {
@@ -29,7 +29,7 @@ namespace tft {
                 "' to CF '" + target + "' to Transformable3D in CF '" 
                 +  aTransformable.getCF() + "'!");
         }
-        return Transformable3D(rotation * aTransformable.vector + translation, target);
+        return Transformable3D(rotation * (aTransformable.vector + translation), target);
     }
 
     Transformable3D RigidTransform3D::applyInverse(const Transformable3D& aTransformable) {
@@ -38,7 +38,7 @@ namespace tft {
                 "' to CF '" + source + "' to Transformable3D in CF '" 
                 +  aTransformable.getCF() + "'!");
         }
-        return Transformable3D(rotation.transpose() * (aTransformable.vector - rotation.transpose() * translation), source);
+        return Transformable3D(rotation.transpose() * aTransformable.vector - translation, source);
     }
 
     Transformable3D RigidTransform3D::applyInverse(const Transformable3D&& aTransformable) {
@@ -47,6 +47,10 @@ namespace tft {
                 "' to CF '" + source + "' to Transformable3D in CF '" 
                 +  aTransformable.getCF() + "'!");
         }
-        return Transformable3D(rotation.transpose() * (aTransformable.vector - rotation.transpose() * translation), source);
+        return Transformable3D(rotation.transpose() * aTransformable.vector - translation, source);
+    }
+
+    RigidTransform3D RigidTransform3D::inverse() {
+        return RigidTransform3D(target, source, rotation.transpose(), rotation.transpose() * translation);
     }
 }

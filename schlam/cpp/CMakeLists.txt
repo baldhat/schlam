@@ -16,8 +16,12 @@ set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
 find_package(Pangolin REQUIRED CONFIG)
 include_directories(${Pangolin_INCLUDE_DIRS})
 
-add_executable(schlam 
-    src/main.cpp
+include_directories(
+  ${PROJECT_SOURCE_DIR}
+)
+
+# LIBRARY
+add_library(${PROJECT_NAME} SHARED 
     src/plotting/plotter.cpp
     src/tft/rigid_transform_3d.cpp
     src/tft/transform.cpp
@@ -31,11 +35,23 @@ add_executable(schlam
     src/tft/transformer.hpp
 )
 
-
-# 3. Link everything
-target_link_libraries(schlam PRIVATE 
+target_link_libraries(${PROJECT_NAME} 
     fmt::fmt 
     ${OpenCV_LIBS} 
     Eigen3::Eigen 
     pango_core pango_display pango_plot pango_image pango_geometry pango_opengl
 )
+
+# APPS
+
+add_executable(app 
+    src/main.cpp
+)
+target_link_libraries(app ${PROJECT_NAME})
+
+add_executable(tft 
+    src/tft/main.cpp
+)
+target_link_libraries(tft ${PROJECT_NAME})
+
+
