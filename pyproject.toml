@@ -22,7 +22,8 @@ dependencies = [
     "numpy (==1.26.4)",
     "numpy-quaternion (>=2024.0.12,<2025.0.0)",
     "line-profiler (>=5.0.0,<6.0.0)",
-    "autograd (>=1.8.0,<2.0.0)"
+    "autograd (>=1.8.0,<2.0.0)",
+    "bitarray (==3.8.0)"
 ]
 
 

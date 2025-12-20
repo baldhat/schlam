@@ -1,4 +1,4 @@
-/schlam/python/poetry.lock
+/poetry.lock
 .idea/
 */__pycache__
 **/.vscode

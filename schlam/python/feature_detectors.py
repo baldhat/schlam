@@ -5,11 +5,11 @@ import torch
 import numpy as np
 import cv2
 from line_profiler import profile
-from sympy import ceiling
 from torchvision.transforms import Pad, GaussianBlur
-import sys
 from util import build_pyramid
 import matplotlib.pyplot as plt
+from orb_descriptor_pattern import pattern as orb_bit_pattern
+from bitarray import bitarray
 
 
 class KeyPoint:
@@ -229,24 +229,39 @@ class ORB:
             features, nodes = self.buildFeatureOctree(features, originalImageSizeWidth, originalImageSizeHeight, n)
             #plot_octree(pyramid[0], features, nodes)
         oriented_features = self.calcOrientation(pyramid, features, factor)
-        plot_features(pyramid[0], oriented_features)
+        #plot_features(pyramid[0], oriented_features)
+        described_features = self.calcDescriptors(pyramid, oriented_features, factor)
 
+        return described_features
 
-        self.calcDescriptors(pyramid, oriented_features)
-
-        return oriented_features
-
-    def calcDescriptors(self, pyramid, features):
-        blurredPyramid = [self.gaussian_blur(self.gauss_pad(im)) for im in pyramid]
+    def calcDescriptors(self, pyramid, features, factor):
+        blurredPyramid = [self.gaussian_blur(self.gauss_pad(im.unsqueeze(0).unsqueeze(0))) for im in pyramid]
 
         patches = []
-        for image in pyramid:
+        for image in blurredPyramid:
             padded_image = self.orientationPad(image)
-            patches.append(self.orientationPatchUnfold(padded_image.float().unsqueeze(0).unsqueeze(0))
-                            .reshape(1, self.orientationPatchSize*self.orientationPatchSize, image.shape[0], image.shape[1])
-                            .view(1, self.orientationPatchSize, self.orientationPatchSize, image.shape[0], image.shape[1]))
+            patches.append(self.orientationPatchUnfold(padded_image.float())
+                            .reshape(1, self.orientationPatchSize*self.orientationPatchSize, image.shape[-2], image.shape[-1])
+                            .view(1, self.orientationPatchSize, self.orientationPatchSize, image.shape[-2], image.shape[-1]))
 
         for feature in features:
+            level = feature.level
+            local_x, local_y = feature.x * factor ** level, feature.y * factor ** level
+            width, height = patches[level].shape[-1], patches[level].shape[-2]
+            cx, cy = int(min(round(local_x), width - 1)), int(min(round(local_y), height - 1))
+            co, si = np.cos(feature.angle), np.sin(feature.angle)
+            vector = bitarray(256)
+            for i, test in enumerate(orb_bit_pattern):
+                x0, y0, x1, y1 = test
+                x0r = round(x0*co - y0*si)
+                y0r = round(x0*si + y0*co)
+                x1r = round(x1 * co - y1 * si)
+                y1r = round(x1 * si + y1 * co)
+                p0 = patches[level][0, y0r, x0r, cy, cx].item()
+                p1 = patches[level][0, y1r, x1r, cy, cx].item()
+                vector[i] = p0 < p1
+            feature.descriptor = vector
+        return features
 
 
     def calcOrientation(self, pyramid, features, factor):
