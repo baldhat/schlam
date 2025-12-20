@@ -6,14 +6,14 @@ import numpy as np
 import cv2
 from line_profiler import profile
 from sympy import ceiling
-from torchvision.transforms import Pad
+from torchvision.transforms import Pad, GaussianBlur
 import sys
 from util import build_pyramid
 import matplotlib.pyplot as plt
 
 
 class KeyPoint:
-    def __init__(self, x, y, score, level, angle=None, descriptor=None):
+    def __init__(self, x, y, score, level, angle=0, descriptor=None):
         self.x = x
         self.y = y
         self.score = score
@@ -106,14 +106,19 @@ class OctreeNode:
 
 
 def plot_features(image, features):
+    orientations = None
     if isinstance(image, torch.Tensor):
         image = image.cpu().numpy()
     if isinstance(features, torch.Tensor):
         features = features.cpu().numpy()
     if isinstance(features[0], KeyPoint):
+        orientations = np.array([[kp.x + 5*np.cos(kp.angle), kp.y + 5*np.sin(kp.angle)] for kp in features])
         features = np.array([np.array([kp.x, kp.y]) for kp in features])
-    plt.scatter(features[:, 0], features[:, 1], c="r", s=0.5)
+    plt.scatter(features[:, 0], features[:, 1], c="r", s=1)
     plt.imshow(image.astype(np.uint8), vmin=0, vmax=255)
+    if orientations is not None:
+        for feature, orientation in zip(features, orientations):
+            plt.plot([feature[0], orientation[0]], [feature[1], orientation[1]], c="r", linewidth=0.5)
     plt.tight_layout()
     plt.show()
 
@@ -155,14 +160,19 @@ class ORB:
     '''
     Interpretation of the ORB feature detector in ORB-SLAM3
     '''
-    def __init__(self, device, cv):
+    def __init__(self, device, cv, orientationPatchSize=31):
         self.cv = cv
         self.detector = cv2.ORB.create()
         self.device = device
+        self.orientationPatchSize = orientationPatchSize
         self.fastDetector = FAST(7, 9, 0, device, cv=False)
         self.unfold9 = torch.nn.Unfold(kernel_size=9, stride=1, padding=0)
-        self.unfold7 = torch.nn.Unfold(kernel_size=7, stride=1, padding=0)
+        self.orientationPatchUnfold = torch.nn.Unfold(kernel_size=self.orientationPatchSize, stride=1, padding=0)
+        self.orientationPad = Pad(self.orientationPatchSize//2, padding_mode="edge")
         self.pad = Pad(4, padding_mode="edge")
+        self.gaussian_blur = GaussianBlur(7, sigma=(2, 2))
+        self.gauss_pad = Pad(3, padding_mode="constant")
+
         # Sobel kernels
         self.grad_kernel_x = torch.tensor([
             [-1, 0, 1],
@@ -174,6 +184,7 @@ class ORB:
             [0, 0, 0],
             [1, 2, 1],
         ]).unsqueeze(0).unsqueeze(0).float().to(self.device)
+        self.circular_mask = self.create_circular_mask(self.orientationPatchSize, self.orientationPatchSize)
 
     def __call__(self, image, n=500):
         if self.cv:
@@ -191,7 +202,7 @@ class ORB:
         pyramid = build_pyramid(fullimage, nlevels, factor)
         features = self.getFeatures(pyramid, n, nlevels, factor)
 
-    def getFeatures(self, pyramid, n, nlevels=8, factor=1/1.2, octree_per_level=False):
+    def getFeatures(self, pyramid, n, nlevels=8, factor=1/1.2, octree_per_level=True):
         ndesiredFeaturesPerScale = n * (1 - factor) / (1 - factor ** nlevels)
         nFeaturesPerLevel = [round(ndesiredFeaturesPerScale * factor ** i) for i in range(nlevels - 1)]
         sumFeatures = sum(nFeaturesPerLevel)
@@ -217,18 +228,58 @@ class ORB:
         if not octree_per_level:
             features, nodes = self.buildFeatureOctree(features, originalImageSizeWidth, originalImageSizeHeight, n)
             #plot_octree(pyramid[0], features, nodes)
-        #plot_features(pyramid[0], features)
-        return features
+        oriented_features = self.calcOrientation(pyramid, features, factor)
+        plot_features(pyramid[0], oriented_features)
 
-    def calcOrientation(self, pyramid, features):
+
+        self.calcDescriptors(pyramid, oriented_features)
+
+        return oriented_features
+
+    def calcDescriptors(self, pyramid, features):
+        blurredPyramid = [self.gaussian_blur(self.gauss_pad(im)) for im in pyramid]
+
         patches = []
         for image in pyramid:
-            patches.append(self.unfold7(image.float().unsqueeze(0).unsqueeze(0))
-                            .reshape(1, -1, image.shape[0], image.shape[1])
-                            .view(1, 7, 7, image.shape[0], image.shape[1]))
+            padded_image = self.orientationPad(image)
+            patches.append(self.orientationPatchUnfold(padded_image.float().unsqueeze(0).unsqueeze(0))
+                            .reshape(1, self.orientationPatchSize*self.orientationPatchSize, image.shape[0], image.shape[1])
+                            .view(1, self.orientationPatchSize, self.orientationPatchSize, image.shape[0], image.shape[1]))
+
         for feature in features:
-            m_00 = patches[feature.level][:, :, :, feature.x, feature.y].sum(1).sum(1)
-            m_10 =
+
+
+    def calcOrientation(self, pyramid, features, factor):
+        patches = []
+        for image in pyramid:
+            padded_image = self.orientationPad(image)
+            patches.append(self.orientationPatchUnfold(padded_image.float().unsqueeze(0).unsqueeze(0))
+                            .reshape(1, self.orientationPatchSize*self.orientationPatchSize, image.shape[0], image.shape[1])
+                            .view(1, self.orientationPatchSize, self.orientationPatchSize, image.shape[0], image.shape[1]))
+        halfPatchSize = self.orientationPatchSize // 2
+        grid = torch.arange(-halfPatchSize, halfPatchSize + 1).repeat(self.orientationPatchSize).reshape(
+            self.orientationPatchSize, self.orientationPatchSize).to(patches[features[0].level].device)
+        xs, ys = grid[self.circular_mask], grid.T[self.circular_mask]
+        for feature in features:
+            level = feature.level
+            local_x, local_y = feature.x * factor ** level, feature.y * factor ** level
+            width, height = patches[level].shape[-1], patches[level].shape[-2]
+            cx, cy = int(min(round(local_x), width-1)), int(min(round(local_y), height-1))
+
+            #m_00 = patches[level][:, halfPatchSize+ys, halfPatchSize+xs, cy, cx].sum(1)
+            m_10 = (xs*patches[level][:, halfPatchSize+ys, halfPatchSize+xs, cy, cx]).sum(1)
+            m_01 = (ys*patches[level][:, halfPatchSize+ys, halfPatchSize+xs, cy, cx]).sum(1)
+            feature.angle = torch.atan2(m_01, m_10).item()
+
+        return features
+
+    def create_circular_mask(self, h, w):
+        center = (int(w / 2), int(h / 2))
+        radius = min(center[0], center[1], w - center[0], h - center[1])
+        Y, X = torch.meshgrid(torch.arange(h), torch.arange(w), indexing='ij')
+        dist_from_center = torch.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2) - 0.5
+        mask = dist_from_center <= radius
+        return mask.bool()
 
     def scaleBy(self, features, xFactor, yFactor):
         for keypoint in features:
