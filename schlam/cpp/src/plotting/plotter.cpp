@@ -3,14 +3,17 @@
 
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <GL/gl.h>
+
+#include <pangolin/gl/gldraw.h>
 #include <pangolin/handler/handler.h>
+#include <pangolin/display/default_font.h>
 
 // -----------------------------
 // Helper drawing functions
 // -----------------------------
 void Plotter::DrawGrid(int size, float step)
 {
-    glColor3f(0.5f, 0.5f, 0.5f);
+    glColor3f(0.f, 0.f, 0.f);
     glBegin(GL_LINES);
     for (int i = -size; i <= size; ++i) {
         glVertex3f(i*step, -size*step, 0.f);
@@ -32,23 +35,12 @@ Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer)
 
 void Plotter::setup() {
     // create a window and bind its context to the main thread
-    pangolin::CreateWindowAndBind("3D Visualizer", 1920, 1080, pangolin::Params({{"samples", "4"}}));
+    pangolin::Params p;
+    p.Set("window_title", "3D Visualizer");
+    p.Set("w", "1920");
+    p.Set("h", "1080");
 
-    // enable depth
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_MULTISAMPLE);
-
-    // Enable Blending for smooth edges
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    // Enable Line Smoothing
-    glEnable(GL_LINE_SMOOTH);
-    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
-
-    // Enable Point Smoothing
-    glEnable(GL_POINT_SMOOTH);
-    glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
+    pangolin::CreateWindowAndBind("3D Visualizer", 1920, 1080, p);
 
     // unset the current context from the main thread
     pangolin::GetBoundWindow()->RemoveCurrent();
@@ -61,7 +53,7 @@ void Plotter::updatePointCloud(const std::vector<Eigen::Vector3d>& points)
     std::cout << "Updated point cloud" << std::endl;
 }
 
-void Plotter::addTransform(const tft::RigidTransform3D& transform)
+void Plotter::addTransform(const std::shared_ptr<tft::RigidTransform3D> transform)
 {
     mTransforms.push_back(transform);
 }
@@ -84,23 +76,85 @@ pangolin::OpenGlMatrix Plotter::GetPangolinModelMatrix(const Eigen::Matrix3d& R,
 }
 
 
-void Plotter::plotTransform(const tft::RigidTransform3D& transform) {
+void Plotter::plotTransform(const std::shared_ptr<tft::RigidTransform3D> transform, 
+                            const double radius, 
+                            const double length,
+                            const bool showFrameName) {
     // Invert the transform, because gl apparently has the inverse definition
-    auto transformInWorld = mpTransformer->findTransform(transform.target, "world").inverse();
+    auto transformInWorld = mpTransformer->findTransform(transform->source, "world");
 
     glPushMatrix();
 
-    pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(transformInWorld.rotation, transformInWorld.translation);
+    pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(transformInWorld->rotation, transformInWorld->translation);
     glMultMatrixd(Twc.m);
-    pangolin::glDrawAxis(1.0); 
+    drawAxes(radius, length);
+    glColor3f(1.0, 1.0, 1.0); // Set text color
+    
+    if (showFrameName) {
+        pangolin::default_font().Text(transform->source).Draw(0, 0, 0);
+    }
+    glPopMatrix();
+}
+
+void Plotter::drawAxes(const double radius, const double length) {
+    glPushMatrix();
+
+    // X axis (red)
+    glColor3f(1.f, 0.f, 0.f);
+    glPushMatrix();
+    glRotatef(90.f, 0.f, 1.f, 0.f);  // Z → X
+    drawCylinder(radius, length);
+    glPopMatrix();
+
+    // Y axis (green)
+    glColor3f(0.f, 1.f, 0.f);
+    glPushMatrix();
+    glRotatef(-90.f, 1.f, 0.f, 0.f); // Z → Y
+    drawCylinder(radius, length);
+    glPopMatrix();
+
+    // Z axis (blue)
+    glColor3f(0.f, 0.f, 1.f);
+    drawCylinder(radius, length);
 
     glPopMatrix();
+}
+
+void Plotter::drawCylinder(float radius, float length, int slices)
+{
+    const float TWO_PI = 2.0f * M_PI;
+
+    glBegin(GL_TRIANGLE_STRIP);
+    for (int i = 0; i <= slices; ++i)
+    {
+        float theta = TWO_PI * i / slices;
+        float x = radius * cos(theta);
+        float y = radius * sin(theta);
+
+        // Normal
+        glNormal3f(cos(theta), sin(theta), 0.0f);
+
+        // Bottom
+        glVertex3f(x, y, 0.0f);
+        // Top
+        glVertex3f(x, y, length);
+    }
+    glEnd();
 }
 
 void Plotter::run()
 {
     pangolin::BindToContext("3D Visualizer");
+    // enable depth
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_MULTISAMPLE); 
+    glEnable (GL_BLEND);
+    glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+
+    GLint samples = 0;
+    glGetIntegerv(GL_SAMPLES, &samples);
+    std::cout << "MSAA samples: " << samples << std::endl;
 
     // 1. Camera setup
     pangolin::OpenGlRenderState s_cam(
@@ -113,6 +167,12 @@ void Plotter::run()
     pangolin::View& d_cam = pangolin::CreateDisplay()
         .SetBounds(0.0, 1.0, 0.0, 1.0, 1920.0f/1080.0f)
         .SetHandler(&handler);
+
+    glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
+
+    pangolin::CreatePanel("menu").SetBounds(0.0,1.0,0.0,pangolin::Attach::Pix(200));
+    pangolin::Var<bool> menu_showFrames("menu.Show Frames",true,true);
+    pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names",true,true);
 
     // 3. Main loop
     while (!pangolin::ShouldQuit()) {
@@ -136,15 +196,18 @@ void Plotter::run()
 
         // Draw all transforms
         // Always draw world transform
-        glPushMatrix();
-        glLineWidth(3.0f);
-        glTranslatef(0.0f, 0.0f, 0.0f);
-        pangolin::glDrawAxis(1.0);
-        glPopMatrix();
-        for (auto& transform : mTransforms) {
-            plotTransform(transform);
+        if (menu_showFrames) {
+            glPushMatrix();
+            glLineWidth(3.0f);
+            glTranslatef(0.0f, 0.0f, 0.0f);
+            drawAxes(0.05, 1.0);
+            glPopMatrix();
+            for (auto& transform : mpTransformer->getRoot()) {
+                plotTransform(transform, 0.05, 1.0, menu_showFrameNames);
+            }
         }
 
         pangolin::FinishFrame();
     }
 }
+

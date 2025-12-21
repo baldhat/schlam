@@ -3,6 +3,7 @@
 #include "transform.hpp"
 
 #include <string>
+#include <memory>
 
 #include <eigen3/Eigen/Core>
 
@@ -23,7 +24,7 @@ public:
   Transformable3D apply(const Transformable3D &&aTransformable) override;
   Transformable3D applyInverse(const Transformable3D &aTransformable) override;
   Transformable3D applyInverse(const Transformable3D &&aTransformable) override;
-  RigidTransform3D inverse();
+  std::shared_ptr<RigidTransform3D> inverse();
 
   const Eigen::Matrix3d rotation;
   const Eigen::Vector3d translation;

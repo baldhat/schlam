@@ -6,8 +6,8 @@
 
 namespace tft {
     /**
-    * @brief A Transform object describes how to express data described in the target coordinate frame
-    *        in the source coordinate frame and reversed.
+    * @brief A Transform object describes how to express data points described in the source coordinate frame
+    *        in the target coordinate frame.
     */
     class Transform {
     public:

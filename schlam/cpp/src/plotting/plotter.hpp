@@ -14,7 +14,7 @@ public:
 
     // Update point cloud
     void updatePointCloud(const std::vector<Eigen::Vector3d>& points);
-    void addTransform(const tft::RigidTransform3D& points);
+    void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
 
     // Start visualization (runs in main thread)
     void run();
@@ -24,12 +24,18 @@ public:
 private:
     std::shared_ptr<tft::Transformer> mpTransformer;
     std::vector<Eigen::Vector3d> mCloud;
-    std::vector<tft::RigidTransform3D> mTransforms;
 
     // Helper drawing functions
     void DrawGrid(int size, float step);
 
-    void plotTransform(const tft::RigidTransform3D& transform);
+    void plotTransform(const std::shared_ptr<tft::RigidTransform3D> transform, 
+                       const double radius, 
+                       const double length,
+                       const bool showFrameNames
+    );
 
     pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3d& R, const Eigen::Vector3d& t);
+
+    void drawCylinder(float radius, float length, int slices = 16);
+    void drawAxes(const double radius, const double length);
 };
