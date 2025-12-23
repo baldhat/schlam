@@ -168,7 +168,7 @@ void Plotter::run()
         .SetBounds(0.0, 1.0, 0.0, 1.0, 1920.0f/1080.0f)
         .SetHandler(&handler);
 
-    glClearColor(0.8f, 0.8f, 0.8f, 1.0f);
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
 
     pangolin::CreatePanel("menu").SetBounds(0.0,1.0,0.0,pangolin::Attach::Pix(200));
     pangolin::Var<bool> menu_showFrames("menu.Show Frames",true,true);
@@ -202,7 +202,7 @@ void Plotter::run()
             glTranslatef(0.0f, 0.0f, 0.0f);
             drawAxes(0.05, 1.0);
             glPopMatrix();
-            for (auto& transform : mpTransformer->getRoot()) {
+            for (auto& transform : mTransforms) {
                 plotTransform(transform, 0.05, 1.0, menu_showFrameNames);
             }
         }

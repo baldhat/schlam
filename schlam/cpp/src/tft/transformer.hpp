@@ -1,7 +1,6 @@
 #pragma once
 
 #include "rigid_transform_3d.hpp"
-#include "coordinate_frame.hpp"
 
 #include <string>
 #include <vector>
@@ -9,6 +8,11 @@
 #include <memory>
 
 namespace tft {
+
+struct Edge {
+    std::string target;
+    std::shared_ptr<RigidTransform3D> transform;
+};
 
 class Transformer {
 public:
@@ -25,7 +29,12 @@ public:
   std::shared_ptr<RigidTransform3D> findTransform(const std::string &source, const std::string &target);
 
 private:
-  std::vector<std::shared_ptr<CoordinateFrame>> mTrees;
+  std::unordered_map<std::string, std::vector<Edge>> mEdges;
+
+  // Caches the transform world->frame
+  std::unordered_map<std::string, std::shared_ptr<RigidTransform3D>> mRootedFrames;
+
+  std::string mRootName{"world"};
 
   void createNewTree(const std::shared_ptr<RigidTransform3D> transform);
 

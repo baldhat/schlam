@@ -26,10 +26,14 @@ public:
   Transformable3D applyInverse(const Transformable3D &&aTransformable) override;
   std::shared_ptr<RigidTransform3D> inverse();
 
+  static std::shared_ptr<RigidTransform3D> identity(const std::string& source="world", const std::string& target="world");
+
   const Eigen::Matrix3d rotation;
   const Eigen::Vector3d translation;
 
 private:
 };
+
+std::shared_ptr<RigidTransform3D> operator*(const std::shared_ptr<RigidTransform3D> a, const std::shared_ptr<RigidTransform3D> b);
 
 } // namespace tft

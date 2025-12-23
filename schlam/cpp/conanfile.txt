@@ -4,6 +4,7 @@ eigen/3.4.0
 opencv/4.12.0
 
 [generators]
+PkgConfigDeps
 CMakeDeps
 CMakeToolchain
 

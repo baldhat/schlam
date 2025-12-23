@@ -12,7 +12,7 @@ find_package(GLEW REQUIRED)
 find_package(OpenGL REQUIRED)
 
 # 2. Find System Pangolin
-set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
+set(Pangolin_DIR "/root/dev/cpp/tmp/Pangolin/build")
 find_package(Pangolin REQUIRED CONFIG)
 include_directories(${Pangolin_INCLUDE_DIRS})
 
@@ -39,7 +39,7 @@ target_link_libraries(${PROJECT_NAME}
     fmt::fmt 
     ${OpenCV_LIBS} 
     Eigen3::Eigen 
-    pango_core pango_display pango_plot pango_image pango_geometry pango_opengl
+    pango_core pango_display pango_plot pango_image pango_geometry pango_opengl pango_video
 )
 
 # APPS

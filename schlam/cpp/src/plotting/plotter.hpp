@@ -1,10 +1,16 @@
 #pragma once
 
+// local
 #include "../tft/rigid_transform_3d.hpp"
 #include "../tft/transformer.hpp"
 
+// pangolin
 #include <pangolin/pangolin.h>
+
+// eigen
 #include <eigen3/Eigen/Core>
+
+// STL
 #include <vector>
 
 class Plotter {
@@ -24,6 +30,7 @@ public:
 private:
     std::shared_ptr<tft::Transformer> mpTransformer;
     std::vector<Eigen::Vector3d> mCloud;
+    std::vector<std::shared_ptr<tft::RigidTransform3D>> mTransforms;
 
     // Helper drawing functions
     void DrawGrid(int size, float step);
