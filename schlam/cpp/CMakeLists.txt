@@ -10,6 +10,9 @@ find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(Boost REQUIRED)
+find_package(yaml-cpp REQUIRED)
+find_package(fast-cpp-csv-parser REQUIRED)
 
 # 2. Find System Pangolin
 set(Pangolin_DIR "/root/dev/cpp/tmp/Pangolin/build")
@@ -27,12 +30,20 @@ add_library(${PROJECT_NAME} SHARED
     src/tft/transform.cpp
     src/tft/transformable_3d.cpp
     src/tft/transformer.cpp
+    src/data/image_data.cpp
+    src/data/imu_data.cpp
+    src/data/mav_dataloader.cpp
+    src/data/gt_data.cpp
 
     src/plotting/plotter.hpp
     src/tft/rigid_transform_3d.hpp
     src/tft/transform.hpp
     src/tft/transformable_3d.hpp
     src/tft/transformer.hpp
+    src/data/image_data.hpp
+    src/data/imu_data.hpp
+    src/data/mav_dataloader.hpp
+    src/data/gt_data.hpp
 )
 
 target_link_libraries(${PROJECT_NAME} 
@@ -40,6 +51,9 @@ target_link_libraries(${PROJECT_NAME}
     ${OpenCV_LIBS} 
     Eigen3::Eigen 
     pango_core pango_display pango_plot pango_image pango_geometry pango_opengl pango_video
+    yaml-cpp::yaml-cpp
+    Boost::boost Boost::thread
+    fast-cpp-csv-parser::fast-cpp-csv-parser
 )
 
 # APPS

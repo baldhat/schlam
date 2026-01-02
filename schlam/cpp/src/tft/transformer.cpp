@@ -66,7 +66,7 @@ Transformer::findTransform(const std::string &source,
   // Do an actual BFS search in the tree
   std::queue<std::tuple<std::string, std::shared_ptr<RigidTransform3D>>> queue;
   std::set<std::string> visited;
-  queue.push({source, RigidTransform3D::identity()});
+  queue.push({source, RigidTransform3D::identity(source, source)});
 
   while (!queue.empty()) {
     auto &[currentNode, currentTransform] = queue.front();
@@ -89,5 +89,13 @@ Transformer::findTransform(const std::string &source,
     }
   }
   return nullptr;
+}
+
+std::vector<std::shared_ptr<RigidTransform3D>> Transformer::getRootedTransforms() const {
+  std::vector<std::shared_ptr<RigidTransform3D>> transforms;
+  for (const auto& [name, transform] : mRootedFrames) {
+    transforms.push_back(transform);
+  }
+  return transforms;
 }
 } // namespace tft

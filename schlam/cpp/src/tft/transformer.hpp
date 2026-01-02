@@ -28,6 +28,8 @@ public:
 
   std::shared_ptr<RigidTransform3D> findTransform(const std::string &source, const std::string &target);
 
+  std::vector<std::shared_ptr<RigidTransform3D>> getRootedTransforms() const;
+
 private:
   std::unordered_map<std::string, std::vector<Edge>> mEdges;
 
