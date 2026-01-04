@@ -15,7 +15,7 @@ find_package(yaml-cpp REQUIRED)
 find_package(fast-cpp-csv-parser REQUIRED)
 
 # 2. Find System Pangolin
-set(Pangolin_DIR "/root/dev/cpp/tmp/Pangolin/build")
+set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
 find_package(Pangolin REQUIRED CONFIG)
 include_directories(${Pangolin_INCLUDE_DIRS})
 
@@ -27,7 +27,6 @@ include_directories(
 add_library(${PROJECT_NAME} SHARED 
     src/plotting/plotter.cpp
     src/tft/rigid_transform_3d.cpp
-    src/tft/transform.cpp
     src/tft/transformable_3d.cpp
     src/tft/transformer.cpp
     src/data/image_data.cpp
@@ -37,13 +36,14 @@ add_library(${PROJECT_NAME} SHARED
 
     src/plotting/plotter.hpp
     src/tft/rigid_transform_3d.hpp
-    src/tft/transform.hpp
     src/tft/transformable_3d.hpp
     src/tft/transformer.hpp
     src/data/image_data.hpp
     src/data/imu_data.hpp
     src/data/mav_dataloader.hpp
     src/data/gt_data.hpp
+        src/schlam/FastFeatureDetector.cpp
+        src/schlam/FastFeatureDetector.h
 )
 
 target_link_libraries(${PROJECT_NAME} 

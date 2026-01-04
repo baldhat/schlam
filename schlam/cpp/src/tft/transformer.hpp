@@ -19,8 +19,6 @@ public:
   Transformer();
   ~Transformer() = default;
 
-  // TODO: Add some buffering to avoid calculating long chains
-
   void registerTransform(const std::shared_ptr<RigidTransform3D> transform);
   
   Transformable3D transform(const Transformable3D &Transformable3D,
@@ -31,10 +29,10 @@ public:
   std::vector<std::shared_ptr<RigidTransform3D>> getRootedTransforms() const;
 
 private:
-  std::unordered_map<std::string, std::vector<Edge>> mEdges;
+  std::map<std::string, std::vector<Edge>> mEdges;
 
   // Caches the transform world->frame
-  std::unordered_map<std::string, std::shared_ptr<RigidTransform3D>> mRootedFrames;
+  std::map<std::string, std::shared_ptr<RigidTransform3D>> mRootedFrames;
 
   std::string mRootName{"world"};
 

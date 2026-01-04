@@ -51,13 +51,13 @@ void Plotter::addTransform(
   mTransforms.push_back(transform);
 }
 
-void Plotter::plotFrustum(const std::shared_ptr<ImageData> aImageData) {
+void Plotter::addFrustum(const std::shared_ptr<ImageData> aImageData) {
     mFrustums.push_back(aImageData);
 }
 
 pangolin::OpenGlMatrix
 Plotter::GetPangolinModelMatrix(const Eigen::Matrix3d &R,
-                                const Eigen::Vector3d &t) {
+                                const Eigen::Vector3d &t) const {
   pangolin::OpenGlMatrix m;
   m.SetIdentity();
 
@@ -79,18 +79,18 @@ void Plotter::plotTransform(
     const double length, const bool showFrameName) {
   // Invert the transform, because gl apparently has the inverse definition
   auto transformInWorld =
-      mpTransformer->findTransform(transform->source, "world");
+      mpTransformer->findTransform(transform->mTarget, "world");
 
   glPushMatrix();
 
   pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
-      transformInWorld->rotation, transformInWorld->translation);
+      transformInWorld->mRotation, transformInWorld->mTranslation);
   glMultMatrixd(Twc.m);
   drawAxes(radius, length);
   glColor3f(1.0, 1.0, 1.0); // Set text color
 
   if (showFrameName) {
-    pangolin::default_font().Text(transform->source).Draw(0, 0, 0);
+    pangolin::default_font().Text(transform->mTarget).Draw(0, 0, 0);
   }
   glPopMatrix();
 }
@@ -139,6 +139,58 @@ void Plotter::drawCylinder(float radius, float length, int slices) {
   glEnd();
 }
 
+void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) const {
+  glPushMatrix();
+
+  if (!m3DImageTexture) {
+    m3DImageTexture = std::make_unique<pangolin::GlTexture>(
+        aImageData->mImage.cols,
+        aImageData->mImage.rows,
+        GL_LUMINANCE8, true, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE
+    );
+
+    m3DImageTexture->Upload(aImageData->mImage.data, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+  }
+
+  auto transformInWorld = mpTransformer->findTransform(aImageData->mCoordinateFrame, "world");
+  pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
+      transformInWorld->mRotation, transformInWorld->mTranslation);
+  glMultMatrixd(Twc.m);
+
+  auto kInv = aImageData->mIntrinsics.inverse().eval();
+  float scale = 0.1f; // The depth at which to draw
+  pangolin::glDrawFrustum(kInv, aImageData->mImage.cols, aImageData->mImage.rows, scale);
+
+  glDepthMask(GL_FALSE);
+  glEnable(GL_TEXTURE_2D);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  m3DImageTexture->Bind();
+
+  glColor4f(1.0f, 1.0f, 1.0f, alpha); // Reset color so texture isn't tinted
+  glBegin(GL_QUADS);
+
+  // Define the 4 corners in Camera Space using K-inverse
+  glTexCoord2f(0, 1);
+  Eigen::Vector3d bl = kInv * Eigen::Vector3d(0, aImageData->mImage.rows, 1) * scale;
+  glVertex3d(bl[0], bl[1], bl[2]);
+  glTexCoord2f(1, 1);
+  Eigen::Vector3d br = kInv * Eigen::Vector3d(aImageData->mImage.cols, aImageData->mImage.rows, 1) * scale;
+  glVertex3d(br[0], br[1], br[2]);
+  glTexCoord2f(1, 0);
+  Eigen::Vector3d tr = kInv * Eigen::Vector3d(aImageData->mImage.cols, 0, 1) * scale;
+  glVertex3d(tr[0], tr[1], tr[2]);
+  glTexCoord2f(0, 0);
+  Eigen::Vector3d tl = kInv * Eigen::Vector3d(0, 0, 1) * scale;
+  glVertex3d(tl[0], tl[1], tl[2]);
+
+  glEnd();
+
+  m3DImageTexture->Unbind();
+  glDisable(GL_TEXTURE_2D);
+  glPopMatrix();
+  glDepthMask(GL_TRUE);
+}
+
 void Plotter::run() {
   pangolin::BindToContext("3D Visualizer");
   // enable depth
@@ -170,6 +222,7 @@ void Plotter::run() {
   pangolin::Var<bool> menu_showFrames("menu.Show Frames", true, true);
   pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
   pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
+  pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
 
   // 3. Main loop
   while (!pangolin::ShouldQuit()) {
@@ -193,31 +246,14 @@ void Plotter::run() {
 
     if (menu_showFrustums) {
         for (auto& imageData : mFrustums) {
-            glPushMatrix();
-            glLineWidth(2.0f);
-            auto transformInWorld = mpTransformer->findTransform(imageData->mCoordinateFrame, "world");
-            pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
-                transformInWorld->rotation, transformInWorld->translation);
-            glMultMatrixd(Twc.m);
-            auto fu = imageData->mIntrinsics(0, 0);
-            auto cu = imageData->mIntrinsics(0, 2);
-            auto fv = imageData->mIntrinsics(1, 1);
-            auto cv = imageData->mIntrinsics(1, 2);
-            pangolin::glDrawFrustum(cu, cv, fu, fv, imageData->mImage.cols, imageData->mImage.rows, 0.01);
-            glPopMatrix();
+            plotFrustum(imageData, menu_3DImageAlpha);
         }
     }
 
     // Draw all transforms
-    // Always draw world transform
     if (menu_showFrames) {
-      glPushMatrix();
-      glLineWidth(3.0f);
-      glTranslatef(0.0f, 0.0f, 0.0f);
-      drawAxes(0.05, 1.0);
-      glPopMatrix();
       for (auto &transform : mpTransformer->getRootedTransforms()) {
-        plotTransform(transform, 0.05, 1.0, menu_showFrameNames);
+        plotTransform(transform, 0.005, 0.1, menu_showFrameNames);
       }
     }
 

@@ -34,9 +34,9 @@ int main()
         
         plotter.addTransform(transform);
 
-        auto x = tft::Transformable3D(Eigen::Vector3d(1, 0, 0), transform->source);
-        auto y = tft::Transformable3D(Eigen::Vector3d(0, 1, 0), transform->source);
-        auto z = tft::Transformable3D(Eigen::Vector3d(0, 0, 1), transform->source);
+        auto x = tft::Transformable3D(Eigen::Vector3d(1, 0, 0), transform->mSource);
+        auto y = tft::Transformable3D(Eigen::Vector3d(0, 1, 0), transform->mSource);
+        auto z = tft::Transformable3D(Eigen::Vector3d(0, 0, 1), transform->mSource);
 
         std::cout << "x: " << x << std::endl;
         std::cout << "y: " << y << std::endl;

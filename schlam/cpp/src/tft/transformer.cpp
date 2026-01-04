@@ -9,28 +9,39 @@
 
 namespace tft {
 Transformer::Transformer() {
-  mRootedFrames.emplace(std::make_pair("world", RigidTransform3D::identity()));
+  mRootedFrames.emplace(std::make_pair(mRootName, RigidTransform3D::identity()));
 }
 
 void Transformer::registerTransform(
     const std::shared_ptr<RigidTransform3D> aTransform) {
 
   // forward edge
-  Edge edge = {aTransform->target, aTransform};
-  if (mEdges.count(aTransform->source) == 0) {
+  Edge edge = {aTransform->mTarget, aTransform};
+  if (mEdges.count(aTransform->mSource) == 0) {
     mEdges.emplace(
-        std::pair<std::string, std::vector<Edge>>(aTransform->source, {edge}));
+        std::pair<std::string, std::vector<Edge>>(aTransform->mSource, {edge}));
   } else {
-    mEdges[aTransform->source].push_back(edge);
+
+    auto outgoingEdges = mEdges[aTransform->mSource];
+    if (std::find_if(outgoingEdges.begin(), outgoingEdges.end(), [&](const Edge& edge_){return edge_.target == aTransform->mTarget;}) == outgoingEdges.end()) {
+      mEdges[aTransform->mSource].push_back(edge);
+    } else {
+      std::cout << "Not adding edge, because it already exists: " << std::endl;
+    }
   }
 
   // backward edge
-  Edge inverse = {aTransform->source, aTransform->inverse()};
-  if (mEdges.count(aTransform->target) == 0) {
-    mEdges.emplace(std::pair<std::string, std::vector<Edge>>(aTransform->target,
+  Edge inverse = {aTransform->mSource, aTransform->inverse()};
+  if (mEdges.count(aTransform->mTarget) == 0) {
+    mEdges.emplace(std::pair<std::string, std::vector<Edge>>(aTransform->mTarget,
                                                              {inverse}));
   } else {
-    mEdges[aTransform->target].push_back(edge);
+    auto outgoingEdges = mEdges[aTransform->mTarget];
+    if (std::find_if(outgoingEdges.begin(), outgoingEdges.end(), [&](const Edge& edge_){return edge_.target == aTransform->mSource;}) == outgoingEdges.end()) {
+      mEdges[aTransform->mTarget].push_back(inverse);
+    } else {
+      std::cout << "Not adding edge, because it already exists: " << std::endl;
+    }
   }
 }
 
@@ -60,7 +71,7 @@ Transformer::findTransform(const std::string &source,
 
   // Check if the frames are rooted and the transform can just be looked up
   if (mRootedFrames.count(source) > 0 && mRootedFrames.count(target) > 0) {
-    return mRootedFrames[source]->inverse() * mRootedFrames[target];
+    return mRootedFrames[target] * mRootedFrames[source]->inverse();
   }
 
   // Do an actual BFS search in the tree
@@ -69,7 +80,7 @@ Transformer::findTransform(const std::string &source,
   queue.push({source, RigidTransform3D::identity(source, source)});
 
   while (!queue.empty()) {
-    auto &[currentNode, currentTransform] = queue.front();
+    auto [currentNode, currentTransform] = queue.front();
     queue.pop();
     visited.emplace(currentNode);
 

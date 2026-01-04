@@ -22,7 +22,7 @@ public:
     // Update point cloud
     void updatePointCloud(const std::vector<Eigen::Vector3d>& points);
     void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
-    void plotFrustum(const std::shared_ptr<ImageData> aImageData);
+    void addFrustum(const std::shared_ptr<ImageData> aImageData);
 
     // Start visualization (runs in main thread)
     void run();
@@ -34,6 +34,7 @@ private:
     std::vector<Eigen::Vector3d> mCloud;
     std::vector<std::shared_ptr<tft::RigidTransform3D>> mTransforms;
     std::vector<std::shared_ptr<ImageData>> mFrustums;
+    mutable std::unique_ptr<pangolin::GlTexture> m3DImageTexture;
 
     // Helper drawing functions
     void DrawGrid(int size, float step);
@@ -44,7 +45,9 @@ private:
                        const bool showFrameNames
     );
 
-    pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3d& R, const Eigen::Vector3d& t);
+    void plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) const;
+
+    pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3d& R, const Eigen::Vector3d& t) const;
 
     void drawCylinder(float radius, float length, int slices = 16);
     void drawAxes(const double radius, const double length);

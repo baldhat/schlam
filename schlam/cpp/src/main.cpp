@@ -6,16 +6,16 @@
 #include <thread>
 
 const std::filesystem::path mavDataPath(
-    "/root/dev/data/schlam/vicon_room1/V1_01_easy/V1_01_easy/mav0/");
+    "/home/baldhat/dev/slam/MAV/vicon_room1/V1_01_easy/V1_01_easy/mav0/");
 
 int main() {
   auto pTransformer = std::make_shared<tft::Transformer>();
 
-  Plotter plotter(pTransformer);
-  auto render_loop = std::thread(std::bind(&Plotter::run, &plotter));
+  auto plotter = std::make_shared<Plotter>(pTransformer);
+  auto render_loop = std::thread([plotter] {plotter->run();});
 
   auto dataloader = std::make_shared<MAVDataloader>(mavDataPath, pTransformer);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
 
   while (!dataloader->empty()) {
     std::cout << "Handling new image..." << std::endl;
@@ -28,7 +28,11 @@ int main() {
         "imu", "world", gtData.mRotation,
         gtData.mPosition));
 
-    plotter.plotFrustum(imageData);
+    pTransformer->findTransform("imu", "world");
+    pTransformer->findTransform("cam0", "world");
+
+
+    plotter->addFrustum(imageData);
     std::this_thread::sleep_for(std::chrono::minutes(10));
   }
 
