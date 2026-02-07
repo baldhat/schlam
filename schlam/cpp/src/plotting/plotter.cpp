@@ -1,4 +1,3 @@
-
 #include "plotter.hpp"
 
 #include <Eigen/src/Geometry/Quaternion.h>
@@ -8,20 +7,22 @@
 #include <pangolin/gl/gldraw.h>
 #include <pangolin/handler/handler.h>
 
+#include "src/schlam/KeyPoint.h"
+
 // -----------------------------
 // Helper drawing functions
 // -----------------------------
 void Plotter::DrawGrid(int size, float step) {
-  glColor3f(0.f, 0.f, 0.f);
-  glBegin(GL_LINES);
-  for (int i = -size; i <= size; ++i) {
-    glVertex3f(i * step, -size * step, 0.f);
-    glVertex3f(i * step, size * step, 0.f);
+    glColor3f(0.f, 0.f, 0.f);
+    glBegin(GL_LINES);
+    for (int i = -size; i <= size; ++i) {
+        glVertex3f(i * step, -size * step, 0.f);
+        glVertex3f(i * step, size * step, 0.f);
 
-    glVertex3f(-size * step, i * step, 0.f);
-    glVertex3f(size * step, i * step, 0.f);
-  }
-  glEnd();
+        glVertex3f(-size * step, i * step, 0.f);
+        glVertex3f(size * step, i * step, 0.f);
+    }
+    glEnd();
 }
 
 // -----------------------------
@@ -29,26 +30,26 @@ void Plotter::DrawGrid(int size, float step) {
 // -----------------------------
 Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer)
     : mpTransformer(apTransformer) {
-  setup();
+    setup();
 }
 
 void Plotter::setup() {
-  pangolin::CreateWindowAndBind("3D Visualizer", 1920, 1080);
+    pangolin::CreateWindowAndBind("3D Visualizer", 1920, 1080);
 
-  glEnable(GL_MULTISAMPLE);
+    glEnable(GL_MULTISAMPLE);
 
-  // unset the current context from the main thread
-  pangolin::GetBoundWindow()->RemoveCurrent();
+    // unset the current context from the main thread
+    pangolin::GetBoundWindow()->RemoveCurrent();
 }
 
 void Plotter::updatePointCloud(const std::vector<Eigen::Vector3d> &points) {
-  mCloud = points;
-  std::cout << "Updated point cloud" << std::endl;
+    mCloud = points;
+    std::cout << "Updated point cloud" << std::endl;
 }
 
 void Plotter::addTransform(
     const std::shared_ptr<tft::RigidTransform3D> transform) {
-  mTransforms.push_back(transform);
+    mTransforms.push_back(transform);
 }
 
 void Plotter::addFrustum(const std::shared_ptr<ImageData> aImageData) {
@@ -58,205 +59,263 @@ void Plotter::addFrustum(const std::shared_ptr<ImageData> aImageData) {
 pangolin::OpenGlMatrix
 Plotter::GetPangolinModelMatrix(const Eigen::Matrix3d &R,
                                 const Eigen::Vector3d &t) const {
-  pangolin::OpenGlMatrix m;
-  m.SetIdentity();
+    pangolin::OpenGlMatrix m;
+    m.SetIdentity();
 
-  for (int i = 0; i < 3; ++i) {
-    for (int j = 0; j < 3; ++j) {
-      m.m[j * 4 + i] = R(i, j); // Note: column-major index j*4 + i
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            m.m[j * 4 + i] = R(i, j); // Note: column-major index j*4 + i
+        }
     }
-  }
 
-  m.m[12] = t.x();
-  m.m[13] = t.y();
-  m.m[14] = t.z();
+    m.m[12] = t.x();
+    m.m[13] = t.y();
+    m.m[14] = t.z();
 
-  return m;
+    return m;
 }
 
 void Plotter::plotTransform(
     const std::shared_ptr<tft::RigidTransform3D> transform, const double radius,
     const double length, const bool showFrameName) {
-  // Invert the transform, because gl apparently has the inverse definition
-  auto transformInWorld =
-      mpTransformer->findTransform(transform->mTarget, "world");
+    // Invert the transform, because gl apparently has the inverse definition
+    auto transformInWorld =
+            mpTransformer->findTransform(transform->mTarget, "world");
 
-  glPushMatrix();
+    glPushMatrix();
 
-  pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
-      transformInWorld->mRotation, transformInWorld->mTranslation);
-  glMultMatrixd(Twc.m);
-  drawAxes(radius, length);
-  glColor3f(1.0, 1.0, 1.0); // Set text color
+    pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
+        transformInWorld->mRotation, transformInWorld->mTranslation);
+    glMultMatrixd(Twc.m);
+    drawAxes(radius, length);
+    glColor3f(1.0, 1.0, 1.0); // Set text color
 
-  if (showFrameName) {
-    pangolin::default_font().Text(transform->mTarget).Draw(0, 0, 0);
-  }
-  glPopMatrix();
+    if (showFrameName) {
+        pangolin::default_font().Text(transform->mTarget).Draw(0, 0, 0);
+    }
+    glPopMatrix();
 }
 
 void Plotter::drawAxes(const double radius, const double length) {
-  glPushMatrix();
+    glPushMatrix();
 
-  // X axis (red)
-  glColor3f(1.f, 0.f, 0.f);
-  glPushMatrix();
-  glRotatef(90.f, 0.f, 1.f, 0.f); // Z → X
-  drawCylinder(radius, length);
-  glPopMatrix();
+    // X axis (red)
+    glColor3f(1.f, 0.f, 0.f);
+    glPushMatrix();
+    glRotatef(90.f, 0.f, 1.f, 0.f); // Z → X
+    drawCylinder(radius, length);
+    glPopMatrix();
 
-  // Y axis (green)
-  glColor3f(0.f, 1.f, 0.f);
-  glPushMatrix();
-  glRotatef(-90.f, 1.f, 0.f, 0.f); // Z → Y
-  drawCylinder(radius, length);
-  glPopMatrix();
+    // Y axis (green)
+    glColor3f(0.f, 1.f, 0.f);
+    glPushMatrix();
+    glRotatef(-90.f, 1.f, 0.f, 0.f); // Z → Y
+    drawCylinder(radius, length);
+    glPopMatrix();
 
-  // Z axis (blue)
-  glColor3f(0.f, 0.f, 1.f);
-  drawCylinder(radius, length);
+    // Z axis (blue)
+    glColor3f(0.f, 0.f, 1.f);
+    drawCylinder(radius, length);
 
-  glPopMatrix();
+    glPopMatrix();
 }
 
 void Plotter::drawCylinder(float radius, float length, int slices) {
-  const float TWO_PI = 2.0f * M_PI;
+    const float TWO_PI = 2.0f * M_PI;
 
-  glBegin(GL_TRIANGLE_STRIP);
-  for (int i = 0; i <= slices; ++i) {
-    float theta = TWO_PI * i / slices;
-    float x = radius * cos(theta);
-    float y = radius * sin(theta);
+    glBegin(GL_TRIANGLE_STRIP);
+    for (int i = 0; i <= slices; ++i) {
+        float theta = TWO_PI * i / slices;
+        float x = radius * cos(theta);
+        float y = radius * sin(theta);
 
-    // Normal
-    glNormal3f(cos(theta), sin(theta), 0.0f);
+        // Normal
+        glNormal3f(cos(theta), sin(theta), 0.0f);
 
-    // Bottom
-    glVertex3f(x, y, 0.0f);
-    // Top
-    glVertex3f(x, y, length);
-  }
-  glEnd();
+        // Bottom
+        glVertex3f(x, y, 0.0f);
+        // Top
+        glVertex3f(x, y, length);
+    }
+    glEnd();
 }
 
 void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) const {
-  glPushMatrix();
+    glPushMatrix();
 
-  if (!m3DImageTexture) {
-    m3DImageTexture = std::make_unique<pangolin::GlTexture>(
-        aImageData->mImage.cols,
-        aImageData->mImage.rows,
-        GL_LUMINANCE8, true, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE
-    );
+    if (!m3DImageTexture) {
+        m3DImageTexture = std::make_unique<pangolin::GlTexture>(
+            aImageData->mImage.cols,
+            aImageData->mImage.rows,
+            GL_LUMINANCE8, true, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE
+        );
 
-    m3DImageTexture->Upload(aImageData->mImage.data, GL_LUMINANCE, GL_UNSIGNED_BYTE);
-  }
+        m3DImageTexture->Upload(aImageData->mImage.data, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+    }
 
-  auto transformInWorld = mpTransformer->findTransform(aImageData->mCoordinateFrame, "world");
-  pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
-      transformInWorld->mRotation, transformInWorld->mTranslation);
-  glMultMatrixd(Twc.m);
+    auto transformInWorld = mpTransformer->findTransform(aImageData->mCoordinateFrame, "world");
+    pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
+        transformInWorld->mRotation, transformInWorld->mTranslation);
+    glMultMatrixd(Twc.m);
 
-  auto kInv = aImageData->mIntrinsics.inverse().eval();
-  float scale = 0.1f; // The depth at which to draw
-  pangolin::glDrawFrustum(kInv, aImageData->mImage.cols, aImageData->mImage.rows, scale);
+    auto kInv = aImageData->mIntrinsics.inverse().eval();
+    float scale = 0.1f; // The depth at which to draw
+    pangolin::glDrawFrustum(kInv, aImageData->mImage.cols, aImageData->mImage.rows, scale);
 
-  glDepthMask(GL_FALSE);
-  glEnable(GL_TEXTURE_2D);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  m3DImageTexture->Bind();
+    glDepthMask(GL_FALSE);
+    glEnable(GL_TEXTURE_2D);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    m3DImageTexture->Bind();
 
-  glColor4f(1.0f, 1.0f, 1.0f, alpha); // Reset color so texture isn't tinted
-  glBegin(GL_QUADS);
+    glColor4f(1.0f, 1.0f, 1.0f, alpha); // Reset color so texture isn't tinted
+    glBegin(GL_QUADS);
 
-  // Define the 4 corners in Camera Space using K-inverse
-  glTexCoord2f(0, 1);
-  Eigen::Vector3d bl = kInv * Eigen::Vector3d(0, aImageData->mImage.rows, 1) * scale;
-  glVertex3d(bl[0], bl[1], bl[2]);
-  glTexCoord2f(1, 1);
-  Eigen::Vector3d br = kInv * Eigen::Vector3d(aImageData->mImage.cols, aImageData->mImage.rows, 1) * scale;
-  glVertex3d(br[0], br[1], br[2]);
-  glTexCoord2f(1, 0);
-  Eigen::Vector3d tr = kInv * Eigen::Vector3d(aImageData->mImage.cols, 0, 1) * scale;
-  glVertex3d(tr[0], tr[1], tr[2]);
-  glTexCoord2f(0, 0);
-  Eigen::Vector3d tl = kInv * Eigen::Vector3d(0, 0, 1) * scale;
-  glVertex3d(tl[0], tl[1], tl[2]);
+    // Define the 4 corners in Camera Space using K-inverse
+    glTexCoord2f(0, 1);
+    Eigen::Vector3d bl = kInv * Eigen::Vector3d(0, aImageData->mImage.rows, 1) * scale;
+    glVertex3d(bl[0], bl[1], bl[2]);
+    glTexCoord2f(1, 1);
+    Eigen::Vector3d br = kInv * Eigen::Vector3d(aImageData->mImage.cols, aImageData->mImage.rows, 1) * scale;
+    glVertex3d(br[0], br[1], br[2]);
+    glTexCoord2f(1, 0);
+    Eigen::Vector3d tr = kInv * Eigen::Vector3d(aImageData->mImage.cols, 0, 1) * scale;
+    glVertex3d(tr[0], tr[1], tr[2]);
+    glTexCoord2f(0, 0);
+    Eigen::Vector3d tl = kInv * Eigen::Vector3d(0, 0, 1) * scale;
+    glVertex3d(tl[0], tl[1], tl[2]);
 
-  glEnd();
+    glEnd();
 
-  m3DImageTexture->Unbind();
-  glDisable(GL_TEXTURE_2D);
-  glPopMatrix();
-  glDepthMask(GL_TRUE);
+    m3DImageTexture->Unbind();
+    glDisable(GL_TEXTURE_2D);
+    glPopMatrix();
+    glDepthMask(GL_TRUE);
 }
 
-void Plotter::run() {
-  pangolin::BindToContext("3D Visualizer");
-  // enable depth
-  glEnable(GL_DEPTH_TEST);
-  glEnable(GL_MULTISAMPLE);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &aFeatures, const double aFactor) {
+    if (aImage.empty()) {
+        std::printf("Invalid image!");
+    }
+    cv::Mat colorResult;
+    if (aImage.channels() == 1) {
+        cv::cvtColor(aImage, colorResult, cv::COLOR_GRAY2BGR);
+    } else {
+        colorResult = aImage.clone();
+    }
 
-  GLint samples = 0;
-  glGetIntegerv(GL_SAMPLES, &samples);
-  std::cout << "MSAA samples: " << samples << std::endl;
+    for (const auto &p: aFeatures) {
+        int targetX = p.getImgX(); // * aFactor;
+        int targetY = p.getImgY(); //* aFactor;
 
-  // 1. Camera setup
-  pangolin::OpenGlRenderState s_cam(
-      pangolin::ProjectionMatrix(1920, 1080, 840, 840, 1920 / 2, 1080 / 2, 0.1,
-                                 1000),
-      pangolin::ModelViewLookAt(20, -20, 20, 0, 0, 0, pangolin::AxisZ));
-
-  // 2. 3D viewport
-  pangolin::Handler3D handler(s_cam);
-  pangolin::View &d_cam = pangolin::CreateDisplay()
-                              .SetBounds(0.0, 1.0, 0.0, 1.0, 1920.0f / 1080.0f)
-                              .SetHandler(&handler);
-
-  glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-
-  pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0,
-                                          pangolin::Attach::Pix(200));
-  pangolin::Var<bool> menu_showFrames("menu.Show Frames", true, true);
-  pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
-  pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
-  pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
-
-  // 3. Main loop
-  while (!pangolin::ShouldQuit()) {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    d_cam.Activate(s_cam);
-
-    // Draw grid
-    glLineWidth(1.0f);
-    DrawGrid(10, 1.0f);
-
-    // // Draw points
-    // if (!mCloud.empty()) {
-    //     glPointSize(5.0f);
-    //     glColor3f(1.f, 0.f, 0.f);
-    //     glBegin(GL_POINTS);
-    //     for (const auto& p : mCloud) {
-    //         glVertex3f(p.x(), p.y(), p.z());
-    //     }
-    //     glEnd();
-    // }
-
-    if (menu_showFrustums) {
-        for (auto& imageData : mFrustums) {
-            plotFrustum(imageData, menu_3DImageAlpha);
+        if (targetX >= 0 && targetX < colorResult.cols &&
+            targetY >= 0 && targetY < colorResult.rows) {
+            cv::circle(colorResult, cv::Point(targetX, targetY), 0, cv::Scalar(0, 0, 255), -1);
         }
     }
 
-    // Draw all transforms
-    if (menu_showFrames) {
-      for (auto &transform : mpTransformer->getRootedTransforms()) {
-        plotTransform(transform, 0.005, 0.1, menu_showFrameNames);
-      }
+    set2DImageTexture(colorResult);
+}
+
+void Plotter::set2DImageTexture(const cv::Mat &aImage) {
+    m2DImage = aImage;
+    m2DImageChanged = true;
+}
+
+void Plotter::showFeatures() {
+    if (m2DImage.empty()) return;
+
+    if (m2DImageChanged) {
+        m2DImageTexture = std::make_unique<pangolin::GlTexture>(
+            m2DImage.cols,
+            m2DImage.rows,
+            GL_RGB, false, 0, GL_BGR, GL_UNSIGNED_BYTE
+        );
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        m2DImageTexture->Upload(m2DImage.data, GL_BGR, GL_UNSIGNED_BYTE);
+        std::cout << "Uploaded image texture!" << std::endl;
+        m2DImageChanged = false;
     }
 
-    pangolin::FinishFrame();
-  }
+    glColor3f(1.0, 1.0, 1.0);
+    m2DImageTexture->RenderToViewportFlipY();
+}
+
+
+void Plotter::run() {
+    pangolin::BindToContext("3D Visualizer");
+    // enable depth
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_MULTISAMPLE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    GLint samples = 0;
+    glGetIntegerv(GL_SAMPLES, &samples);
+    std::cout << "MSAA samples: " << samples << std::endl;
+
+    // 1. Camera setup
+    pangolin::OpenGlRenderState s_cam(
+        pangolin::ProjectionMatrix(1920, 1080, 840, 840, 1920 / 2, 1080 / 2, 0.1,
+                                   1000),
+        pangolin::ModelViewLookAt(20, -20, 20, 0, 0, 0, pangolin::AxisZ));
+
+    // 2. 3D viewport
+    pangolin::Handler3D handler(s_cam);
+    pangolin::View &d_cam = pangolin::CreateDisplay()
+            .SetBounds(0.0, 1.0, 0.0, 1.0, 1920.0f / 1080.0f)
+            .SetHandler(&handler);
+
+    pangolin::View &image2dView = pangolin::CreateDisplay()
+            .SetBounds(0.6, 1.0, 0.6, 1.0, 1920.f / 1080)
+            .SetLock(pangolin::LockRight, pangolin::LockTop);
+
+
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+
+    pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0,
+                                            pangolin::Attach::Pix(200));
+    pangolin::Var<bool> menu_showFrames("menu.Show Frames", true, true);
+    pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
+    pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
+    pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
+
+    // 3. Main loop
+    while (!pangolin::ShouldQuit()) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        d_cam.Activate(s_cam);
+
+        // Draw grid
+        glLineWidth(1.0f);
+        DrawGrid(10, 1.0f);
+
+        // // Draw points
+        // if (!mCloud.empty()) {
+        //     glPointSize(5.0f);
+        //     glColor3f(1.f, 0.f, 0.f);
+        //     glBegin(GL_POINTS);
+        //     for (const auto& p : mCloud) {
+        //         glVertex3f(p.x(), p.y(), p.z());
+        //     }
+        //     glEnd();
+        // }
+
+        if (menu_showFrustums) {
+            for (auto &imageData: mFrustums) {
+                plotFrustum(imageData, menu_3DImageAlpha);
+            }
+        }
+
+        // Draw all transforms
+        if (menu_showFrames) {
+            for (auto &transform: mpTransformer->getRootedTransforms()) {
+                plotTransform(transform, 0.005, 0.1, menu_showFrameNames);
+            }
+        }
+
+        image2dView.Activate();
+        showFeatures();
+
+        pangolin::FinishFrame();
+    }
 }

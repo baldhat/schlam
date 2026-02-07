@@ -5,37 +5,40 @@
 #include <chrono>
 #include <thread>
 
+#include "schlam/ORBFeatureDetector.h"
+
 const std::filesystem::path mavDataPath(
     "/home/baldhat/dev/slam/MAV/vicon_room1/V1_01_easy/V1_01_easy/mav0/");
 
 int main() {
-  auto pTransformer = std::make_shared<tft::Transformer>();
+    auto pTransformer = std::make_shared<tft::Transformer>();
 
-  auto plotter = std::make_shared<Plotter>(pTransformer);
-  auto render_loop = std::thread([plotter] {plotter->run();});
+    auto plotter = std::make_shared<Plotter>(pTransformer);
+    auto render_loop = std::thread([plotter] { plotter->run(); });
 
-  auto dataloader = std::make_shared<MAVDataloader>(mavDataPath, pTransformer);
+    auto dataloader = std::make_shared<MAVDataloader>(mavDataPath, pTransformer);
 
+    auto featureDetector = std::make_shared<ORBFeatureDetector>(500, plotter, 8);
 
-  while (!dataloader->empty()) {
-    std::cout << "Handling new image..." << std::endl;
-    auto imageData = dataloader->getNextImageData();
-    auto data = dataloader->getNextIMUData();
-    auto imuData = data->first;
-    auto gtData = data->second;
+    while (!dataloader->empty()) {
+        std::cout << "Handling new image..." << std::endl;
+        auto imageData = dataloader->getNextImageData();
+        auto data = dataloader->getNextIMUData();
+        auto imuData = data->first;
+        auto gtData = data->second;
 
-    pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
-        "imu", "world", gtData.mRotation,
-        gtData.mPosition));
+        pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
+            "imu", "world", gtData.mRotation,
+            gtData.mPosition));
 
-    pTransformer->findTransform("imu", "world");
-    pTransformer->findTransform("cam0", "world");
+        pTransformer->findTransform("imu", "world");
+        pTransformer->findTransform("cam0", "world");
 
+        plotter->addFrustum(imageData);
 
-    plotter->addFrustum(imageData);
-    std::this_thread::sleep_for(std::chrono::minutes(10));
-  }
+        featureDetector->getFeatures(imageData->mImage);
+    }
 
-  render_loop.join();
-  return 0;
+    render_loop.join();
+    return 0;
 }

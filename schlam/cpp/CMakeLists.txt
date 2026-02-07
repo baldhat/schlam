@@ -13,6 +13,7 @@ find_package(OpenGL REQUIRED)
 find_package(Boost REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(fast-cpp-csv-parser REQUIRED)
+find_package(TBB REQUIRED)
 
 # 2. Find System Pangolin
 set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
@@ -44,6 +45,13 @@ add_library(${PROJECT_NAME} SHARED
     src/data/gt_data.hpp
         src/schlam/FastFeatureDetector.cpp
         src/schlam/FastFeatureDetector.h
+        src/schlam/ORBFeatureDetector.cpp
+        src/schlam/ORBFeatureDetector.h
+        src/schlam/KeyPoint.cpp
+        src/schlam/KeyPoint.h
+        src/schlam/IFeatureDescriptor.h
+        src/schlam/utils.cpp
+        src/schlam/utils.h
 )
 
 target_link_libraries(${PROJECT_NAME} 
@@ -54,6 +62,7 @@ target_link_libraries(${PROJECT_NAME}
     yaml-cpp::yaml-cpp
     Boost::boost Boost::thread
     fast-cpp-csv-parser::fast-cpp-csv-parser
+    TBB::tbb
 )
 
 # APPS
