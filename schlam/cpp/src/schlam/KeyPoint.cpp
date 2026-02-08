@@ -34,3 +34,7 @@ void KeyPoint::setAngle(const double aAngle) {
 void KeyPoint::setScore(const double aScore) {
     mScore = aScore;
 }
+
+double KeyPoint::getScore() const {
+    return mScore;
+}

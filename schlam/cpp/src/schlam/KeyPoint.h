@@ -21,6 +21,7 @@ public:
     std::uint32_t getImgX() const;
     std::uint32_t getImgY() const;
     std::uint8_t getLevel() const;
+    double getScore() const;
 
     void setAngle(const double aAngle);
     void setScore(const double aScore);

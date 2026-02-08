@@ -192,7 +192,7 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) c
     glDepthMask(GL_TRUE);
 }
 
-void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &aFeatures, const double aFactor) {
+void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &aFeatures) {
     if (aImage.empty()) {
         std::printf("Invalid image!");
     }

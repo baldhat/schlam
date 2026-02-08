@@ -64,6 +64,8 @@ private:
 
     std::vector<KeyPoint> calcFeatures(const std::vector<cv::Mat> &aPyramid);
 
+    void addDescriptors(const std::vector<cv::Mat>& aPyramid, std::vector<KeyPoint>& aFeatures);
+
     std::vector<KeyPoint> calculateFastFeatures(const cv::Mat &aImage);
 
     void addOrientation(const std::vector<cv::Mat> &aPyramid,
@@ -77,6 +79,8 @@ private:
     std::vector<KeyPoint> filterWithOctree(std::vector<KeyPoint> &aFeatures, const std::uint32_t aWidth,
                                                            const std::uint32_t aHeight,
                                                            const std::uint32_t aNumFeatures);
+
+    void rescaleFeatures(std::vector<KeyPoint>& aFeatures, double aScale);
 };
 
 

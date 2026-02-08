@@ -25,7 +25,7 @@ public:
     void updatePointCloud(const std::vector<Eigen::Vector3d>& points);
     void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
     void addFrustum(const std::shared_ptr<ImageData> aImageData);
-    void plotFeatures(const cv::Mat& aImage, const std::vector<KeyPoint>& aFeatures, const double aFactor);
+    void plotFeatures(const cv::Mat& aImage, const std::vector<KeyPoint>& aFeatures);
 
     // Start visualization (runs in main thread)
     void run();

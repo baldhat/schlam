@@ -52,6 +52,8 @@ add_library(${PROJECT_NAME} SHARED
         src/schlam/IFeatureDescriptor.h
         src/schlam/utils.cpp
         src/schlam/utils.h
+        src/schlam/QuadTreeNode.cpp
+        src/schlam/QuadTreeNode.h
 )
 
 target_link_libraries(${PROJECT_NAME} 

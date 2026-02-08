@@ -12,6 +12,8 @@
 #include <execution>
 #include <vector>
 
+#include "QuadTreeNode.h"
+
 ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
                                        std::shared_ptr<Plotter> apPlotter,
                                        const std::uint8_t aNumLevels,
@@ -29,7 +31,7 @@ std::vector<KeyPoint> ORBFeatureDetector::getFeatures(const cv::Mat &aImage) {
     auto pyramid = buildPyramid(aImage, mNumLevels, mLevelFactor);
     auto features = calcFeatures(pyramid);
     addOrientation(pyramid, features);
-    //calcDescriptors(features);
+    addDescriptors(pyramid, features);
     return features;
 }
 
@@ -53,17 +55,50 @@ std::vector<KeyPoint> ORBFeatureDetector::calcFeatures(const std::vector<cv::Mat
         removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 3);
         computeHarrisResponse(aPyramid[level], levelFeatures, 7);
         levelFeatures = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight, mNumFeaturesPerLevel[level]);
-        mpPlotter->plotFeatures(aPyramid[level], levelFeatures, mLevelFactors[level]);
+        //mpPlotter->plotFeatures(aPyramid[level], levelFeatures);
+        rescaleFeatures(levelFeatures, 1.0/mLevelFactors[level]);
         features.insert(features.end(), levelFeatures.begin(), levelFeatures.end());
     });
     std::cout << "Returning " << features.size() << " features" << std::endl;
+    mpPlotter->plotFeatures(aPyramid[0], features);
     return features;
+}
+
+void ORBFeatureDetector::addDescriptors(const std::vector<cv::Mat>& aPyramid, std::vector<KeyPoint>& aFeatures) {
+
 }
 
 std::vector<KeyPoint> ORBFeatureDetector::filterWithOctree(std::vector<KeyPoint> &aFeatures, const std::uint32_t aWidth,
                                                            const std::uint32_t aHeight,
                                                            const std::uint32_t aNumFeatures) {
-    return aFeatures;
+    auto node = std::make_shared<QuadTreeNode>(0, aWidth, 0, aHeight, aFeatures);
+    if (aNumFeatures > aFeatures.size()) {
+        return aFeatures;
+    }
+    std::vector<std::shared_ptr<QuadTreeNode>> nodes;
+    nodes.push_back(node);
+    while (nodes.size() < aNumFeatures) {
+        std::vector<std::shared_ptr<QuadTreeNode>> newNodes;
+        for (auto& node : nodes) {
+            if (node->isLeaf()) {
+                newNodes.push_back(node);
+                continue;
+            }
+            auto children = node->divide();
+            for (auto& child : children) {
+                if (!child->isLeaf()) {
+                    newNodes.push_back(child);
+                }
+            }
+        }
+        nodes = newNodes;
+    }
+
+    std::vector<KeyPoint> features;
+    for (auto& node : nodes) {
+        features.push_back(node->getMaxFeature());
+    }
+    return features;
 }
 
 std::vector<KeyPoint>
@@ -71,6 +106,8 @@ ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) {
     std::vector<KeyPoint> keypoints;
     cv::Mat paddedImage;
     cv::copyMakeBorder(aImage, paddedImage, 3, 3, 3, 3, cv::BORDER_REPLICATE);
+    const uint8_t* data = paddedImage.data;
+    const int step = paddedImage.step;
     for (int i = 3; i < aImage.rows - 3; ++i) {
         const uchar *rowPtr = aImage.ptr<uchar>(i);
         for (int j = 3; j < aImage.cols - 3; ++j) {
@@ -78,7 +115,7 @@ ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) {
             std::uint8_t neg_count{0};
             std::uint8_t pos_count{0};
             for (const auto &indice: mFastIndices) {
-                auto diff = pixel - aImage.at<std::uint8_t>(i + indice[0], j + indice[1]);
+                auto diff = pixel - data[(i + indice[0]) * step + (j + indice[1])];
                 if (diff < -mFastThreshold) {
                     neg_count++;
                     pos_count = 0;
@@ -93,7 +130,7 @@ ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) {
             }
             for (int q = 0; q < nContinuous - 1; ++q) {
                 auto indice = mFastIndices[q];
-                auto diff = pixel - aImage.at<std::uint8_t>(i + indice[0], j + indice[1]);
+                auto diff = pixel - data[(i + indice[0]) * step + (j + indice[1])];
                 if (diff < -mFastThreshold) {
                     neg_count++;
                     pos_count = 0;
@@ -190,5 +227,11 @@ void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
             }
             f->setAngle(std::atan2(static_cast<float>(m01), static_cast<float>(m10)));
         }
+    }
+}
+
+void ORBFeatureDetector::rescaleFeatures(std::vector<KeyPoint>& aFeatures, double aScale) {
+    for (auto& feature : aFeatures) {
+        feature.scaleBy(aScale, aScale);
     }
 }
