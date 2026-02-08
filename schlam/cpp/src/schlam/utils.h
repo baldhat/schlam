@@ -26,4 +26,6 @@ std::vector<Point> getPointsInRadius(int aRadius);
 void removeAtImageBorder(std::vector<KeyPoint> &aKps, const std::uint32_t aImageWidth, const std::uint32_t aImageHeight,
                          const std::uint16_t aBorderSize);
 
+std::vector<cv::Point2f> toOpenCV(const std::vector<KeyPoint>& aKeypoints);
+
 #endif //SCHLAM_UTILS_H

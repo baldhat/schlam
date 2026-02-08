@@ -9,9 +9,11 @@
 #include "src/plotting/plotter.hpp"
 
 #include <algorithm>
+#include <bitset>
 #include <execution>
 #include <vector>
 
+#include "orb_pattern.h"
 #include "QuadTreeNode.h"
 
 ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
@@ -50,13 +52,13 @@ void ORBFeatureDetector::distributeFeaturesToLevels() {
 std::vector<KeyPoint> ORBFeatureDetector::calcFeatures(const std::vector<cv::Mat> &aPyramid) {
     std::vector<KeyPoint> features;
     std::for_each(std::execution::seq, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
-        auto levelImageWidth{aPyramid[level].cols}, levelImageHeight{aPyramid[level].rows};
+        const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = calculateFastFeatures(aPyramid[level]);
         removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 3);
         computeHarrisResponse(aPyramid[level], levelFeatures, 7);
         levelFeatures = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight, mNumFeaturesPerLevel[level]);
         //mpPlotter->plotFeatures(aPyramid[level], levelFeatures);
-        rescaleFeatures(levelFeatures, 1.0/mLevelFactors[level]);
+        rescaleFeatures(levelFeatures, 1.0 / mLevelFactors[level], level);
         features.insert(features.end(), levelFeatures.begin(), levelFeatures.end());
     });
     std::cout << "Returning " << features.size() << " features" << std::endl;
@@ -64,28 +66,53 @@ std::vector<KeyPoint> ORBFeatureDetector::calcFeatures(const std::vector<cv::Mat
     return features;
 }
 
-void ORBFeatureDetector::addDescriptors(const std::vector<cv::Mat>& aPyramid, std::vector<KeyPoint>& aFeatures) {
+void ORBFeatureDetector::addDescriptors(const std::vector<cv::Mat> &aPyramid, std::vector<KeyPoint> &aFeatures) {
+    std::vector<cv::Mat> blurredPyramid{aPyramid.size()};
+    for (std::uint32_t i = 0; i < aPyramid.size(); i++) {
+        cv::GaussianBlur(aPyramid[i], blurredPyramid[i], cv::Size(7, 7), 2, 2);
+    }
+    for (auto &feature: aFeatures) {
+        const double factor = mLevelFactors[feature.getLevel()];
+        const std::uint8_t *data = blurredPyramid[feature.getLevel()].data;
+        const int step = blurredPyramid[feature.getLevel()].step;
 
+        std::int32_t centerX{static_cast<std::int32_t>(std::round(feature.getImgX() * factor))};
+        std::int32_t centerY{static_cast<std::int32_t>(std::round(feature.getImgY() * factor))};
+        double sin{std::sin(feature.getAngle())}, cos{std::cos(feature.getAngle())};
+
+        std::bitset<256> descriptor;
+        for (std::uint32_t i = 0; i < 256 * 4; i += 4) {
+            std::int32_t x0{gOrbBitPattern31[i]}, y0{gOrbBitPattern31[i + 1]};
+            std::int32_t x1{gOrbBitPattern31[i + 2]}, y1{gOrbBitPattern31[i + 3]};
+            auto x0r = static_cast<std::int32_t>(std::round(x0 * cos - y0 * sin));
+            auto y0r = static_cast<std::int32_t>(std::round(x0 * sin + y0 * cos));
+            auto x1r = static_cast<std::int32_t>(std::round(x1 * cos - y1 * sin));
+            auto y1r = static_cast<std::int32_t>(std::round(x1 * sin + y1 * cos));
+            auto p0 = data[(y0r + centerY) * step + (x0r + centerX)];
+            auto p1 = data[(y1r + centerY) * step + (x1r + centerX)];
+            descriptor[i/4] = p0 < p1;
+        }
+        feature.setDescriptor(descriptor);
+    }
 }
 
 std::vector<KeyPoint> ORBFeatureDetector::filterWithOctree(std::vector<KeyPoint> &aFeatures, const std::uint32_t aWidth,
                                                            const std::uint32_t aHeight,
                                                            const std::uint32_t aNumFeatures) {
-    auto node = std::make_shared<QuadTreeNode>(0, aWidth, 0, aHeight, aFeatures);
+    const auto root = std::make_shared<QuadTreeNode>(0, aWidth, 0, aHeight, aFeatures);
     if (aNumFeatures > aFeatures.size()) {
         return aFeatures;
     }
-    std::vector<std::shared_ptr<QuadTreeNode>> nodes;
-    nodes.push_back(node);
+    std::vector<std::shared_ptr<QuadTreeNode> > nodes;
+    nodes.push_back(root);
     while (nodes.size() < aNumFeatures) {
-        std::vector<std::shared_ptr<QuadTreeNode>> newNodes;
-        for (auto& node : nodes) {
+        std::vector<std::shared_ptr<QuadTreeNode> > newNodes;
+        for (auto &node: nodes) {
             if (node->isLeaf()) {
                 newNodes.push_back(node);
                 continue;
             }
-            auto children = node->divide();
-            for (auto& child : children) {
+            for (auto children = node->divide(); auto &child: children) {
                 if (!child->isLeaf()) {
                     newNodes.push_back(child);
                 }
@@ -95,7 +122,7 @@ std::vector<KeyPoint> ORBFeatureDetector::filterWithOctree(std::vector<KeyPoint>
     }
 
     std::vector<KeyPoint> features;
-    for (auto& node : nodes) {
+    for (const auto &node: nodes) {
         features.push_back(node->getMaxFeature());
     }
     return features;
@@ -106,7 +133,7 @@ ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) {
     std::vector<KeyPoint> keypoints;
     cv::Mat paddedImage;
     cv::copyMakeBorder(aImage, paddedImage, 3, 3, 3, 3, cv::BORDER_REPLICATE);
-    const uint8_t* data = paddedImage.data;
+    const uint8_t *data = paddedImage.data;
     const int step = paddedImage.step;
     for (int i = 3; i < aImage.rows - 3; ++i) {
         const uchar *rowPtr = aImage.ptr<uchar>(i);
@@ -161,7 +188,7 @@ void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vecto
 
     const double scale = std::pow((1.0 / (4.0 * blockSize * 255.0)), 4);
 
-    for (auto &feature : aFeatures) {
+    for (auto &feature: aFeatures) {
         int fx = feature.getImgX();
         int fy = feature.getImgY();
 
@@ -169,10 +196,9 @@ void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vecto
 
         // 7x7 window
         for (int y = -3; y <= 3; ++y) {
-
-            const float* pIx2 = Ix2.ptr<float>(fy + y);
-            const float* pIy2 = Iy2.ptr<float>(fy + y);
-            const float* pIxy = Ixy.ptr<float>(fy + y);
+            const float *pIx2 = Ix2.ptr<float>(fy + y);
+            const float *pIy2 = Iy2.ptr<float>(fy + y);
+            const float *pIxy = Ixy.ptr<float>(fy + y);
 
             for (int x = -3; x <= 3; ++x) {
                 if (fx + x < 0 || fx + x >= aImage.cols) continue;
@@ -191,8 +217,8 @@ void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vecto
 
 void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
                                         std::vector<KeyPoint> &aFeatures) {
-    std::vector<std::vector<KeyPoint*>> featuresByLevel(aPyramid.size());
-    for (auto &f : aFeatures) {
+    std::vector<std::vector<KeyPoint *> > featuresByLevel(aPyramid.size());
+    for (auto &f: aFeatures) {
         featuresByLevel[f.getLevel()].push_back(&f);
     }
 
@@ -201,14 +227,14 @@ void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
         const auto &levelFeatures = featuresByLevel[level];
         if (levelFeatures.empty()) continue;
 
-        const uint8_t* dataPtr = img.data;
+        const uint8_t *dataPtr = img.data;
         const size_t step = img.step;
         const int rows = img.rows;
         const int cols = img.cols;
 
         const int radius = 15;
 
-        for (KeyPoint* f : levelFeatures) {
+        for (KeyPoint *f: levelFeatures) {
             int centerX = static_cast<int>(std::round(f->getImgX() * mLevelFactors[level]));
             int centerY = static_cast<int>(std::round(f->getImgY() * mLevelFactors[level]));
 
@@ -218,7 +244,7 @@ void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
             }
 
             double m10{0}, m01{0};
-            for (const auto &[offX, offY] : mOrientationIndices) {
+            for (const auto &[offX, offY]: mOrientationIndices) {
                 // Direct pointer access: base + y_offset + x_offset
                 uint8_t pixelVal = dataPtr[(centerY + offY) * step + (centerX + offX)];
 
@@ -230,8 +256,10 @@ void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
     }
 }
 
-void ORBFeatureDetector::rescaleFeatures(std::vector<KeyPoint>& aFeatures, double aScale) {
-    for (auto& feature : aFeatures) {
+void ORBFeatureDetector::rescaleFeatures(std::vector<KeyPoint> &aFeatures, const double aScale,
+                                         const std::uint32_t aLevel) {
+    for (auto &feature: aFeatures) {
         feature.scaleBy(aScale, aScale);
+        feature.setLevel(aLevel);
     }
 }

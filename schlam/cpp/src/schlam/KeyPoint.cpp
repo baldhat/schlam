@@ -6,11 +6,11 @@
 
 
 KeyPoint::KeyPoint(const std::uint32_t aImgX, const std::uint32_t aImgY, const std::uint8_t aLevel, double aScore,
-                   double aAngle, std::shared_ptr<IFeatureDescriptor> apDescriptor)
+                   double aAngle, std::bitset<256> apDescriptor)
     : mImgX(aImgX)
       , mImgY(aImgY)
       , mScore(aScore)
-      , mLevel(aLevel), mAngle(aAngle), mpDescriptor(apDescriptor) {
+      , mLevel(aLevel), mAngle(aAngle), mDescriptor(apDescriptor) {
 
 }
 
@@ -28,13 +28,27 @@ std::uint32_t KeyPoint::getImgY() const {
 std::uint8_t KeyPoint::getLevel() const {
     return mLevel;
 }
-void KeyPoint::setAngle(const double aAngle) {
-    mAngle = aAngle;
+double KeyPoint::getAngle() const {
+    return mAngle;
 }
-void KeyPoint::setScore(const double aScore) {
-    mScore = aScore;
-}
-
 double KeyPoint::getScore() const {
     return mScore;
 }
+std::bitset<256> KeyPoint::getDescriptor() const {
+    return mDescriptor;
+}
+
+void KeyPoint::setScore(const double aScore) {
+    mScore = aScore;
+}
+void KeyPoint::setLevel(const double aLevel) {
+    mLevel = aLevel;
+}
+void KeyPoint::setDescriptor(const std::bitset<256> aDescriptor) {
+    mDescriptor = aDescriptor;
+}
+void KeyPoint::setAngle(const double aAngle) {
+    mAngle = aAngle;
+}
+
+

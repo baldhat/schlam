@@ -194,7 +194,8 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) c
 
 void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &aFeatures) {
     if (aImage.empty()) {
-        std::printf("Invalid image!");
+        std::cout << "Invalid image!" << std::endl;
+        return;
     }
     cv::Mat colorResult;
     if (aImage.channels() == 1) {
@@ -213,32 +214,97 @@ void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &a
         }
     }
 
-    set2DImageTexture(colorResult);
+    setFeatureTexture(colorResult);
 }
 
-void Plotter::set2DImageTexture(const cv::Mat &aImage) {
-    m2DImage = aImage;
-    m2DImageChanged = true;
+void Plotter::plotMatches(const cv::Mat &aImage1, const cv::Mat &aImage2, const std::vector<KeyPoint> &aFeatures1,
+                  const std::vector<KeyPoint> &aFeatures2, const std::vector<std::array<std::uint32_t, 2>> aMatches) {
+    if (aImage1.empty() || aImage2.empty()) {
+        std::cout << "Invalid image!" << std::endl;
+        return;
+    }
+
+    cv::Mat combined;
+    cv::vconcat(aImage1, aImage2, combined);
+
+    cv::Mat colorResult;
+    if (combined.channels() == 1) {
+        cv::cvtColor(combined, colorResult, cv::COLOR_GRAY2BGR);
+    } else {
+        colorResult = combined.clone();
+    }
+
+    int offset = aImage1.rows;
+
+    for (const auto& [idx1, idx2] : aMatches) {
+        if (idx1 < aFeatures1.size() && idx2 < aFeatures2.size()) {
+            cv::Point2f pt1{static_cast<float>(aFeatures1[idx1].getImgX()), static_cast<float>(aFeatures1[idx1].getImgY())};
+            cv::Point2f pt2{static_cast<float>(aFeatures2[idx2].getImgX()), static_cast<float>(aFeatures2[idx2].getImgY() + offset)};
+            cv::line(colorResult, pt1, pt2, cv::Scalar(0, 255, 0), 1, cv::LINE_AA);
+        }
+    }
+
+    for (const auto& kp : aFeatures1) {
+        cv::Point2f pt{static_cast<float>(kp.getImgX()), static_cast<float>(kp.getImgY())};
+        cv::circle(colorResult, pt, 3, cv::Scalar(0, 0, 255), -1, cv::LINE_AA);
+    }
+
+    for (const auto& kp : aFeatures2) {
+        cv::Point2f pt{static_cast<float>(kp.getImgX()), static_cast<float>(kp.getImgY() + offset)};
+        cv::circle(colorResult, pt, 3, cv::Scalar(0, 0, 255), -1, cv::LINE_AA);
+    }
+
+    setMatcherTexture(colorResult);
+}
+
+void Plotter::setFeatureTexture(const cv::Mat &aImage) {
+    mFeatureImage = aImage;
+    mFeatureImageChanged = true;
+}
+
+void Plotter::setMatcherTexture(const cv::Mat &aImage) {
+    mMatcherImage = aImage;
+    mMatcherImageChanged = true;
 }
 
 void Plotter::showFeatures() {
-    if (m2DImage.empty()) return;
+    if (mFeatureImage.empty()) return;
 
-    if (m2DImageChanged) {
-        m2DImageTexture = std::make_unique<pangolin::GlTexture>(
-            m2DImage.cols,
-            m2DImage.rows,
+    if (mFeatureImageChanged) {
+        mFeatureImageTexture = std::make_unique<pangolin::GlTexture>(
+            mFeatureImage.cols,
+            mFeatureImage.rows,
             GL_RGB, false, 0, GL_BGR, GL_UNSIGNED_BYTE
         );
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        m2DImageTexture->Upload(m2DImage.data, GL_BGR, GL_UNSIGNED_BYTE);
+        mFeatureImageTexture->Upload(mFeatureImage.data, GL_BGR, GL_UNSIGNED_BYTE);
         std::cout << "Uploaded image texture!" << std::endl;
-        m2DImageChanged = false;
+        mFeatureImageChanged = false;
     }
 
     glColor3f(1.0, 1.0, 1.0);
-    m2DImageTexture->RenderToViewportFlipY();
+    mFeatureImageTexture->RenderToViewportFlipY();
+}
+
+void Plotter::showMatches() {
+    if (mMatcherImage.empty()) return;
+
+    if (mMatcherImageChanged) {
+        mMatcherImageTexture = std::make_unique<pangolin::GlTexture>(
+            mMatcherImage.cols,
+            mMatcherImage.rows,
+            GL_RGB, false, 0, GL_BGR, GL_UNSIGNED_BYTE
+        );
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        mMatcherImageTexture->Upload(mMatcherImage.data, GL_BGR, GL_UNSIGNED_BYTE);
+        std::cout << "Uploaded image texture!" << std::endl;
+        mMatcherImageChanged = false;
+    }
+
+    glColor3f(1.0, 1.0, 1.0);
+    mMatcherImageTexture->RenderToViewportFlipY();
 }
 
 
@@ -266,10 +332,13 @@ void Plotter::run() {
             .SetBounds(0.0, 1.0, 0.0, 1.0, 1920.0f / 1080.0f)
             .SetHandler(&handler);
 
-    pangolin::View &image2dView = pangolin::CreateDisplay()
+    pangolin::View &featureView = pangolin::CreateDisplay()
             .SetBounds(0.6, 1.0, 0.6, 1.0, 1920.f / 1080)
             .SetLock(pangolin::LockRight, pangolin::LockTop);
 
+    pangolin::View &matcherView = pangolin::CreateDisplay()
+        .SetBounds(0.0, 0.6, 0.6, 1.0, 1920.f / (1080*2))
+        .SetLock(pangolin::LockRight, pangolin::LockBottom);
 
     glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
 
@@ -279,6 +348,8 @@ void Plotter::run() {
     pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
     pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
     pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
+    pangolin::Var<bool> menu_showFeatures("menu.Show Features", false, true);
+    pangolin::Var<bool> menu_showMatches("menu.Show Matches", false, true);
 
     // 3. Main loop
     while (!pangolin::ShouldQuit()) {
@@ -313,8 +384,17 @@ void Plotter::run() {
             }
         }
 
-        image2dView.Activate();
-        showFeatures();
+        featureView.Activate();
+        if (menu_showFeatures) {
+            showFeatures();
+        }
+
+        matcherView.Activate();
+        if (menu_showMatches) {
+            showMatches();
+        }
+
+
 
         pangolin::FinishFrame();
     }

@@ -10,7 +10,7 @@ find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(OpenGL REQUIRED)
-find_package(Boost REQUIRED)
+find_package(Boost REQUIRED COMPONENTS thread)
 find_package(yaml-cpp REQUIRED)
 find_package(fast-cpp-csv-parser REQUIRED)
 find_package(TBB REQUIRED)
@@ -43,17 +43,22 @@ add_library(${PROJECT_NAME} SHARED
     src/data/imu_data.hpp
     src/data/mav_dataloader.hpp
     src/data/gt_data.hpp
-        src/schlam/FastFeatureDetector.cpp
-        src/schlam/FastFeatureDetector.h
-        src/schlam/ORBFeatureDetector.cpp
-        src/schlam/ORBFeatureDetector.h
-        src/schlam/KeyPoint.cpp
-        src/schlam/KeyPoint.h
-        src/schlam/IFeatureDescriptor.h
-        src/schlam/utils.cpp
-        src/schlam/utils.h
-        src/schlam/QuadTreeNode.cpp
-        src/schlam/QuadTreeNode.h
+    src/schlam/FastFeatureDetector.cpp
+    src/schlam/FastFeatureDetector.h
+    src/schlam/ORBFeatureDetector.cpp
+    src/schlam/ORBFeatureDetector.h
+    src/schlam/KeyPoint.cpp
+    src/schlam/KeyPoint.h
+    src/schlam/IFeatureDescriptor.h
+    src/schlam/utils.cpp
+    src/schlam/utils.h
+    src/schlam/QuadTreeNode.cpp
+    src/schlam/QuadTreeNode.h
+    src/schlam/orb_pattern.h
+    src/schlam/Matcher.cpp
+    src/schlam/Matcher.h
+        src/schlam/Ransac.cpp
+        src/schlam/Ransac.h
 )
 
 target_link_libraries(${PROJECT_NAME} 

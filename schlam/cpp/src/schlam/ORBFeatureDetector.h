@@ -80,7 +80,7 @@ private:
                                                            const std::uint32_t aHeight,
                                                            const std::uint32_t aNumFeatures);
 
-    void rescaleFeatures(std::vector<KeyPoint>& aFeatures, double aScale);
+    void rescaleFeatures(std::vector<KeyPoint>& aFeatures, const double aScale, const std::uint32_t aLevel);
 };
 
 

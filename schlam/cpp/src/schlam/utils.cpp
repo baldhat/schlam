@@ -47,3 +47,11 @@ void removeAtImageBorder(std::vector<KeyPoint> &aKps, const std::uint32_t aImage
         }
     }
 }
+
+std::vector<cv::Point2f> toOpenCV(const std::vector<KeyPoint>& aKeypoints) {
+    std::vector<cv::Point2f> points;
+    for (const auto& keyPoint : aKeypoints) {
+        points.emplace_back(static_cast<float>(keyPoint.getImgX()), static_cast<float>(keyPoint.getImgY()));
+    }
+    return points;
+}
