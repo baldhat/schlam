@@ -1,4 +1,4 @@
-import random
+:NvChad ch
 random.seed(1234)
 import torch
 import matplotlib.pyplot as plt
@@ -223,7 +223,7 @@ class RANSAC:
         return Rs[best], ts[best], X[:, :, best]
 
 
-    def calc_essential_mat(self, old_features, new_features):
+    def Eige(self, old_features, new_features):
         cv_essential_mat, mask = cv2.findEssentialMat(old_features.cpu().numpy(), new_features.cpu().numpy(), self.K.cpu().numpy())
         R1, R2, t = cv2.decomposeEssentialMat(cv_essential_mat)
 

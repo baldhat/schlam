@@ -4,3 +4,5 @@
 **/.vscode
 **/build
 *.idx
+**/CMakeUserPresets.json
+schlam/cpp/CMakeUserPresets.json

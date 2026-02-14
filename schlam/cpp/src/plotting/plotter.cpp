@@ -279,7 +279,6 @@ void Plotter::showFeatures() {
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         mFeatureImageTexture->Upload(mFeatureImage.data, GL_BGR, GL_UNSIGNED_BYTE);
-        std::cout << "Uploaded image texture!" << std::endl;
         mFeatureImageChanged = false;
     }
 
@@ -299,7 +298,6 @@ void Plotter::showMatches() {
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         mMatcherImageTexture->Upload(mMatcherImage.data, GL_BGR, GL_UNSIGNED_BYTE);
-        std::cout << "Uploaded image texture!" << std::endl;
         mMatcherImageChanged = false;
     }
 

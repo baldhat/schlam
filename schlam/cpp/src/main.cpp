@@ -1,5 +1,6 @@
 #include "data/mav_dataloader.hpp"
 #include "plotting/plotter.hpp"
+#include "src/schlam/Ransac.h"
 #include "src/tft/rigid_transform_3d.hpp"
 
 #include <chrono>
@@ -47,15 +48,22 @@ int main() {
                 " ms" << std::endl;
 
         now = std::chrono::system_clock::now();
-        auto matches = match(oldFeatures, newFeatures, 8);
+        auto matches = match(oldFeatures, newFeatures, 20);
         end = std::chrono::system_clock::now();
         std::cout << "Found " << matches.size() << " matches in " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count() <<
                 " ms" << std::endl;
         plotter->plotMatches(oldImageData->mImage, newImageData->mImage, oldFeatures, newFeatures, matches);
+        auto [matchedOldFeatures, matchedNewFeatures] = getMatched(oldFeatures, newFeatures, matches);
+
+        now = std::chrono::system_clock::now();
+        std::cout << "Running ransac..." << std::endl;
+        reconstruct(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
+        end = std::chrono::system_clock::now();
+        std::cout << "Ransac took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count() <<
+                " ms" << std::endl;
 
         oldFeatures = newFeatures;
         oldImageData = newImageData;
-        std::this_thread::sleep_for(std::chrono::seconds(10));
     }
 
     render_loop.join();

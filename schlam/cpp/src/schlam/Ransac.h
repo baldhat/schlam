@@ -13,10 +13,15 @@
 
 #include <vector>
 
+void reconstruct(const std::vector<KeyPoint> aKeypoints1,
+                 const std::vector<KeyPoint> aKeypoints2,
+                 const Eigen::Matrix3d aIntrinsics);
+ 
+
 void findEssential(
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoint,
     const std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>> &aCandidates,
-    std::vector<bool> &aInliers, double &aScore);
+    std::vector<bool> &aInliers, double &aScore, Eigen::Matrix3f& aEssentialMatrix, double aSigma);
 
 Eigen::Matrix3f
 computeEssential(std::array<Eigen::Matrix<float, 8, 3>, 2> &aPoints);
@@ -33,6 +38,8 @@ checkEssential(const Eigen::Matrix3f &aEssentialMatrix,
                const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
                std::vector<bool> &aInliers, const double aSigma);
 
-double reprojectionScore(const Eigen::Matrix3f& aEssentialMatrix, const Eigen::Vector3f& aP1, const Eigen::Vector3f& aP2, double aInvSigmaSquare);
+double calculateSymmetricError(const Eigen::Vector3f& aLine, 
+                               const Eigen::Vector3f& aPoint, 
+                               double aInvSigmaSquare);
 
 #endif // SCHLAM_RANSAC_H

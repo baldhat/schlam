@@ -54,13 +54,20 @@ void removeAtImageBorder(std::vector<KeyPoint> &aKps,
   }
 }
 
-std::vector<Eigen::Vector3f> toNormalized(const std::vector<KeyPoint> &aKeypoints, const Eigen::Matrix3f &aInvIntrinsics) {
+std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint> &aKeypoints) {
   std::vector<Eigen::Vector3f> points;
   for (const auto &keyPoint : aKeypoints) {
-    Eigen::Vector3f p{static_cast<float>(keyPoint.getImgX()),
-                  static_cast<float>(keyPoint.getImgY()), 1};
-    p = aInvIntrinsics * p;
-    points.emplace_back(p);
+    points.emplace_back(static_cast<float>(keyPoint.getImgX()),
+                  static_cast<float>(keyPoint.getImgY()), 1);
+  }
+  return points;
+
+}
+
+std::vector<Eigen::Vector3f> toNormalized(const std::vector<Eigen::Vector3f>& aPoints , const Eigen::Matrix3f &aInvIntrinsics) {
+  std::vector<Eigen::Vector3f> points;
+  for (const auto &point: aPoints) {
+    points.emplace_back(aInvIntrinsics * point);
   }
   return points;
 }

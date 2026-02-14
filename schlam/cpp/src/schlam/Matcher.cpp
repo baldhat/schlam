@@ -8,7 +8,6 @@
 #include <array>
 #include <cstdint>
 #include <limits>
-#include <unordered_set>
 
 std::vector<std::array<std::uint32_t, 2>> match(const std::vector<KeyPoint> &aKeypoints1, const std::vector<KeyPoint> &aKeypoints2, const double aMinDistance) {
     std::vector<std::array<std::uint32_t, 2>> matches;
@@ -35,4 +34,15 @@ std::vector<std::array<std::uint32_t, 2>> match(const std::vector<KeyPoint> &aKe
         }
     }
     return matches;
+}
+
+std::array<std::vector<KeyPoint>, 2> getMatched(const std::vector<KeyPoint> &aKeypoints1,
+                                                 const std::vector<KeyPoint> &aKeypoints2,
+                                                 std::vector<std::array<std::uint32_t, 2>>& aMatches) {
+  std::vector<KeyPoint> out1, out2;
+  for (const auto& [id1, id2]: aMatches) {
+    out1.push_back(aKeypoints1[id1]);
+    out2.push_back(aKeypoints2[id2]);
+  }
+  return {out1, out2};
 }

@@ -17,37 +17,48 @@ void reconstruct(const std::vector<KeyPoint> aKeypoints1,
 
   Eigen::Matrix3f invIntrinsics = aIntrinsics.inverse().cast<float>();
 
-  auto points1 = toNormalized(aKeypoints1, invIntrinsics);
-  auto points2 = toNormalized(aKeypoints2, invIntrinsics);
+  auto points1 = toNormalized(toEigen(aKeypoints1), invIntrinsics);
+  auto points2 = toNormalized(toEigen(aKeypoints2), invIntrinsics);
 
-  auto candidates = selectCandidates(points1, points2, 500);
+  auto candidates = selectCandidates(points1, points2, 200);
 
   std::vector<bool> inliersHomography, inliersEssential;
   double scoreHomography{0}, scoreEssential{0};
 
+  Eigen::Matrix3f essential;
+  double sigma = 1.0 / aIntrinsics(0, 0); 
+
   // TODO Move to thread once it works
   findEssential({points1, points2}, candidates, inliersEssential,
-                scoreEssential);
+                scoreEssential, essential, sigma);
 }
 
 void findEssential(
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
     const std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>> &aCandidates,
-    std::vector<bool> &aInliers, double &aScore, Eigen::Matrix3f& aEssentialMatrix) {
+    std::vector<bool> &aInliers, double &aScore,
+    Eigen::Matrix3f &aEssentialMatrix, double aSigma) {
   std::size_t numCandidates{aAllPoints[0].size()};
   std::vector<bool> inliers(numCandidates, false);
   aScore = 0;
 
-  for (std::uint32_t iter = 0; iter < 500; iter++) {
+  for (std::uint32_t iter = 0; iter < 200; iter++) {
     auto candidates = aCandidates[iter];
     Eigen::Matrix3f essentialMatrix = computeEssential(candidates);
-    double score = checkEssential(essentialMatrix, aAllPoints, inliers, 0.1); // TODO: What is the sigma value supposed to be?
+    double score = checkEssential(essentialMatrix, aAllPoints, inliers, aSigma);
     if (score > aScore) {
       aEssentialMatrix = essentialMatrix;
       aInliers = inliers;
       aScore = score;
     }
   }
+  std::cout << "Best essential score: " << aScore << std::endl;
+  int count = 0;
+  for (const auto &val : aInliers) {
+    if (val)
+      count++;
+  }
+  std::cout << "Num inliers: " << count << std::endl;
 }
 
 Eigen::Matrix3f
@@ -69,28 +80,34 @@ selectCandidates(const std::vector<Eigen::Vector3f> &aPoints1,
                  std::uint32_t aNumCandidates) {
 
   std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>> candidates;
-  for (std::uint32_t i = 0; i < aNumCandidates; i++) {
+  candidates.reserve(aNumCandidates);
+
+  for (std::uint32_t i = 0; i < aNumCandidates; ++i) {
     std::array<Eigen::Matrix<float, 8, 3>, 2> pair;
 
-    auto indices = getSparseSubset(8, aNumCandidates);
-    pair[0] = Eigen::Matrix<float, 8, 3>();
-    pair[1] = Eigen::Matrix<float, 8, 3>();
-    for (std::uint8_t j = 0; j < 8; j++) {
-      pair[0] << aPoints1[indices[j]];
-      pair[1] << aPoints2[indices[j]];
+    auto indices =
+        getSparseSubset(8, static_cast<std::uint32_t>(aPoints1.size()));
+
+    for (std::uint8_t j = 0; j < 8; ++j) {
+      pair[0].row(j) = aPoints1[indices[j]];
+      pair[1].row(j) = aPoints2[indices[j]];
     }
     candidates.push_back(pair);
   }
   return candidates;
 }
 
-std::vector<std::uint32_t> getSparseSubset(std::uint32_t N, std::uint32_t T) {
-  std::set<int> unique_indices;
-  std::random_device rd;
-  std::mt19937 g(rd());
-  std::uniform_int_distribution<int> dist(0, N - 1);
+std::vector<std::uint32_t> getSparseSubset(std::uint32_t aCount,
+                                           std::uint32_t aMaxIndex) {
+  if (aCount > aMaxIndex)
+    return {}; // Fehlerbehandlung
 
-  while (unique_indices.size() < T) {
+  std::set<std::uint32_t> unique_indices;
+  static std::random_device rd;
+  static std::mt19937 g(rd());
+  std::uniform_int_distribution<std::uint32_t> dist(0, aMaxIndex - 1);
+
+  while (unique_indices.size() < aCount) {
     unique_indices.insert(dist(g));
   }
 
@@ -101,38 +118,49 @@ double
 checkEssential(const Eigen::Matrix3f &aEssentialMatrix,
                const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
                std::vector<bool> &aInliers, const double aSigma) {
-  double score{0};
+    double score{0};
+    const size_t nPoints = aAllPoints[0].size();
+    
+    aInliers.assign(nPoints, false);
 
-  // orbslam constants
-  constexpr double th = 3.841;
-  constexpr double thScore = 5.991;
-  const double invSigmaSquare = 1.0 / (aSigma*aSigma);
+    constexpr double threshold = 3.841;
+    constexpr double essentialScore = 5.991;
+    const double invSigmaSquare = 1.0 / (aSigma * aSigma);
 
-  for (std::uint32_t i = 0; i < aAllPoints[0].size(); i++) {
-    bool inlier{true};
+    const Eigen::Matrix3f essentialMatrixT = aEssentialMatrix.transpose();
 
-    auto rightReprojectScore = reprojectionScore(aEssentialMatrix, aAllPoints[0][i], aAllPoints[1][i], invSigmaSquare);
-    if (rightReprojectScore > th) {
-      inlier = false;
-    } else {
-      score = thScore - rightReprojectScore;
+    for (size_t i = 0; i < nPoints; i++) {
+        const auto& p1 = aAllPoints[0][i]; // Punkt in Bild 1
+        const auto& p2 = aAllPoints[1][i]; // Punkt in Bild 2
+
+        Eigen::Vector3f line2 = aEssentialMatrix * p1;
+        double error2 = calculateSymmetricError(line2, p2, invSigmaSquare);
+
+        Eigen::Vector3f line1 = essentialMatrixT * p2;
+        double error1 = calculateSymmetricError(line1, p1, invSigmaSquare);
+
+        if (error1 <= threshold && error2 <= threshold) {
+            aInliers[i] = true;
+            score += (essentialScore - error1) + (essentialScore - error2);
+        } else {
+            aInliers[i] = false;
+        }
     }
 
-    auto leftReprojectScore = reprojectionScore(aEssentialMatrix, aAllPoints[1][i], aAllPoints[0][i], invSigmaSquare);
-    if (leftReprojectScore > th) {
-      inlier = false;
-    } else {
-      score = thScore - leftReprojectScore;
-    }
-
-    aInliers[i] = inlier;
-  }
-  return score;
+    return score;
 }
 
-double reprojectionScore(const Eigen::Matrix3f& aEssentialMatrix, const Eigen::Vector3f& aP1, const Eigen::Vector3f& aP2, double aInvSigmaSquare) {
-  Eigen::Vector3f vec = aP1.transpose() * aEssentialMatrix;
-  double residual = vec.transpose() * aP2;
-  double chiSquared2 = (residual*residual) / (vec(0)*vec(0)+vec(1)*vec(1)) * aInvSigmaSquare;
-  return chiSquared2;
+
+double calculateSymmetricError(const Eigen::Vector3f& aLine, 
+                               const Eigen::Vector3f& aPoint, 
+                               double aInvSigmaSquare) {
+    // Punkt-Linie-Abstand: (x' * L)^2 / (a^2 + b^2)
+    // aLine = (a, b, c), wobei ax + by + c = 0
+    double residual = aLine.dot(aPoint);
+    double denominator = aLine.head<2>().squaredNorm();
+    
+    // Division durch Null verhindern, falls die Linie ungültig ist
+    if (denominator < 1e-9) return 0.0;
+
+    return (residual * residual / denominator) * aInvSigmaSquare;
 }
