@@ -57,8 +57,8 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/orb_pattern.h
     src/schlam/Matcher.cpp
     src/schlam/Matcher.h
-        src/schlam/Ransac.cpp
-        src/schlam/Ransac.h
+    src/schlam/Ransac.cpp
+    src/schlam/Ransac.h
 )
 
 target_link_libraries(${PROJECT_NAME} 
@@ -72,7 +72,6 @@ target_link_libraries(${PROJECT_NAME}
     TBB::tbb
 )
 
-# APPS
 
 add_executable(app 
     src/main.cpp
@@ -83,5 +82,24 @@ add_executable(tft
     src/tft/main.cpp
 )
 target_link_libraries(tft ${PROJECT_NAME})
+
+# ----------------------------------------
+# -------------- TESTING -----------------
+# ----------------------------------------
+enable_testing()
+find_package(GTest REQUIRED CONFIG)
+
+add_executable(unit_tests tests/test_ransac.cpp)
+
+# Ensure GTest targets are linked correctly
+target_link_libraries(unit_tests PRIVATE 
+    ${PROJECT_NAME}
+    GTest::gtest_main
+    GTest::gtest
+)
+
+include(GoogleTest)
+# PRE_TEST avoids trying to run the binary during the 'make' phase
+gtest_discover_tests(unit_tests)
 
 

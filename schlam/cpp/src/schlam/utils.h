@@ -5,9 +5,10 @@
 #ifndef SCHLAM_UTILS_H
 #define SCHLAM_UTILS_H
 
-#include <opencv2/opencv.hpp>
-
 #include "KeyPoint.h"
+
+#include <opencv2/opencv.hpp>
+#include <eigen3/Eigen/Eigen>
 
 struct Point {
     std::int32_t x;
@@ -26,6 +27,6 @@ std::vector<Point> getPointsInRadius(int aRadius);
 void removeAtImageBorder(std::vector<KeyPoint> &aKps, const std::uint32_t aImageWidth, const std::uint32_t aImageHeight,
                          const std::uint16_t aBorderSize);
 
-std::vector<cv::Point2f> toOpenCV(const std::vector<KeyPoint>& aKeypoints);
+std::vector<Eigen::Vector3f> toNormalized(const std::vector<KeyPoint> &aKeypoints, const Eigen::Matrix3f &aIntrinsics);
 
 #endif //SCHLAM_UTILS_H

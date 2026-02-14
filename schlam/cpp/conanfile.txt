@@ -6,6 +6,9 @@ boost/1.85.0
 yaml-cpp/0.8.0
 fast-cpp-csv-parser/20191004
 
+[test_requires]
+gtest/1.15.0
+
 [generators]
 PkgConfigDeps
 CMakeDeps
