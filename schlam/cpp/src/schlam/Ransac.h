@@ -28,4 +28,11 @@ selectCandidates(const std::vector<Eigen::Vector3f> &aPoints1,
 
 std::vector<std::uint32_t> getSparseSubset(std::uint32_t N, std::uint32_t T);
 
+double
+checkEssential(const Eigen::Matrix3f &aEssentialMatrix,
+               const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
+               std::vector<bool> &aInliers, const double aSigma);
+
+double reprojectionScore(const Eigen::Matrix3f& aEssentialMatrix, const Eigen::Vector3f& aP1, const Eigen::Vector3f& aP2, double aInvSigmaSquare);
+
 #endif // SCHLAM_RANSAC_H

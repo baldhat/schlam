@@ -7,8 +7,8 @@
 
 #include <opencv2/calib3d/calib3d.hpp>
 
-#include <set>
 #include <random>
+#include <set>
 
 void reconstruct(const std::vector<KeyPoint> aKeypoints1,
                  const std::vector<KeyPoint> aKeypoints2,
@@ -33,31 +33,33 @@ void reconstruct(const std::vector<KeyPoint> aKeypoints1,
 void findEssential(
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
     const std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>> &aCandidates,
-    std::vector<bool> &aInliers, double &aScore) {
+    std::vector<bool> &aInliers, double &aScore, Eigen::Matrix3f& aEssentialMatrix) {
   std::size_t numCandidates{aAllPoints[0].size()};
-  double bestScore{0};
-  Eigen::Matrix3f bestEssential;
   std::vector<bool> inliers(numCandidates, false);
+  aScore = 0;
 
   for (std::uint32_t iter = 0; iter < 500; iter++) {
     auto candidates = aCandidates[iter];
     Eigen::Matrix3f essentialMatrix = computeEssential(candidates);
-    double score; // = checkEssential(residuals, inliers, sigma);
-    if (score > bestScore) {
-      bestEssential = essentialMatrix;
+    double score = checkEssential(essentialMatrix, aAllPoints, inliers, 0.1); // TODO: What is the sigma value supposed to be?
+    if (score > aScore) {
+      aEssentialMatrix = essentialMatrix;
       aInliers = inliers;
-      bestScore = score;
+      aScore = score;
     }
   }
 }
 
-Eigen::Matrix3f computeEssential(std::array<Eigen::Matrix<float, 8, 3>, 2>& aPoints) {
+Eigen::Matrix3f
+computeEssential(std::array<Eigen::Matrix<float, 8, 3>, 2> &aPoints) {
   Eigen::Matrix<float, 8, 9> res;
   for (int j = 0; j < 3; ++j) {
-    res.block<8, 3>(0, j * 3) = aPoints[0].array().colwise() * aPoints[1].col(j).array();
+    res.block<8, 3>(0, j * 3) =
+        aPoints[0].array().colwise() * aPoints[1].col(j).array();
   }
   Eigen::JacobiSVD<Eigen::MatrixXf> svd(res, Eigen::ComputeFullV);
-  Eigen::Matrix<float,3,3,Eigen::RowMajor> essential(svd.matrixV().col(8).data());
+  Eigen::Matrix<float, 3, 3, Eigen::RowMajor> essential(
+      svd.matrixV().col(8).data());
   return essential;
 }
 
@@ -93,4 +95,44 @@ std::vector<std::uint32_t> getSparseSubset(std::uint32_t N, std::uint32_t T) {
   }
 
   return {unique_indices.begin(), unique_indices.end()};
+}
+
+double
+checkEssential(const Eigen::Matrix3f &aEssentialMatrix,
+               const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
+               std::vector<bool> &aInliers, const double aSigma) {
+  double score{0};
+
+  // orbslam constants
+  constexpr double th = 3.841;
+  constexpr double thScore = 5.991;
+  const double invSigmaSquare = 1.0 / (aSigma*aSigma);
+
+  for (std::uint32_t i = 0; i < aAllPoints[0].size(); i++) {
+    bool inlier{true};
+
+    auto rightReprojectScore = reprojectionScore(aEssentialMatrix, aAllPoints[0][i], aAllPoints[1][i], invSigmaSquare);
+    if (rightReprojectScore > th) {
+      inlier = false;
+    } else {
+      score = thScore - rightReprojectScore;
+    }
+
+    auto leftReprojectScore = reprojectionScore(aEssentialMatrix, aAllPoints[1][i], aAllPoints[0][i], invSigmaSquare);
+    if (leftReprojectScore > th) {
+      inlier = false;
+    } else {
+      score = thScore - leftReprojectScore;
+    }
+
+    aInliers[i] = inlier;
+  }
+  return score;
+}
+
+double reprojectionScore(const Eigen::Matrix3f& aEssentialMatrix, const Eigen::Vector3f& aP1, const Eigen::Vector3f& aP2, double aInvSigmaSquare) {
+  Eigen::Vector3f vec = aP1.transpose() * aEssentialMatrix;
+  double residual = vec.transpose() * aP2;
+  double chiSquared2 = (residual*residual) / (vec(0)*vec(0)+vec(1)*vec(1)) * aInvSigmaSquare;
+  return chiSquared2;
 }
