@@ -51,14 +51,15 @@ void ORBFeatureDetector::distributeFeaturesToLevels() {
 
 std::vector<KeyPoint> ORBFeatureDetector::calcFeatures(const std::vector<cv::Mat> &aPyramid) {
     std::vector<KeyPoint> features;
-    std::for_each(std::execution::seq, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
+    std::mutex mut;
+    std::for_each(std::execution::par, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = calculateFastFeatures(aPyramid[level]);
         removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 3);
         computeHarrisResponse(aPyramid[level], levelFeatures, 7);
         levelFeatures = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight, mNumFeaturesPerLevel[level]);
-        //mpPlotter->plotFeatures(aPyramid[level], levelFeatures);
         rescaleFeatures(levelFeatures, 1.0 / mLevelFactors[level], level);
+        std::lock_guard<std::mutex> guard(mut);
         features.insert(features.end(), levelFeatures.begin(), levelFeatures.end());
     });
     std::cout << "Returning " << features.size() << " features" << std::endl;
@@ -66,35 +67,96 @@ std::vector<KeyPoint> ORBFeatureDetector::calcFeatures(const std::vector<cv::Mat
     return features;
 }
 
-void ORBFeatureDetector::addDescriptors(const std::vector<cv::Mat> &aPyramid, std::vector<KeyPoint> &aFeatures) {
-    std::vector<cv::Mat> blurredPyramid{aPyramid.size()};
-    for (std::uint32_t i = 0; i < aPyramid.size(); i++) {
-        cv::GaussianBlur(aPyramid[i], blurredPyramid[i], cv::Size(7, 7), 2, 2);
+void ORBFeatureDetector::addDescriptors(
+    const std::vector<cv::Mat> &aPyramid,
+    std::vector<KeyPoint> &aFeatures)
+{
+    const size_t nLevels = aPyramid.size();
+
+    std::vector<cv::Mat> blurredPyramid(nLevels);
+    for (size_t lvl = 0; lvl < nLevels; ++lvl)
+    {
+        cv::GaussianBlur(aPyramid[lvl],
+                         blurredPyramid[lvl],
+                         cv::Size(7, 7),
+                         2, 2,
+                         cv::BORDER_REPLICATE);
     }
-    for (auto &feature: aFeatures) {
-        const double factor = mLevelFactors[feature.getLevel()];
-        const std::uint8_t *data = blurredPyramid[feature.getLevel()].data;
-        const int step = blurredPyramid[feature.getLevel()].step;
 
-        std::int32_t centerX{static_cast<std::int32_t>(std::round(feature.getImgX() * factor))};
-        std::int32_t centerY{static_cast<std::int32_t>(std::round(feature.getImgY() * factor))};
-        double sin{std::sin(feature.getAngle())}, cos{std::cos(feature.getAngle())};
+    for (auto &feature : aFeatures)
+    {
+        const int level = feature.getLevel();
+        const double factor = mLevelFactors[level];
 
-        std::bitset<256> descriptor;
-        for (std::uint32_t i = 0; i < 256 * 4; i += 4) {
-            std::int32_t x0{gOrbBitPattern31[i]}, y0{gOrbBitPattern31[i + 1]};
-            std::int32_t x1{gOrbBitPattern31[i + 2]}, y1{gOrbBitPattern31[i + 3]};
-            auto x0r = static_cast<std::int32_t>(std::round(x0 * cos - y0 * sin));
-            auto y0r = static_cast<std::int32_t>(std::round(x0 * sin + y0 * cos));
-            auto x1r = static_cast<std::int32_t>(std::round(x1 * cos - y1 * sin));
-            auto y1r = static_cast<std::int32_t>(std::round(x1 * sin + y1 * cos));
-            auto p0 = data[(y0r + centerY) * step + (x0r + centerX)];
-            auto p1 = data[(y1r + centerY) * step + (x1r + centerX)];
-            descriptor[i/4] = p0 < p1;
+        const cv::Mat &img = blurredPyramid[level];
+        const uint8_t* imgData = img.data;
+        const int step = img.step;
+
+        // Faster than std::round
+        const int centerX = int(feature.getImgX() * factor + 0.5);
+        const int centerY = int(feature.getImgY() * factor + 0.5);
+
+        const float angle = static_cast<float>(feature.getAngle());
+        const float sinA = std::sin(angle);
+        const float cosA = std::cos(angle);
+
+        uint8_t desc[32] = {0};
+
+        const uint8_t* centerPtr = imgData + centerY * step + centerX;
+
+        for (int i = 0; i < 256; ++i)
+        {
+            const int idx = i * 4;
+
+            const int x0 = gOrbBitPattern31[idx];
+            const int y0 = gOrbBitPattern31[idx + 1];
+            const int x1 = gOrbBitPattern31[idx + 2];
+            const int y1 = gOrbBitPattern31[idx + 3];
+
+            const int rx0 = int(x0 * cosA - y0 * sinA + 0.5f);
+            const int ry0 = int(x0 * sinA + y0 * cosA + 0.5f);
+            const int rx1 = int(x1 * cosA - y1 * sinA + 0.5f);
+            const int ry1 = int(x1 * sinA + y1 * cosA + 0.5f);
+
+            const uint8_t p0 = *(centerPtr + ry0 * step + rx0);
+            const uint8_t p1 = *(centerPtr + ry1 * step + rx1);
+
+            desc[i >> 3] |= (p0 < p1) << (i & 7);
         }
-        feature.setDescriptor(descriptor);
+
+        feature.setDescriptor(std::to_array(desc)); 
     }
 }
+
+// void ORBFeatureDetector::addDescriptors(const std::vector<cv::Mat> &aPyramid, std::vector<KeyPoint> &aFeatures) {
+//     std::vector<cv::Mat> blurredPyramid{aPyramid.size()};
+//     for (std::uint32_t i = 0; i < aPyramid.size(); i++) {
+//         cv::GaussianBlur(aPyramid[i], blurredPyramid[i], cv::Size(7, 7), 2, 2);
+//     }
+//     for (auto &feature: aFeatures) {
+//         const double factor = mLevelFactors[feature.getLevel()];
+//         const std::uint8_t *data = blurredPyramid[feature.getLevel()].data;
+//         const int step = blurredPyramid[feature.getLevel()].step;
+//
+//         std::int32_t centerX{static_cast<std::int32_t>(std::round(feature.getImgX() * factor))};
+//         std::int32_t centerY{static_cast<std::int32_t>(std::round(feature.getImgY() * factor))};
+//         double sin{std::sin(feature.getAngle())}, cos{std::cos(feature.getAngle())};
+//
+//         std::bitset<256> descriptor;
+//         for (std::uint32_t i = 0; i < 256 * 4; i += 4) {
+//             std::int32_t x0{gOrbBitPattern31[i]}, y0{gOrbBitPattern31[i + 1]};
+//             std::int32_t x1{gOrbBitPattern31[i + 2]}, y1{gOrbBitPattern31[i + 3]};
+//             auto x0r = static_cast<std::int32_t>(std::round(x0 * cos - y0 * sin));
+//             auto y0r = static_cast<std::int32_t>(std::round(x0 * sin + y0 * cos));
+//             auto x1r = static_cast<std::int32_t>(std::round(x1 * cos - y1 * sin));
+//             auto y1r = static_cast<std::int32_t>(std::round(x1 * sin + y1 * cos));
+//             auto p0 = data[(y0r + centerY) * step + (x0r + centerX)];
+//             auto p1 = data[(y1r + centerY) * step + (x1r + centerX)];
+//             descriptor[i/4] = p0 < p1;
+//         }
+//         feature.setDescriptor(descriptor);
+//     }
+// }
 
 std::vector<KeyPoint> ORBFeatureDetector::filterWithOctree(std::vector<KeyPoint> &aFeatures, const std::uint32_t aWidth,
                                                            const std::uint32_t aHeight,
@@ -128,52 +190,137 @@ std::vector<KeyPoint> ORBFeatureDetector::filterWithOctree(std::vector<KeyPoint>
     return features;
 }
 
+
 std::vector<KeyPoint>
-ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) {
+ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage)
+{
     std::vector<KeyPoint> keypoints;
-    cv::Mat paddedImage;
-    cv::copyMakeBorder(aImage, paddedImage, 3, 3, 3, 3, cv::BORDER_REPLICATE);
-    const uint8_t *data = paddedImage.data;
-    const int step = paddedImage.step;
-    for (int i = 3; i < aImage.rows - 3; ++i) {
-        const uchar *rowPtr = aImage.ptr<uchar>(i);
-        for (int j = 3; j < aImage.cols - 3; ++j) {
-            auto pixel = rowPtr[j];
-            std::uint8_t neg_count{0};
-            std::uint8_t pos_count{0};
-            for (const auto &indice: mFastIndices) {
-                auto diff = pixel - data[(i + indice[0]) * step + (j + indice[1])];
-                if (diff < -mFastThreshold) {
-                    neg_count++;
-                    pos_count = 0;
-                } else if (diff > mFastThreshold) {
-                    neg_count = 0;
-                    pos_count++;
-                }
-                if (neg_count == nContinuous || pos_count == nContinuous) {
-                    keypoints.push_back({static_cast<std::uint32_t>(j), static_cast<std::uint32_t>(i)});
-                    break;
-                }
-            }
-            for (int q = 0; q < nContinuous - 1; ++q) {
-                auto indice = mFastIndices[q];
-                auto diff = pixel - data[(i + indice[0]) * step + (j + indice[1])];
-                if (diff < -mFastThreshold) {
-                    neg_count++;
-                    pos_count = 0;
-                } else if (diff > mFastThreshold) {
-                    neg_count = 0;
-                    pos_count++;
-                }
-                if (neg_count == nContinuous || pos_count == nContinuous) {
-                    keypoints.push_back({static_cast<std::uint32_t>(j), static_cast<std::uint32_t>(i)});
+    keypoints.reserve(aImage.rows * aImage.cols / 10);
+
+    const int rows = aImage.rows;
+    const int cols = aImage.cols;
+    const int step = aImage.step;
+
+    const uint8_t* imgData = aImage.data;
+
+    std::array<int, 16> offsets;
+    for (int k = 0; k < 16; ++k)
+        offsets[k] = mFastIndices[k][0] * step + mFastIndices[k][1];
+
+    for (int i = 3; i < rows - 3; ++i)
+    {
+        const uint8_t* rowPtr = imgData + i * step;
+
+        for (int j = 3; j < cols - 3; ++j)
+        {
+            const uint8_t* centerPtr = rowPtr + j;
+            const int center = *centerPtr;
+
+            const int t_high = center + mFastThreshold;
+            const int t_low  = center - mFastThreshold;
+
+            int brighter = 0, darker = 0;
+
+            const int idx0  = 0;
+            const int idx4  = 4;
+            const int idx8  = 8;
+            const int idx12 = 12;
+
+            int p;
+
+            p = *(centerPtr + offsets[idx0]);
+            brighter += (p > t_high);
+            darker   += (p < t_low);
+
+            p = *(centerPtr + offsets[idx4]);
+            brighter += (p > t_high);
+            darker   += (p < t_low);
+
+            p = *(centerPtr + offsets[idx8]);
+            brighter += (p > t_high);
+            darker   += (p < t_low);
+
+            p = *(centerPtr + offsets[idx12]);
+            brighter += (p > t_high);
+            darker   += (p < t_low);
+
+            if (brighter < 3 && darker < 3)
+                continue;
+
+            int pos_count = 0;
+            int neg_count = 0;
+
+            // Loop 16 + (nContinuous - 1) for wrap-around
+            for (int k = 0; k < 16 + nContinuous - 1; ++k)
+            {
+                const int idx = k < 16 ? k : k - 16;
+
+                p = *(centerPtr + offsets[idx]);
+
+                const bool isBright = (p > t_high);
+                const bool isDark   = (p < t_low);
+
+                pos_count = isBright ? pos_count + 1 : 0;
+                neg_count = isDark   ? neg_count + 1 : 0;
+
+                if (pos_count >= nContinuous || neg_count >= nContinuous)
+                {
+                    keypoints.emplace_back(static_cast<uint32_t>(j),
+                                           static_cast<uint32_t>(i));
                     break;
                 }
             }
         }
     }
+
     return keypoints;
 }
+// std::vector<KeyPoint>
+// ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) {
+//     std::vector<KeyPoint> keypoints;
+//     cv::Mat paddedImage;
+//     cv::copyMakeBorder(aImage, paddedImage, 3, 3, 3, 3, cv::BORDER_REPLICATE);
+//     const uint8_t *data = paddedImage.data;
+//     const int step = paddedImage.step;
+//     for (int i = 3; i < aImage.rows - 3; ++i) {
+//         const uchar *rowPtr = aImage.ptr<uchar>(i);
+//         for (int j = 3; j < aImage.cols - 3; ++j) {
+//             auto pixel = rowPtr[j];
+//             std::uint8_t neg_count{0};
+//             std::uint8_t pos_count{0};
+//             for (const auto &indice: mFastIndices) {
+//                 auto diff = pixel - data[(i + indice[0]) * step + (j + indice[1])];
+//                 if (diff < -mFastThreshold) {
+//                     neg_count++;
+//                     pos_count = 0;
+//                 } else if (diff > mFastThreshold) {
+//                     neg_count = 0;
+//                     pos_count++;
+//                 }
+//                 if (neg_count == nContinuous || pos_count == nContinuous) {
+//                     keypoints.emplace_back(static_cast<std::uint32_t>(j), static_cast<std::uint32_t>(i));
+//                     break;
+//                 }
+//             }
+//             for (int q = 0; q < nContinuous - 1; ++q) {
+//                 auto indice = mFastIndices[q];
+//                 auto diff = pixel - data[(i + indice[0]) * step + (j + indice[1])];
+//                 if (diff < -mFastThreshold) {
+//                     neg_count++;
+//                     pos_count = 0;
+//                 } else if (diff > mFastThreshold) {
+//                     neg_count = 0;
+//                     pos_count++;
+//                 }
+//                 if (neg_count == nContinuous || pos_count == nContinuous) {
+//                     keypoints.emplace_back(static_cast<std::uint32_t>(j), static_cast<std::uint32_t>(i));
+//                     break;
+//                 }
+//             }
+//         }
+//     }
+//     return keypoints;
+// }
 
 void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vector<KeyPoint> &aFeatures,
                                                const std::uint8_t blockSize, const double aHarrisK) {

@@ -8,6 +8,7 @@
 #include "KeyPoint.h"
 
 #include <vector>
+#include <memory>
 
 
 class QuadTreeNode {

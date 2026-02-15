@@ -4,6 +4,10 @@ project(Schlam LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+add_compile_options(-fno-omit-frame-pointer)
+
 # 1. Find Conan packages
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -49,7 +53,6 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/ORBFeatureDetector.h
     src/schlam/KeyPoint.cpp
     src/schlam/KeyPoint.h
-    src/schlam/IFeatureDescriptor.h
     src/schlam/utils.cpp
     src/schlam/utils.h
     src/schlam/QuadTreeNode.cpp

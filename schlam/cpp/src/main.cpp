@@ -26,7 +26,6 @@ int main() {
     auto oldFeatures = featureDetector->getFeatures(oldImageData->mImage);
 
     while (!dataloader->empty()) {
-        std::cout << "Handling new image..." << std::endl;
         auto newImageData = dataloader->getNextImageData();
         auto newIMUData = dataloader->getNextIMUData();
         auto imuData = newIMUData->first;
@@ -36,10 +35,10 @@ int main() {
             "imu", "world", gtData.mRotation,
             gtData.mPosition));
 
-        pTransformer->findTransform("imu", "world");
-        pTransformer->findTransform("cam0", "world");
+        //pTransformer->findTransform("imu", "world");
+        //pTransformer->findTransform("cam0", "world");
 
-        plotter->addFrustum(newImageData);
+        //plotter->addFrustum(newImageData);
 
         auto now = std::chrono::system_clock::now();
         auto newFeatures = featureDetector->getFeatures(newImageData->mImage);
@@ -56,8 +55,7 @@ int main() {
         auto [matchedOldFeatures, matchedNewFeatures] = getMatched(oldFeatures, newFeatures, matches);
 
         now = std::chrono::system_clock::now();
-        std::cout << "Running ransac..." << std::endl;
-        reconstruct(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
+        reconstructInitial(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
         end = std::chrono::system_clock::now();
         std::cout << "Ransac took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count() <<
                 " ms" << std::endl;

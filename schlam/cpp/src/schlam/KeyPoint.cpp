@@ -6,7 +6,7 @@
 
 
 KeyPoint::KeyPoint(const std::uint32_t aImgX, const std::uint32_t aImgY, const std::uint8_t aLevel, double aScore,
-                   double aAngle, std::bitset<256> apDescriptor)
+                   double aAngle,const std::array<uint8_t, 32>& apDescriptor)
     : mImgX(aImgX)
       , mImgY(aImgY)
       , mScore(aScore)
@@ -34,7 +34,7 @@ double KeyPoint::getAngle() const {
 double KeyPoint::getScore() const {
     return mScore;
 }
-std::bitset<256> KeyPoint::getDescriptor() const {
+std::array<uint8_t, 32> KeyPoint::getDescriptor() const {
     return mDescriptor;
 }
 
@@ -44,7 +44,7 @@ void KeyPoint::setScore(const double aScore) {
 void KeyPoint::setLevel(const double aLevel) {
     mLevel = aLevel;
 }
-void KeyPoint::setDescriptor(const std::bitset<256> aDescriptor) {
+void KeyPoint::setDescriptor(const std::array<uint8_t, 32>& aDescriptor) {
     mDescriptor = aDescriptor;
 }
 void KeyPoint::setAngle(const double aAngle) {
