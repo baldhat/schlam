@@ -5,8 +5,8 @@
 namespace tft {
     RigidTransform3D::RigidTransform3D(const std::string &aSource,
                                        const std::string &aTarget,
-                                       const Eigen::Matrix3d &aRotation,
-                                       const Eigen::Vector3d &aTranslation)
+                                       const Eigen::Matrix3f &aRotation,
+                                       const Eigen::Vector3f &aTranslation)
         : mSource(aSource), mTarget(aTarget), mRotation(aRotation),
           mTranslation(aTranslation) {
     }
@@ -63,11 +63,11 @@ namespace tft {
     std::shared_ptr<RigidTransform3D>
     RigidTransform3D::identity(const std::string &aSource, const std::string &aTarget) {
         return std::make_shared<RigidTransform3D>(
-            aSource, aTarget, Eigen::Matrix3d::Identity(), Eigen::Vector3d(0, 0, 0));
+            aSource, aTarget, Eigen::Matrix3f::Identity(), Eigen::Vector3f(0, 0, 0));
     }
 
-    Eigen::Matrix4d RigidTransform3D::matrix() const {
-        Eigen::Matrix4d m;
+    Eigen::Matrix4f RigidTransform3D::matrix() const {
+        Eigen::Matrix4f m;
         auto& r = mRotation;
         auto& t = mTranslation;
         m << r(0, 0), r(0, 1), r(0, 2), t(0),

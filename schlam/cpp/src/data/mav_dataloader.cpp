@@ -43,16 +43,16 @@ bool MAVDataloader::empty() { return mImageQueue.empty() || mIMUQueue.empty(); }
 void MAVDataloader::loadCamera0Config() {
     mCamera0Path = mDatasetPath / "cam0";
     YAML::Node camera0Config = YAML::LoadFile(mCamera0Path / "sensor.yaml");
-    double fu = camera0Config["intrinsics"][0].as<double>(0.0);
-    double fv = camera0Config["intrinsics"][1].as<double>(0.0);
-    double cu = camera0Config["intrinsics"][2].as<double>(0.0);
-    double cv = camera0Config["intrinsics"][3].as<double>(0.0);
-    mCamera0Intrinsics << fu, 0, cu, 0, fv, cu, 0, 0, 1;
+    float fu = camera0Config["intrinsics"][0].as<float>(0.0);
+    float fv = camera0Config["intrinsics"][1].as<float>(0.0);
+    float cu = camera0Config["intrinsics"][2].as<float>(0.0);
+    float cv = camera0Config["intrinsics"][3].as<float>(0.0);
+    mCamera0Intrinsics << fu, 0, cu, 0, fv, cv, 0, 0, 1;
 
     auto ec = camera0Config["T_BS"]["data"].as<std::vector<double> >();
     mCamera0Rotation << ec[0], ec[1], ec[2], ec[4], ec[5], ec[6], ec[8], ec[9],
             ec[10];
-    mCamera0Translation = Eigen::Vector3d(ec[3], ec[7], ec[11]);
+    mCamera0Translation = Eigen::Vector3f(ec[3], ec[7], ec[11]);
 }
 
 void MAVDataloader::loadIMUConfig() {
@@ -106,17 +106,17 @@ void MAVDataloader::loadImageData() {
 
 void MAVDataloader::loadIMUData() {
     std::uint64_t ts, gt_ts;
-    double ax, ay, az, wx, wy, wz;
-    double gt_px, gt_py, gt_pz, gt_qw, gt_qx, gt_qy, gt_qz, gt_vx, gt_vy, gt_vz;
+    float ax, ay, az, wx, wy, wz;
+    float gt_px, gt_py, gt_pz, gt_qw, gt_qx, gt_qy, gt_qz, gt_vx, gt_vy, gt_vz;
     while (mIMUCSVReader->read_row(ts, wx, wy, wz, ax, ay, az)) {
-        Eigen::Vector3d acceleration(ax, ay, az);
-        Eigen::Vector3d angularVelocity(wx, wy, wz);
+        Eigen::Vector3f acceleration(ax, ay, az);
+        Eigen::Vector3f angularVelocity(wx, wy, wz);
 
         mGTCSVReader->read_row(gt_ts, gt_px, gt_py, gt_pz, gt_qw, gt_qx, gt_qy,
                                gt_qz, gt_vx, gt_vy, gt_vz);
-        Eigen::Vector3d gtPos(gt_px, gt_py, gt_pz);
-        Eigen::Vector3d gtVel(gt_vx, gt_vy, gt_vz);
-        Eigen::Quaterniond gtQuat(gt_qw, gt_qx, gt_qy, gt_qz);
+        Eigen::Vector3f gtPos(gt_px, gt_py, gt_pz);
+        Eigen::Vector3f gtVel(gt_vx, gt_vy, gt_vz);
+        Eigen::Quaternionf gtQuat(gt_qw, gt_qx, gt_qy, gt_qz);
 
         auto data = std::make_shared<std::pair<IMUData, GTData> >(std::pair(
             IMUData(longNanoToTimePoint(ts), acceleration, angularVelocity, mIMUCF,

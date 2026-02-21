@@ -2,8 +2,8 @@
 #include "imu_data.hpp"
 
 IMUData::IMUData(const utils::TTimestamp &aTimestamp,
-                 const Eigen::Vector3d &aAcceleration,
-                 const Eigen::Vector3d &aRotationalVelocity,
+                 const Eigen::Vector3f &aAcceleration,
+                 const Eigen::Vector3f &aRotationalVelocity,
                  const std::string &aCF, const double aGyroscopeNoiseDensity,
                  const double aGyroscopeRandomWalk,
                  const double aAccelerometerNoiseDensity,

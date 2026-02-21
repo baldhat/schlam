@@ -23,10 +23,11 @@ void Transformer::registerTransform(
   } else {
 
     auto outgoingEdges = mEdges[aTransform->mSource];
-    if (std::find_if(outgoingEdges.begin(), outgoingEdges.end(), [&](const Edge& edge_){return edge_.target == aTransform->mTarget;}) == outgoingEdges.end()) {
+    auto foundEdge = std::find_if(outgoingEdges.begin(), outgoingEdges.end(), [&](const Edge& edge_){return edge_.target == aTransform->mTarget;});
+    if (foundEdge == outgoingEdges.end()) {
       mEdges[aTransform->mSource].push_back(edge);
     } else {
-      std::cout << "Not adding edge, because it already exists: " << std::endl;
+      foundEdge->transform = aTransform;
     }
   }
 
@@ -37,11 +38,19 @@ void Transformer::registerTransform(
                                                              {inverse}));
   } else {
     auto outgoingEdges = mEdges[aTransform->mTarget];
-    if (std::find_if(outgoingEdges.begin(), outgoingEdges.end(), [&](const Edge& edge_){return edge_.target == aTransform->mSource;}) == outgoingEdges.end()) {
+    auto foundEdge = std::find_if(outgoingEdges.begin(), outgoingEdges.end(), [&](const Edge& edge_){return edge_.target == aTransform->mSource;});
+    if (foundEdge == outgoingEdges.end()) {
       mEdges[aTransform->mTarget].push_back(inverse);
     } else {
-      std::cout << "Not adding edge, because it already exists: " << std::endl;
+      foundEdge->transform = aTransform->inverse();
     }
+  }
+
+  if (aTransform->mTarget != "world") {
+    mRootedFrames.erase(aTransform->mTarget);
+  }
+  if (aTransform->mSource != "world") {
+    mRootedFrames.erase(aTransform->mSource);
   }
 }
 

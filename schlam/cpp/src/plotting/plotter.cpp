@@ -42,9 +42,13 @@ void Plotter::setup() {
     pangolin::GetBoundWindow()->RemoveCurrent();
 }
 
-void Plotter::updatePointCloud(const std::vector<Eigen::Vector3d> &points) {
+void Plotter::updatePointCloud(const std::vector<Eigen::Vector3f> &aPoints, const std::string aCF) {
+    std::vector<Eigen::Vector3f> points;
+    auto transform = mpTransformer->findTransform(aCF, "world");
+    for (const auto& pt : aPoints) {
+        points.push_back(transform->mRotation * pt + transform->mTranslation);
+    }
     mCloud = points;
-    std::cout << "Updated point cloud" << std::endl;
 }
 
 void Plotter::addTransform(
@@ -57,8 +61,8 @@ void Plotter::addFrustum(const std::shared_ptr<ImageData> aImageData) {
 }
 
 pangolin::OpenGlMatrix
-Plotter::GetPangolinModelMatrix(const Eigen::Matrix3d &R,
-                                const Eigen::Vector3d &t) const {
+Plotter::GetPangolinModelMatrix(const Eigen::Matrix3f &R,
+                                const Eigen::Vector3f &t) const {
     pangolin::OpenGlMatrix m;
     m.SetIdentity();
 
@@ -154,6 +158,11 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) c
     }
 
     auto transformInWorld = mpTransformer->findTransform(aImageData->mCoordinateFrame, "world");
+    if (!transformInWorld) {
+        std::cout << "Unknown transform!" << std::endl;
+        glPopMatrix();
+        return;
+    }
     pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
         transformInWorld->mRotation, transformInWorld->mTranslation);
     glMultMatrixd(Twc.m);
@@ -172,16 +181,16 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) c
 
     // Define the 4 corners in Camera Space using K-inverse
     glTexCoord2f(0, 1);
-    Eigen::Vector3d bl = kInv * Eigen::Vector3d(0, aImageData->mImage.rows, 1) * scale;
+    Eigen::Vector3f bl = kInv * Eigen::Vector3f(0, aImageData->mImage.rows, 1) * scale;
     glVertex3d(bl[0], bl[1], bl[2]);
     glTexCoord2f(1, 1);
-    Eigen::Vector3d br = kInv * Eigen::Vector3d(aImageData->mImage.cols, aImageData->mImage.rows, 1) * scale;
+    Eigen::Vector3f br = kInv * Eigen::Vector3f(aImageData->mImage.cols, aImageData->mImage.rows, 1) * scale;
     glVertex3d(br[0], br[1], br[2]);
     glTexCoord2f(1, 0);
-    Eigen::Vector3d tr = kInv * Eigen::Vector3d(aImageData->mImage.cols, 0, 1) * scale;
+    Eigen::Vector3f tr = kInv * Eigen::Vector3f(aImageData->mImage.cols, 0, 1) * scale;
     glVertex3d(tr[0], tr[1], tr[2]);
     glTexCoord2f(0, 0);
-    Eigen::Vector3d tl = kInv * Eigen::Vector3d(0, 0, 1) * scale;
+    Eigen::Vector3f tl = kInv * Eigen::Vector3f(0, 0, 1) * scale;
     glVertex3d(tl[0], tl[1], tl[2]);
 
     glEnd();
@@ -358,16 +367,16 @@ void Plotter::run() {
         glLineWidth(1.0f);
         DrawGrid(10, 1.0f);
 
-        // // Draw points
-        // if (!mCloud.empty()) {
-        //     glPointSize(5.0f);
-        //     glColor3f(1.f, 0.f, 0.f);
-        //     glBegin(GL_POINTS);
-        //     for (const auto& p : mCloud) {
-        //         glVertex3f(p.x(), p.y(), p.z());
-        //     }
-        //     glEnd();
-        // }
+        // Draw points
+        if (!mCloud.empty()) {
+            glPointSize(5.0f);
+            glColor3f(1.f, 0.f, 0.f);
+            glBegin(GL_POINTS);
+            for (const auto& p : mCloud) {
+                glVertex3f(p.x(), p.y(), p.z());
+            }
+            glEnd();
+        }
 
         if (menu_showFrustums) {
             for (auto &imageData: mFrustums) {

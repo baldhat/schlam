@@ -24,7 +24,7 @@ ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
     for (std::uint32_t i = 0; i < mNumLevels; i++) {
         mLevelFactors.push_back(std::pow(mLevelFactor, i));
     }
-    mOrientationIndices = getPointsInRadius(31);
+    mOrientationIndices = getPointsInRadius(15);
 
     distributeFeaturesToLevels();
 }
@@ -55,11 +55,11 @@ std::vector<KeyPoint> ORBFeatureDetector::calcFeatures(const std::vector<cv::Mat
     std::for_each(std::execution::par, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = calculateFastFeatures(aPyramid[level]);
-        removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 3);
+        levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 16);
         computeHarrisResponse(aPyramid[level], levelFeatures, 7);
         levelFeatures = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight, mNumFeaturesPerLevel[level]);
         rescaleFeatures(levelFeatures, 1.0 / mLevelFactors[level], level);
-        std::lock_guard<std::mutex> guard(mut);
+        std::lock_guard guard(mut);
         features.insert(features.end(), levelFeatures.begin(), levelFeatures.end());
     });
     std::cout << "Returning " << features.size() << " features" << std::endl;
@@ -364,6 +364,7 @@ void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vecto
 
 void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
                                         std::vector<KeyPoint> &aFeatures) {
+    const int radius = 15;
     std::vector<std::vector<KeyPoint *> > featuresByLevel(aPyramid.size());
     for (auto &f: aFeatures) {
         featuresByLevel[f.getLevel()].push_back(&f);
@@ -379,14 +380,13 @@ void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
         const int rows = img.rows;
         const int cols = img.cols;
 
-        const int radius = 15;
-
         for (KeyPoint *f: levelFeatures) {
             int centerX = static_cast<int>(std::round(f->getImgX() * mLevelFactors[level]));
             int centerY = static_cast<int>(std::round(f->getImgY() * mLevelFactors[level]));
 
-            if (centerX < radius || centerX >= cols - radius ||
-                centerY < radius || centerY >= rows - radius) {
+            if (centerX < radius || centerX > (cols - radius) ||
+                centerY < radius || centerY > (rows - radius)) {
+                std::cout << "WARN" << std::endl;
                 continue;
             }
 

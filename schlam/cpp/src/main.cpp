@@ -28,17 +28,22 @@ int main() {
     while (!dataloader->empty()) {
         auto newImageData = dataloader->getNextImageData();
         auto newIMUData = dataloader->getNextIMUData();
-        auto imuData = newIMUData->first;
-        auto gtData = newIMUData->second;
+        std::shared_ptr<IMUData> imuData = std::make_shared<IMUData>(newIMUData->first);
+        std::shared_ptr<GTData> gtData = std::make_shared<GTData>(newIMUData->second);
+        while (imuData->mTimestamp < newImageData->mTimestamp) {
+            newIMUData = dataloader->getNextIMUData();
+            imuData = std::make_shared<IMUData>(newIMUData->first);
+            gtData = std::make_shared<GTData>(newIMUData->second);
+        }
 
         pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
-            "imu", "world", gtData.mRotation,
-            gtData.mPosition));
+            "imu", "world", gtData->mRotation,
+            gtData->mPosition));
 
-        //pTransformer->findTransform("imu", "world");
+        pTransformer->findTransform("imu", "world");
         //pTransformer->findTransform("cam0", "world");
 
-        //plotter->addFrustum(newImageData);
+        plotter->addFrustum(newImageData);
 
         auto now = std::chrono::system_clock::now();
         auto newFeatures = featureDetector->getFeatures(newImageData->mImage);
@@ -55,10 +60,13 @@ int main() {
         auto [matchedOldFeatures, matchedNewFeatures] = getMatched(oldFeatures, newFeatures, matches);
 
         now = std::chrono::system_clock::now();
-        reconstructInitial(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
+        auto [rot, pos, pts] = reconstructInitial(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
         end = std::chrono::system_clock::now();
         std::cout << "Ransac took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count() <<
                 " ms" << std::endl;
+        if (pts.size() > 0) {
+            plotter->updatePointCloud(pts, "cam0");
+        }
 
         oldFeatures = newFeatures;
         oldImageData = newImageData;

@@ -13,9 +13,9 @@
 
 #include <vector>
 
-void reconstructInitial(const std::vector<KeyPoint> aKeypoints1,
+std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > reconstructInitial(const std::vector<KeyPoint> aKeypoints1,
                  const std::vector<KeyPoint> aKeypoints2,
-                 const Eigen::Matrix3d aIntrinsics);
+                 const Eigen::Matrix3f aIntrinsics);
 
 // -----------------------------------------------------------------------
 // ------------------------ Essential Matrix -----------------------------
@@ -38,6 +38,12 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3f &aLine,
                                         const Eigen::Vector3f &aPoint,
                                         double aInvSigmaSquare);
 
+std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>> recoverPoseFromEssential(
+  const Eigen::Matrix3f aEssential,
+  const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
+  const std::vector<bool> &aInliers);
+
+std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f& aP1, const Eigen::Vector3f& aP2, const Eigen::Matrix4f& aTransform);
 // ----------------------------------------------------------------------
 // --------------------------- Homography -------------------------------
 // ----------------------------------------------------------------------
@@ -60,7 +66,8 @@ double calculateErrorHomography(const Eigen::Matrix3f &aHomography,
                                          const Eigen::Vector3f &aP2,
                                          const double aInvSigmaSquare);
 
-// -----------------------------------------------------------------------
+
+// ----------
 // -------------------------- Common -------------------------------------
 // -----------------------------------------------------------------------
 std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>>

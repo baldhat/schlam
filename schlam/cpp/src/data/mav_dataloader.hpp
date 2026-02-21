@@ -54,9 +54,9 @@ private:
   std::shared_ptr<io::CSVReader<11>> mGTCSVReader;
 
   const std::string mCamera0CF{"cam0"};
-  Eigen::Matrix3d mCamera0Intrinsics;
-  Eigen::Matrix3d mCamera0Rotation;
-  Eigen::Vector3d mCamera0Translation;
+  Eigen::Matrix3f mCamera0Intrinsics;
+  Eigen::Matrix3f mCamera0Rotation;
+  Eigen::Vector3f mCamera0Translation;
 
   std::uint32_t mImageIndex{0};
   std::uint32_t mIMUIndex{0};

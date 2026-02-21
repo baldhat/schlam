@@ -24,7 +24,7 @@ std::vector<cv::Mat> buildPyramid(const cv::Mat &aImage, const std::uint8_t aNLe
 
 std::vector<Point> getPointsInRadius(int aRadius);
 
-void removeAtImageBorder(std::vector<KeyPoint> &aKps, const std::uint32_t aImageWidth, const std::uint32_t aImageHeight,
+std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint> &aKps, const std::uint32_t aImageWidth, const std::uint32_t aImageHeight,
                          const std::uint16_t aBorderSize);
 
 std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint> &aKeypoints);

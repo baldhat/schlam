@@ -5,7 +5,7 @@
 
 namespace tft {
 
-Transformable3D::Transformable3D(const Eigen::Vector3d &aVector,
+Transformable3D::Transformable3D(const Eigen::Vector3f &aVector,
                                  const std::string &aCoordinateFrame)
     : vector(aVector), coordinateFrame(aCoordinateFrame) {}
 

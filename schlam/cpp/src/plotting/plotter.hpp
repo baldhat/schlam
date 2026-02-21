@@ -23,7 +23,7 @@ public:
     ~Plotter() = default;
 
     // Update point cloud
-    void updatePointCloud(const std::vector<Eigen::Vector3d> &points);
+    void updatePointCloud(const std::vector<Eigen::Vector3f> &points, const std::string aCF);
 
     void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
 
@@ -41,7 +41,7 @@ public:
 
 private:
     std::shared_ptr<tft::Transformer> mpTransformer;
-    std::vector<Eigen::Vector3d> mCloud;
+    std::vector<Eigen::Vector3f> mCloud;
     std::vector<std::shared_ptr<tft::RigidTransform3D> > mTransforms;
     std::vector<std::shared_ptr<ImageData> > mFrustums;
     mutable std::unique_ptr<pangolin::GlTexture> m3DImageTexture;
@@ -76,7 +76,7 @@ private:
 
     void showMatches();
 
-    pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3d &R, const Eigen::Vector3d &t) const;
+    pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3f &R, const Eigen::Vector3f &t) const;
 
     void drawCylinder(float radius, float length, int slices = 16);
 
