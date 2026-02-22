@@ -56,8 +56,11 @@ void Plotter::addTransform(
     mTransforms.push_back(transform);
 }
 
-void Plotter::addFrustum(const std::shared_ptr<ImageData> aImageData) {
-    mFrustums.push_back(aImageData);
+void Plotter::updateFrustum(const std::shared_ptr<ImageData> aImageData) {
+    std::lock_guard guard(mFrustumMutex);
+    mFrustum = aImageData;
+    mFrustumPose = mpTransformer->findTransform(mFrustum->mCoordinateFrame, "world");
+    m3DImageChanged = true;
 }
 
 pangolin::OpenGlMatrix
@@ -144,10 +147,11 @@ void Plotter::drawCylinder(float radius, float length, int slices) {
     glEnd();
 }
 
-void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) const {
+void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform, double alpha) {
+    std::lock_guard guard(mFrustumMutex);
     glPushMatrix();
 
-    if (!m3DImageTexture) {
+    if (m3DImageChanged) {
         m3DImageTexture = std::make_unique<pangolin::GlTexture>(
             aImageData->mImage.cols,
             aImageData->mImage.rows,
@@ -155,16 +159,11 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) c
         );
 
         m3DImageTexture->Upload(aImageData->mImage.data, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+        m3DImageChanged = false;
     }
 
-    auto transformInWorld = mpTransformer->findTransform(aImageData->mCoordinateFrame, "world");
-    if (!transformInWorld) {
-        std::cout << "Unknown transform!" << std::endl;
-        glPopMatrix();
-        return;
-    }
     pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
-        transformInWorld->mRotation, transformInWorld->mTranslation);
+        aTransform->mRotation, aTransform->mTranslation);
     glMultMatrixd(Twc.m);
 
     auto kInv = aImageData->mIntrinsics.inverse().eval();
@@ -378,10 +377,8 @@ void Plotter::run() {
             glEnd();
         }
 
-        if (menu_showFrustums) {
-            for (auto &imageData: mFrustums) {
-                plotFrustum(imageData, menu_3DImageAlpha);
-            }
+        if (menu_showFrustums && mFrustum) {
+            plotFrustum(mFrustum, mFrustumPose, menu_3DImageAlpha);
         }
 
         // Draw all transforms

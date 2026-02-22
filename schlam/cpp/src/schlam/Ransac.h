@@ -47,6 +47,7 @@ std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f& aP1, const Eig
 // ----------------------------------------------------------------------
 // --------------------------- Homography -------------------------------
 // ----------------------------------------------------------------------
+
 void findHomography(
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoint,
     const std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>> &aCandidates,
@@ -66,6 +67,10 @@ double calculateErrorHomography(const Eigen::Matrix3f &aHomography,
                                          const Eigen::Vector3f &aP2,
                                          const double aInvSigmaSquare);
 
+std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>> recoverPoseFromHomography(
+  const Eigen::Matrix3f aHomography,
+  const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
+  const std::vector<bool> &aInliers);
 
 // ----------
 // -------------------------- Common -------------------------------------

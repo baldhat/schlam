@@ -13,6 +13,8 @@
 
 // STL
 #include <vector>
+#include <mutex>
+
 
 class KeyPoint;
 
@@ -27,12 +29,13 @@ public:
 
     void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
 
-    void addFrustum(const std::shared_ptr<ImageData> aImageData);
+    void updateFrustum(const std::shared_ptr<ImageData> aImageData);
 
     void plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &aFeatures);
 
     void plotMatches(const cv::Mat &aImage1, const cv::Mat &aImage2, const std::vector<KeyPoint> &aFeatures1,
-                     const std::vector<KeyPoint> &aFeatures2, const std::vector<std::array<std::uint32_t, 2>> aMatches);
+                     const std::vector<KeyPoint> &aFeatures2,
+                     const std::vector<std::array<std::uint32_t, 2> > aMatches);
 
     // Start visualization (runs in main thread)
     void run();
@@ -43,8 +46,14 @@ private:
     std::shared_ptr<tft::Transformer> mpTransformer;
     std::vector<Eigen::Vector3f> mCloud;
     std::vector<std::shared_ptr<tft::RigidTransform3D> > mTransforms;
-    std::vector<std::shared_ptr<ImageData> > mFrustums;
+
+    std::shared_ptr<tft::RigidTransform3D> mFrustumPose;
+    std::shared_ptr<ImageData> mFrustum;
+    std::mutex mFrustumMutex;
+
+
     mutable std::unique_ptr<pangolin::GlTexture> m3DImageTexture;
+    std::atomic_bool m3DImageChanged{false};
 
     // Feature Image
     mutable std::unique_ptr<pangolin::GlTexture> mFeatureImageTexture;
@@ -66,7 +75,8 @@ private:
                        const bool showFrameNames
     );
 
-    void plotFrustum(std::shared_ptr<ImageData> aImageData, double alpha) const;
+    void plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform,
+                     double alpha);
 
     void setFeatureTexture(const cv::Mat &aImage);
 

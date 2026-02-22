@@ -22,13 +22,13 @@ void Transformer::registerTransform(
         std::pair<std::string, std::vector<Edge>>(aTransform->mSource, {edge}));
   } else {
 
-    auto outgoingEdges = mEdges[aTransform->mSource];
+    auto& outgoingEdges = mEdges[aTransform->mSource];
     auto foundEdge = std::find_if(outgoingEdges.begin(), outgoingEdges.end(), [&](const Edge& edge_){return edge_.target == aTransform->mTarget;});
-    if (foundEdge == outgoingEdges.end()) {
-      mEdges[aTransform->mSource].push_back(edge);
-    } else {
-      foundEdge->transform = aTransform;
+
+    if (foundEdge != outgoingEdges.end()) {
+      outgoingEdges.erase(foundEdge);
     }
+   outgoingEdges.push_back(edge);
   }
 
   // backward edge
@@ -37,13 +37,12 @@ void Transformer::registerTransform(
     mEdges.emplace(std::pair<std::string, std::vector<Edge>>(aTransform->mTarget,
                                                              {inverse}));
   } else {
-    auto outgoingEdges = mEdges[aTransform->mTarget];
+    auto& outgoingEdges = mEdges[aTransform->mTarget];
     auto foundEdge = std::find_if(outgoingEdges.begin(), outgoingEdges.end(), [&](const Edge& edge_){return edge_.target == aTransform->mSource;});
-    if (foundEdge == outgoingEdges.end()) {
-      mEdges[aTransform->mTarget].push_back(inverse);
-    } else {
-      foundEdge->transform = aTransform->inverse();
+    if (foundEdge != outgoingEdges.end()) {
+      outgoingEdges.erase(foundEdge);
     }
+    outgoingEdges.push_back(inverse);
   }
 
   if (aTransform->mTarget != "world") {
@@ -57,7 +56,7 @@ void Transformer::registerTransform(
 Transformable3D Transformer::transform(const Transformable3D &transformable,
                                        const std::string &target) {
   auto transform = findTransform(transformable.getCF(), target);
-  if (transform) {
+  if (transform != nullptr) {
     return transform->apply(transformable);
   } else {
     std::cout << "WARN: No transform found from " << transformable.getCF()
@@ -79,9 +78,10 @@ Transformer::findTransform(const std::string &source,
   }
 
   // Check if the frames are rooted and the transform can just be looked up
-  if (mRootedFrames.count(source) > 0 && mRootedFrames.count(target) > 0) {
-    return mRootedFrames[target] * mRootedFrames[source]->inverse();
-  }
+  // if (mRootedFrames.count(source) > 0 && mRootedFrames.count(target) > 0) {
+  //   std::cout << "Looked up transform " << source << " -> " << target << std::endl;
+  //   return mRootedFrames[target] * mRootedFrames[source]->inverse();
+  // }
 
   // Do an actual BFS search in the tree
   std::queue<std::tuple<std::string, std::shared_ptr<RigidTransform3D>>> queue;

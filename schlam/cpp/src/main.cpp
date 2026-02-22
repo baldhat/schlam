@@ -30,10 +30,12 @@ int main() {
         auto newIMUData = dataloader->getNextIMUData();
         std::shared_ptr<IMUData> imuData = std::make_shared<IMUData>(newIMUData->first);
         std::shared_ptr<GTData> gtData = std::make_shared<GTData>(newIMUData->second);
+        std::uint32_t cnt = 0;
         while (imuData->mTimestamp < newImageData->mTimestamp) {
             newIMUData = dataloader->getNextIMUData();
             imuData = std::make_shared<IMUData>(newIMUData->first);
             gtData = std::make_shared<GTData>(newIMUData->second);
+            cnt++;
         }
 
         pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
@@ -41,9 +43,9 @@ int main() {
             gtData->mPosition));
 
         pTransformer->findTransform("imu", "world");
-        //pTransformer->findTransform("cam0", "world");
+        pTransformer->findTransform("cam0", "world");
 
-        plotter->addFrustum(newImageData);
+        plotter->updateFrustum(newImageData);
 
         auto now = std::chrono::system_clock::now();
         auto newFeatures = featureDetector->getFeatures(newImageData->mImage);
