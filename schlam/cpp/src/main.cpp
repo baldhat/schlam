@@ -62,16 +62,21 @@ int main() {
         auto [matchedOldFeatures, matchedNewFeatures] = getMatched(oldFeatures, newFeatures, matches);
 
         now = std::chrono::system_clock::now();
-        auto [rot, pos, pts] = reconstructInitial(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
+        auto reconstructOpt = reconstructInitial(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
         end = std::chrono::system_clock::now();
         std::cout << "Ransac took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count() <<
                 " ms" << std::endl;
-        if (pts.size() > 0) {
-            plotter->updatePointCloud(pts, "cam0");
+        if (reconstructOpt.has_value()) {
+          auto [R, t, pts] = reconstructOpt.value();
+          if (pts.size() > 0) {
+              plotter->updatePointCloud(pts, "cam0");
+          }
         }
-
-        oldFeatures = newFeatures;
-        oldImageData = newImageData;
+      
+        if (reconstructOpt.has_value()) {
+          oldFeatures = newFeatures;
+          oldImageData = newImageData;
+        }
     }
 
     render_loop.join();

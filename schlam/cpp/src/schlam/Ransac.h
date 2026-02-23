@@ -11,9 +11,10 @@
 
 #include <opencv2/core.hpp>
 
+#include <optional>
 #include <vector>
 
-std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > reconstructInitial(const std::vector<KeyPoint> aKeypoints1,
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> reconstructInitial(const std::vector<KeyPoint> aKeypoints1,
                  const std::vector<KeyPoint> aKeypoints2,
                  const Eigen::Matrix3f aIntrinsics);
 
@@ -38,7 +39,7 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3f &aLine,
                                         const Eigen::Vector3f &aPoint,
                                         double aInvSigmaSquare);
 
-std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>> recoverPoseFromEssential(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> recoverPoseFromEssential(
   const Eigen::Matrix3f aEssential,
   const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
   const std::vector<bool> &aInliers);
@@ -67,7 +68,7 @@ double calculateErrorHomography(const Eigen::Matrix3f &aHomography,
                                          const Eigen::Vector3f &aP2,
                                          const double aInvSigmaSquare);
 
-std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>> recoverPoseFromHomography(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> recoverPoseFromHomography(
   const Eigen::Matrix3f aHomography,
   const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
   const std::vector<bool> &aInliers);

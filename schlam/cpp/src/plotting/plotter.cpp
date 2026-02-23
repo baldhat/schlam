@@ -356,7 +356,7 @@ void Plotter::run() {
     pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
     pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
     pangolin::Var<bool> menu_showFeatures("menu.Show Features", false, true);
-    pangolin::Var<bool> menu_showMatches("menu.Show Matches", false, true);
+    pangolin::Var<bool> menu_showMatches("menu.Show Matches", true, true);
 
     // 3. Main loop
     while (!pangolin::ShouldQuit()) {

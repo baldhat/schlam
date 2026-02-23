@@ -9,10 +9,11 @@
 
 #include <Eigen/Dense>
 
+#include <optional>
 #include <random>
 #include <set>
 
-std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > reconstructInitial(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> reconstructInitial(
     const std::vector<KeyPoint> aKeypoints1,
     const std::vector<KeyPoint> aKeypoints2,
     const Eigen::Matrix3f aIntrinsics) {
@@ -54,7 +55,7 @@ std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > reco
 // ------------------------------------------------------------
 // ---------------------- Homography --------------------------
 // ------------------------------------------------------------
-std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>> recoverPoseFromHomography(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> recoverPoseFromHomography(
   const Eigen::Matrix3f aHomography,
   const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
   const std::vector<bool> &aInliers) {
@@ -118,7 +119,7 @@ std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>> recov
     std::uint32_t secondBstNumPositive{0};
     int numInliers = 0;
     for (const auto& inlier : aInliers) {
-        numInliers += inlier;
+        numInliers += inlier ? 1 : 0;
     }
 
 
@@ -140,7 +141,6 @@ std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>> recov
                 numPositive++;
             }
         }
-        std::cout << "Num positive: " << numPositive << std::endl;
         if (numPositive > bestNumPositive) {
             secondBstNumPositive = bestNumPositive;
             bestNumPositive = numPositive;
@@ -152,13 +152,17 @@ std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>> recov
         }
     }
 
+    std::cout << "Best num positive: " << bestNumPositive << std::endl;
+    std::cout << "Second Best num positive: " << secondBstNumPositive<< std::endl;
+    std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive<0.75*bestNumPositive && bestNumPositive > 0.9 * numInliers) {
         std::cout << "Best solution is valid" << std::endl;
+        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>>({bestRot, bestTrans, reconstructedPts});
     } else {
         std::cout << "Best solution is not that much better" << std::endl;
+        return std::nullopt;
     }
 
-    return {bestRot, bestTrans, reconstructedPts};
 }
 
 void findHomography(
@@ -339,7 +343,7 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3f &aLine,
     return (residual * residual / denominator) * aInvSigmaSquare;
 }
 
-std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > recoverPoseFromEssential(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> recoverPoseFromEssential(
     const Eigen::Matrix3f aEssential,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
     const std::vector<bool> &aInliers) {
@@ -364,6 +368,12 @@ std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > reco
     std::vector<Eigen::Vector3f> reconstructedPts;
     reconstructedPts.reserve(aInliers.size());
     std::uint32_t bestNumPositive{0};
+    std::uint32_t secondBstNumPositive{0};
+    int numInliers = 0;
+    for (const auto& inlier : aInliers) {
+        numInliers += inlier ? 1 : 0;
+    }
+
     for (std::uint32_t i = 0; i < 4; ++i) {
         std::uint32_t numPositive{0};
         Eigen::Matrix4f transformMat = Eigen::Matrix4f::Identity();
@@ -383,13 +393,27 @@ std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > reco
             }
         }
         if (numPositive > bestNumPositive) {
+            secondBstNumPositive = bestNumPositive;
             bestNumPositive = numPositive;
             bestRot = Rs[i];
             bestTrans = ts[i]; //-Rs[i]*ts[i]; // TODO: Why different to what is used above?
             reconstructedPts = pts;
+        } else if (numPositive > secondBstNumPositive) {
+            secondBstNumPositive = numPositive;
         }
     }
-    return {bestRot, bestTrans, reconstructedPts};
+
+    std::cout << "Best num positive: " << bestNumPositive << std::endl;
+    std::cout << "Second Best num positive: " << secondBstNumPositive<< std::endl;
+    std::cout << "Num inliers: " << numInliers << std::endl;
+    if (secondBstNumPositive<0.75*bestNumPositive && bestNumPositive > 0.9 * numInliers) {
+        std::cout << "Best solution is valid" << std::endl;
+        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>>({bestRot, bestTrans, reconstructedPts});
+    } else {
+        std::cout << "Best solution is not that much better" << std::endl;
+        return std::nullopt;
+    }
+
 }
 
 std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f &aP1, const Eigen::Vector3f &aP2,
