@@ -12,12 +12,18 @@
 #include <optional>
 #include <random>
 #include <set>
+#include <opencv2/core/eigen.hpp>
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> reconstructInitial(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > > reconstructInitial(
     const std::vector<KeyPoint> aKeypoints1,
     const std::vector<KeyPoint> aKeypoints2,
     const Eigen::Matrix3f aIntrinsics) {
     assert(aKeypoints1.size() == aKeypoints2.size());
+
+    if (aKeypoints1.size() < 8 || aKeypoints2.size() < 8) {
+        std::cout << "WARN: Not enough matches found!" << std::endl;
+        return std::nullopt;
+    }
 
     Eigen::Matrix3f invIntrinsics = aIntrinsics.inverse().cast<float>();
 
@@ -45,30 +51,47 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     std::cout << (rh > 0.45 ? "Choosing Homography" : "Choosing Essential")
             << std::endl;
     if (rh > 0.45) {
-        //recoverPoseFromHomography(aIntrinsics.inverse() * homography * aIntrinsics);
-        return recoverPoseFromHomography(essential, {points1, points2}, inliersEssential);
+        // cv::Mat ho;
+        // cv::eigen2cv(homography, ho);
+        //cv::Mat
+        // cv::decomposeHomographyMat()
+        return recoverPoseFromHomography(homography, {points1, points2}, inliersHomography);
     } else {
-        return recoverPoseFromEssential(essential, {points1, points2}, inliersEssential);
+        cv::Mat R1;
+        cv::Mat R2;
+        cv::Vec3f t;
+        cv::Mat ess;
+        cv::eigen2cv(essential, ess);
+        cv::decomposeEssentialMat(ess, R1, R2, t);
+        std::cout << "OpenCV: " << R1 << " or " << R2 << std::endl;
+        auto output = recoverPoseFromEssential(essential, {points1, points2}, inliersEssential);
+        if (output.has_value()) {
+            auto [R, t, pts] = output.value();
+            std::cout << "Ours: " << R << std::endl;
+        }
+        return output;
     }
 }
 
 // ------------------------------------------------------------
 // ---------------------- Homography --------------------------
 // ------------------------------------------------------------
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> recoverPoseFromHomography(
-  const Eigen::Matrix3f aHomography,
-  const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-  const std::vector<bool> &aInliers) {
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > > recoverPoseFromHomography(
+    const Eigen::Matrix3f aHomography,
+    const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
+    const std::vector<bool> &aInliers) {
     Eigen::JacobiSVD<Eigen::MatrixXf> svd(aHomography, Eigen::ComputeFullV);
     auto normalizedHomography = (1.0 / svd.singularValues()[1]) * aHomography;
     auto normalizedSVD = normalizedHomography.jacobiSvd(Eigen::ComputeEigenvectors | Eigen::ComputeFullV);
     auto lambdas = normalizedSVD.singularValues();
-    auto stretch = sqrt(lambdas[0] * lambdas[0] - 1);
-    auto compression = sqrt(1 - lambdas[2] * lambdas[2]);
-    auto V = normalizedSVD.matrixV();
-    auto norm = sqrt(stretch * stretch + compression * compression);
-    stretch /= norm;
-    compression /= norm;
+    auto stretch = sqrt(
+        (lambdas[0] * lambdas[0] - lambdas[1] * lambdas[1]) / (lambdas[0] * lambdas[0] - lambdas[2] * lambdas[2]));
+    auto compression = sqrt(
+        (lambdas[1] * lambdas[1] - lambdas[2] * lambdas[2]) / (lambdas[0] * lambdas[0] - lambdas[2] * lambdas[2]));
+    //auto V = normalizedSVD.matrixV();
+    //auto norm = sqrt(stretch * stretch + compression * compression);
+    //stretch /= norm;
+    //compression /= norm;
     std::vector<std::tuple<Eigen::Matrix3f, Eigen::Vector3f> > solutions;
     auto combinations = std::vector<std::array<int, 2> >{
         {1, 1},
@@ -76,9 +99,14 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         {-1, 1},
         {-1, -1}
     };
+    // if (std::abs(lambdas[0] - lambdas[1]) > 0.000001) {
+    //     combinations.emplace_back(
+    //
+    // }
+
+
     for (const auto &combination: combinations) {
         Eigen::Vector3f x = {combination[0] * stretch, 0, combination[1] * compression};
-        auto normal = V * x;
         auto sin = ((lambdas[0] - lambdas[2]) * x[0] * x[2]);
         auto cos = lambdas[0] * x[2] * x[2] + lambdas[2] * x[0] * x[0];
         Eigen::Matrix3f R{
@@ -95,7 +123,6 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     }
     for (const auto &combination: combinations) {
         Eigen::Vector3f x = {combination[0] * stretch, 0, combination[1] * compression};
-        auto normal = V * x;
         auto sin = ((lambdas[0] + lambdas[2]) * x[0] * x[2]);
         auto cos = lambdas[0] * x[2] * x[2] + lambdas[1] * x[0] * x[0];
         Eigen::Matrix3f R{
@@ -118,7 +145,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     std::uint32_t bestNumPositive{0};
     std::uint32_t secondBstNumPositive{0};
     int numInliers = 0;
-    for (const auto& inlier : aInliers) {
+    for (const auto &inlier: aInliers) {
         numInliers += inlier ? 1 : 0;
     }
 
@@ -141,6 +168,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
                 numPositive++;
             }
         }
+        std::cout << "Num positive: " << numPositive << std::endl;
         if (numPositive > bestNumPositive) {
             secondBstNumPositive = bestNumPositive;
             bestNumPositive = numPositive;
@@ -153,16 +181,16 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     }
 
     std::cout << "Best num positive: " << bestNumPositive << std::endl;
-    std::cout << "Second Best num positive: " << secondBstNumPositive<< std::endl;
+    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
     std::cout << "Num inliers: " << numInliers << std::endl;
-    if (secondBstNumPositive<0.75*bestNumPositive && bestNumPositive > 0.9 * numInliers) {
+    if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
         std::cout << "Best solution is valid" << std::endl;
-        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>>({bestRot, bestTrans, reconstructedPts});
-    } else {
-        std::cout << "Best solution is not that much better" << std::endl;
-        return std::nullopt;
+        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > >({
+            bestRot, bestTrans, reconstructedPts
+        });
     }
-
+    std::cout << "Best solution is not that much better" << std::endl;
+    return std::nullopt;
 }
 
 void findHomography(
@@ -285,10 +313,17 @@ computeEssential(std::array<Eigen::Matrix<float, 8, 3>, 2> &aPoints) {
         res.block<8, 3>(0, j * 3) =
                 aPoints[0].array().colwise() * aPoints[1].col(j).array();
     }
-    Eigen::JacobiSVD<Eigen::MatrixXf> svd(res, Eigen::ComputeFullV);
+    auto svd = res.jacobiSvd(Eigen::ComputeFullV);
     Eigen::Matrix<float, 3, 3, Eigen::RowMajor> essential(
         svd.matrixV().col(8).data());
-    return essential;
+
+    auto svd_e = essential.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Vector3f s = svd_e.singularValues();
+
+    float avg_s = (s(0) + s(1)) / 2.0f;
+    Eigen::DiagonalMatrix<float, 3> S_new(avg_s, avg_s, 0.0f);
+
+    return svd_e.matrixU() * S_new * svd_e.matrixV().transpose();
 }
 
 double
@@ -343,15 +378,16 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3f &aLine,
     return (residual * residual / denominator) * aInvSigmaSquare;
 }
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> recoverPoseFromEssential(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > > recoverPoseFromEssential(
     const Eigen::Matrix3f aEssential,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
     const std::vector<bool> &aInliers) {
     auto essentialSVD = aEssential.jacobiSvd(Eigen::ComputeFullV);
-    auto lastVColumn = essentialSVD.matrixV().col(2);
+    auto t = essentialSVD.matrixV().col(2);
     Eigen::Matrix3f skewMat;
-    skewMat << 0, -lastVColumn[2], lastVColumn[1], lastVColumn[2], 0, -lastVColumn[0], -lastVColumn[1], lastVColumn[0],
-            0;
+    skewMat.block<1, 3>(0, 0) = Eigen::Vector3f{0, -t[2], t[1]};
+    skewMat.block<1, 3>(1, 0) = Eigen::Vector3f{t[2], 0, -t[0]};
+    skewMat.block<1, 3>(2, 0) = Eigen::Vector3f{-t[1], t[0], 0};
     auto svd = (aEssential * skewMat).jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
     auto ur = svd.matrixU();
     auto vr = svd.matrixV();
@@ -360,8 +396,9 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     ur.col(2) = -ur.col(2);
     auto R2 = ur * vr.transpose();
     auto R2_ = R2 * R2.determinant();
-    std::array<Eigen::Vector3f, 4> ts = {lastVColumn, lastVColumn, -lastVColumn, -lastVColumn};
-    std::array<Eigen::Matrix3f, 4> Rs = {R1, R2, R1, R2};
+
+    std::array<Eigen::Vector3f, 4> ts = {t, t, -t, -t};
+    std::array<Eigen::Matrix3f, 4> Rs = {R1_, R2_, R1_, R2_};
 
     Eigen::Matrix3f bestRot;
     Eigen::Vector3f bestTrans;
@@ -370,7 +407,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     std::uint32_t bestNumPositive{0};
     std::uint32_t secondBstNumPositive{0};
     int numInliers = 0;
-    for (const auto& inlier : aInliers) {
+    for (const auto &inlier: aInliers) {
         numInliers += inlier ? 1 : 0;
     }
 
@@ -381,7 +418,6 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         transformMat.block<3, 1>(0, 3) = -Rs[i] * ts[i];
         std::vector<Eigen::Vector3f> pts;
         pts.reserve(aInliers.size());
-
 
         for (std::uint32_t j = 0; j < aAllPoints[0].size(); ++j) {
             if (!aInliers[j]) continue;
@@ -404,37 +440,42 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     }
 
     std::cout << "Best num positive: " << bestNumPositive << std::endl;
-    std::cout << "Second Best num positive: " << secondBstNumPositive<< std::endl;
+    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
     std::cout << "Num inliers: " << numInliers << std::endl;
-    if (secondBstNumPositive<0.75*bestNumPositive && bestNumPositive > 0.9 * numInliers) {
+    if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
         std::cout << "Best solution is valid" << std::endl;
-        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>>({bestRot, bestTrans, reconstructedPts});
+        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > >({
+            bestRot, bestTrans, reconstructedPts
+        });
     } else {
         std::cout << "Best solution is not that much better" << std::endl;
         return std::nullopt;
     }
-
 }
 
 std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f &aP1, const Eigen::Vector3f &aP2,
                                            const Eigen::Matrix4f &aTransform) {
-    Eigen::Matrix<float, 3, 4> PI;
-    PI.block<3, 3>(0, 0) = Eigen::Matrix3f::Identity();
-    PI.block<3, 1>(0, 3) = Eigen::Vector3f(0, 0, 0);
-    auto phi = PI * aTransform;
+    Eigen::Matrix<float,3,4> P1;
+    P1.setZero();
+    P1.block<3,3>(0,0) = Eigen::Matrix3f::Identity();
 
-    auto A0 = aP1.x() * PI.row(2) - PI.row(0);
-    auto A1 = aP1.y() * PI.row(2) - PI.row(1);
-    auto A2 = aP2.x() * phi.row(2) - phi.row(0);
-    auto A3 = aP2.y() * phi.row(2) - phi.row(1);
+    Eigen::Matrix<float,3,4> P2;
+    P2.setZero();
+    P2.block<3,3>(0,0) = aTransform.block<3,3>(0,0);
+    P2.block<3,1>(0,3) = aTransform.block<3,1>(0,3);
 
-    Eigen::Matrix4f A(4, 4);
-    A << A0, A1, A2, A3;
+    Eigen::Matrix4f A;
+    A.row(0) = aP1.x() * P1.row(2) - P1.row(0);
+    A.row(1) = aP1.y() * P1.row(2) - P1.row(1);
+    A.row(2) = aP2.x() * P2.row(2) - P2.row(0);
+    A.row(3) = aP2.y() * P2.row(2) - P2.row(1);
+
     auto svd = A.jacobiSvd(Eigen::ComputeFullV);
     auto pt1_3d = svd.matrixV().col(3);
     auto pt2_3d = aTransform * pt1_3d;
-    Eigen::Vector3f pt1 = pt1_3d.topRows(3) / pt1_3d[3];
-    Eigen::Vector3f pt2 = pt2_3d.topRows(3) / pt2_3d[3];
+
+    Eigen::Vector3f pt1 = pt1_3d.head(3)/pt1_3d(3);
+    Eigen::Vector3f pt2 = pt2_3d.head(3)/pt2_3d(3);
 
     return {pt1, pt2};
 }

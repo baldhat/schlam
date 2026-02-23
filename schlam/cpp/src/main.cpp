@@ -10,7 +10,7 @@
 #include "schlam/Matcher.h"
 
 const std::filesystem::path mavDataPath(
-    "/root/dev/data/schlam/vicon_room1/V1_01_easy/V1_01_easy/mav0/");
+    "/home/baldhat/dev/slam/MAV/vicon_room1/V1_01_easy/V1_01_easy/mav0/");
 
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
