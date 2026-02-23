@@ -6,3 +6,8 @@
 *.idx
 **/CMakeUserPresets.json
 schlam/cpp/CMakeUserPresets.json
+**/bin/
+**/lib/
+**/lib64/
+**/pyvenv.cfg
+schlam/lib64

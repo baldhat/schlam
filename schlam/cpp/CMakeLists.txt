@@ -20,7 +20,7 @@ find_package(fast-cpp-csv-parser REQUIRED)
 find_package(TBB REQUIRED)
 
 # 2. Find System Pangolin
-set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
+# set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
 find_package(Pangolin REQUIRED CONFIG)
 include_directories(${Pangolin_INCLUDE_DIRS})
 

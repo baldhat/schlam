@@ -333,10 +333,11 @@ void Plotter::run() {
         pangolin::ModelViewLookAt(20, -20, 20, 0, 0, 0, pangolin::AxisZ));
 
     // 2. 3D viewport
-    pangolin::Handler3D handler(s_cam);
+    pangolin::Handler3D handler(s_cam, pangolin::AxisZ);
     pangolin::View &d_cam = pangolin::CreateDisplay()
             .SetBounds(0.0, 1.0, 0.0, 1.0, 1920.0f / 1080.0f)
             .SetHandler(&handler);
+
 
     pangolin::View &featureView = pangolin::CreateDisplay()
             .SetBounds(0.6, 1.0, 0.6, 1.0, 1920.f / 1080)
