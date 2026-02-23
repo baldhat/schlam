@@ -379,33 +379,40 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3f &aLine,
 }
 
 std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > > recoverPoseFromEssential(
-    const Eigen::Matrix3f aEssential,
-    const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-    const std::vector<bool> &aInliers) {
-    auto essentialSVD = aEssential.jacobiSvd(Eigen::ComputeFullV);
-    auto t = essentialSVD.matrixV().col(2);
-    Eigen::Matrix3f skewMat;
-    skewMat.block<1, 3>(0, 0) = Eigen::Vector3f{0, -t[2], t[1]};
-    skewMat.block<1, 3>(1, 0) = Eigen::Vector3f{t[2], 0, -t[0]};
-    skewMat.block<1, 3>(2, 0) = Eigen::Vector3f{-t[1], t[0], 0};
-    auto svd = (aEssential * skewMat).jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
-    auto ur = svd.matrixU();
-    auto vr = svd.matrixV();
-    auto R1 = ur * vr.transpose();
-    auto R1_ = R1 * R1.determinant();
-    ur.col(2) = -ur.col(2);
-    auto R2 = ur * vr.transpose();
-    auto R2_ = R2 * R2.determinant();
+        const Eigen::Matrix3f aEssential,
+        const std::array<std::vector<Eigen::Vector3f>, 2>& aAllPoints,
+        const std::vector<bool>& aInliers) {
 
-    std::array<Eigen::Vector3f, 4> ts = {t, t, -t, -t};
-    std::array<Eigen::Matrix3f, 4> Rs = {R1_, R2_, R1_, R2_};
+    // 1. Standard Hartley-Zisserman SVD on the Essential Matrix
+    auto svd = aEssential.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Matrix3f U = svd.matrixU();
+    Eigen::Matrix3f V = svd.matrixV();
+
+    // Ensure U and V are proper rotation matrices (det == 1)
+    if (U.determinant() < 0) { U.col(2) *= -1.f; }
+    if (V.determinant() < 0) { V.col(2) *= -1.f; }
+
+    // W matrix for 90-degree rotation
+    Eigen::Matrix3f W;
+    W << 0, -1, 0,
+         1,  0, 0,
+         0,  0, 1;
+
+    // 2. The 4 possible solutions
+    Eigen::Matrix3f R1 = U * W * V.transpose();
+    Eigen::Matrix3f R2 = U * W.transpose() * V.transpose();
+    Eigen::Vector3f t = U.col(2); // This is already the translation vector 't', not the center 'C'
+
+    std::array<Eigen::Matrix3f, 4> Rs = {R1, R1, R2, R2};
+    std::array<Eigen::Vector3f, 4> ts = {t, -t, t, -t};
 
     Eigen::Matrix3f bestRot;
     Eigen::Vector3f bestTrans;
     std::vector<Eigen::Vector3f> reconstructedPts;
-    reconstructedPts.reserve(aInliers.size());
-    std::uint32_t bestNumPositive{0};
-    std::uint32_t secondBstNumPositive{0};
+    reconstructedPts.reserve(aInliers.size()); // Note: This drops outliers from the final vector length
+
+    std::uint32_t bestNumPositive = 0;
+    std::uint32_t secondBstNumPositive = 0;
     int numInliers = 0;
     for (const auto &inlier: aInliers) {
         numInliers += inlier ? 1 : 0;
