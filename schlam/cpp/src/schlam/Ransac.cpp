@@ -57,17 +57,15 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         // cv::decomposeHomographyMat()
         return recoverPoseFromHomography(homography, {points1, points2}, inliersHomography);
     } else {
-        cv::Mat R1;
-        cv::Mat R2;
-        cv::Vec3f t;
-        cv::Mat ess;
-        cv::eigen2cv(essential, ess);
-        cv::decomposeEssentialMat(ess, R1, R2, t);
-        std::cout << "OpenCV: " << R1 << " or " << R2 << std::endl;
+        //cv::Mat R1;
+        //cv::Mat R2;
+        // cv::Vec3f t;
+        // cv::Mat ess;
+        // cv::eigen2cv(essential, ess);
+        // cv::decomposeEssentialMat(ess, R1, R2, t);
         auto output = recoverPoseFromEssential(essential, {points1, points2}, inliersEssential);
         if (output.has_value()) {
             auto [R, t, pts] = output.value();
-            std::cout << "Ours: " << R << std::endl;
         }
         return output;
     }
@@ -168,7 +166,6 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
                 numPositive++;
             }
         }
-        std::cout << "Num positive: " << numPositive << std::endl;
         if (numPositive > bestNumPositive) {
             secondBstNumPositive = bestNumPositive;
             bestNumPositive = numPositive;
@@ -180,16 +177,11 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         }
     }
 
-    std::cout << "Best num positive: " << bestNumPositive << std::endl;
-    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
-    std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
-        std::cout << "Best solution is valid" << std::endl;
         return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > >({
             bestRot, bestTrans, reconstructedPts
         });
     }
-    std::cout << "Best solution is not that much better" << std::endl;
     return std::nullopt;
 }
 
@@ -446,16 +438,11 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         }
     }
 
-    std::cout << "Best num positive: " << bestNumPositive << std::endl;
-    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
-    std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
-        std::cout << "Best solution is valid" << std::endl;
         return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > >({
             bestRot, bestTrans, reconstructedPts
         });
     } else {
-        std::cout << "Best solution is not that much better" << std::endl;
         return std::nullopt;
     }
 }

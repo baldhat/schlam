@@ -2,20 +2,24 @@
 #include "src/tft/rigid_transform_3d.hpp"
 
 #include <Eigen/Dense>
-#include <chrono>
+
 #include <csv.h>
+
 #include <opencv2/imgcodecs.hpp>
 
-#include <thread>
 #include <yaml-cpp/yaml.h>
 
 // STL
 #include <filesystem>
-#include <iostream>
+#include <thread>
+#include <chrono>
 
-MAVDataloader::MAVDataloader(const std::filesystem::path &aDatasetPath,
-                             std::shared_ptr<tft::Transformer> aTransformer)
-    : mDatasetPath(aDatasetPath), mImageQueue(3), mIMUQueue(20) {
+
+MAVDataloader::MAVDataloader(std::shared_ptr<tft::Transformer> aTransformer)
+    : mImageQueue(3), mIMUQueue(20) {
+    const char* raw_val = std::getenv("MAV_PATH");
+    mDatasetPath  = (raw_val != nullptr) ? raw_val : "";
+
     loadCamera0Config();
     aTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
         mCamera0CF, mIMUCF, mCamera0Rotation, mCamera0Translation));

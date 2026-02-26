@@ -15,8 +15,7 @@
 class MAVDataloader {
 
 public:
-  MAVDataloader(const std::filesystem::path &aDatasetPath,
-                std::shared_ptr<tft::Transformer> aTransformer);
+  MAVDataloader(std::shared_ptr<tft::Transformer> aTransformer);
 
   ~MAVDataloader();
 

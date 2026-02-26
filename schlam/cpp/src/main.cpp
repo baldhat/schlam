@@ -9,23 +9,22 @@
 #include "schlam/ORBFeatureDetector.h"
 #include "schlam/Matcher.h"
 
-const std::filesystem::path mavDataPath(
-    "/home/baldhat/dev/slam/MAV/vicon_room1/V1_01_easy/V1_01_easy/mav0/");
-
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
 
     auto plotter = std::make_shared<Plotter>(pTransformer);
     auto render_loop = std::thread([plotter] { plotter->run(); });
 
-    auto dataloader = std::make_shared<MAVDataloader>(mavDataPath, pTransformer);
+    auto dataloader = std::make_shared<MAVDataloader>(pTransformer);
 
     auto featureDetector = std::make_shared<ORBFeatureDetector>(500, plotter, 8);
 
     auto oldImageData = dataloader->getNextImageData();
     auto oldFeatures = featureDetector->getFeatures(oldImageData->mImage);
+    int i = 0;
 
     while (!dataloader->empty()) {
+      i++;
         auto newImageData = dataloader->getNextImageData();
         auto newIMUData = dataloader->getNextIMUData();
         std::shared_ptr<IMUData> imuData = std::make_shared<IMUData>(newIMUData->first);
@@ -77,6 +76,8 @@ int main() {
           oldFeatures = newFeatures;
           oldImageData = newImageData;
         }
+
+        if (i == 200) std::this_thread::sleep_for(std::chrono::seconds(30));
     }
 
     render_loop.join();
