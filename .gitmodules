@@ -1,0 +1,3 @@
+[submodule "schlam/cpp/external/g2o"]
+	path = schlam/cpp/external/g2o
+	url = https://github.com/RainerKuemmerle/g2o

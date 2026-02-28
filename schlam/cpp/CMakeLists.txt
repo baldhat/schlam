@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(G2O_USE_LOGGING ON)
 
 add_compile_options(-fno-omit-frame-pointer)
 
@@ -24,8 +25,12 @@ find_package(TBB REQUIRED)
 find_package(Pangolin REQUIRED CONFIG)
 include_directories(${Pangolin_INCLUDE_DIRS})
 
+
+add_subdirectory(external/g2o)
+
 include_directories(
-  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/src
+  external/g2o
 )
 
 # LIBRARY
@@ -62,6 +67,11 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/Matcher.h
     src/schlam/Ransac.cpp
     src/schlam/Ransac.h
+    src/schlam/Optimizer.cpp
+    src/schlam/Optimizer.h
+    src/schlam/Frame.cpp
+    src/schlam/Frame.h
+    src/schlam/Optimizer.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} 
@@ -73,6 +83,7 @@ target_link_libraries(${PROJECT_NAME}
     Boost::boost Boost::thread
     fast-cpp-csv-parser::fast-cpp-csv-parser
     TBB::tbb
+    g2o::core g2o::solver_csparse g2o::solver_dense g2o::solver_eigen g2o::types_sim3 g2o::types_slam3d
 )
 
 

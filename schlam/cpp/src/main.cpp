@@ -1,13 +1,14 @@
 #include "data/mav_dataloader.hpp"
 #include "plotting/plotter.hpp"
-#include "src/schlam/Ransac.h"
-#include "src/tft/rigid_transform_3d.hpp"
+#include "schlam/Ransac.h"
+#include "tft/rigid_transform_3d.hpp"
 
 #include <chrono>
 #include <thread>
 
 #include "schlam/ORBFeatureDetector.h"
 #include "schlam/Matcher.h"
+#include "schlam/Optimizer.h"
 
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
@@ -19,12 +20,14 @@ int main() {
 
     auto featureDetector = std::make_shared<ORBFeatureDetector>(500, plotter, 8);
 
+    auto optimizer = std::make_shared<Optimizer>();
+
     auto oldImageData = dataloader->getNextImageData();
     auto oldFeatures = featureDetector->getFeatures(oldImageData->mImage);
-    int i = 0;
 
     while (!dataloader->empty()) {
-      i++;
+        auto now = std::chrono::system_clock::now();
+
         auto newImageData = dataloader->getNextImageData();
         auto newIMUData = dataloader->getNextIMUData();
         std::shared_ptr<IMUData> imuData = std::make_shared<IMUData>(newIMUData->first);
@@ -46,38 +49,36 @@ int main() {
 
         plotter->updateFrustum(newImageData);
 
-        auto now = std::chrono::system_clock::now();
         auto newFeatures = featureDetector->getFeatures(newImageData->mImage);
-        auto end = std::chrono::system_clock::now();
-        std::cout << "ORBFeatures took: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count() <<
-                " ms" << std::endl;
 
-        now = std::chrono::system_clock::now();
         auto matches = match(oldFeatures, newFeatures, 20);
-        end = std::chrono::system_clock::now();
-        std::cout << "Found " << matches.size() << " matches in " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count() <<
-                " ms" << std::endl;
         plotter->plotMatches(oldImageData->mImage, newImageData->mImage, oldFeatures, newFeatures, matches);
         auto [matchedOldFeatures, matchedNewFeatures] = getMatched(oldFeatures, newFeatures, matches);
 
-        now = std::chrono::system_clock::now();
+
         auto reconstructOpt = reconstructInitial(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
-        end = std::chrono::system_clock::now();
-        std::cout << "Ransac took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count() <<
-                " ms" << std::endl;
+
         if (reconstructOpt.has_value()) {
-          auto [R, t, pts] = reconstructOpt.value();
-          if (pts.size() > 0) {
-              plotter->updatePointCloud(pts, "cam0");
-          }
-        }
-      
-        if (reconstructOpt.has_value()) {
-          oldFeatures = newFeatures;
-          oldImageData = newImageData;
+            auto [R, t, pts, inliers] = reconstructOpt.value();
+            auto filtered_pts = filterByInlierMask(pts, inliers);
+            auto pts2D_1 = filterByInlierMask(matchedOldFeatures, inliers);
+            auto pts2D_2 = filterByInlierMask(matchedNewFeatures, inliers);
+            if (filtered_pts.size() > 0) {
+                plotter->updatePointCloud(filtered_pts, "cam0");
+            }
+
+            auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, newImageData->mIntrinsics);
         }
 
-        if (i == 200) std::this_thread::sleep_for(std::chrono::seconds(30));
+        if (reconstructOpt.has_value()) {
+            oldFeatures = newFeatures;
+            oldImageData = newImageData;
+        }
+
+        auto end = std::chrono::system_clock::now();
+        std::cout << "Frame handling took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count()
+                <<
+                " ms" << std::endl;
     }
 
     render_loop.join();

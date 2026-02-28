@@ -14,16 +14,17 @@
 #include <optional>
 #include <vector>
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> reconstructInitial(const std::vector<KeyPoint> aKeypoints1,
-                 const std::vector<KeyPoint> aKeypoints2,
-                 const Eigen::Matrix3f aIntrinsics);
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > > reconstructInitial(
+    const std::vector<KeyPoint> aKeypoints1,
+    const std::vector<KeyPoint> aKeypoints2,
+    const Eigen::Matrix3f aIntrinsics);
 
 // -----------------------------------------------------------------------
 // ------------------------ Essential Matrix -----------------------------
 // -----------------------------------------------------------------------
 void findEssential(
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoint,
-    const std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>> &aCandidates,
+    const std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2> > &aCandidates,
     std::vector<bool> &aInliers, double &aScore,
     Eigen::Matrix3f &aEssentialMatrix, double aSigma);
 
@@ -39,19 +40,22 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3f &aLine,
                                         const Eigen::Vector3f &aPoint,
                                         double aInvSigmaSquare);
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> recoverPoseFromEssential(
-  const Eigen::Matrix3f aEssential,
-  const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-  const std::vector<bool> &aInliers);
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
+recoverPoseFromEssential(
+    const Eigen::Matrix3f aEssential,
+    const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
+    const std::vector<bool> &aInliers);
 
-std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f& aP1, const Eigen::Vector3f& aP2, const Eigen::Matrix4f& aTransform);
+std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f &aP1, const Eigen::Vector3f &aP2,
+                                           const Eigen::Matrix4f &aTransform);
+
 // ----------------------------------------------------------------------
 // --------------------------- Homography -------------------------------
 // ----------------------------------------------------------------------
 
 void findHomography(
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoint,
-    const std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>> &aCandidates,
+    const std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2> > &aCandidates,
     std::vector<bool> &aInliers, double &aScore,
     Eigen::Matrix3f &aHomographyMatrix, double aSigma);
 
@@ -64,25 +68,26 @@ checkHomography(const Eigen::Matrix3f &aHomography,
                 std::vector<bool> &aInliers, const double aSigma);
 
 double calculateErrorHomography(const Eigen::Matrix3f &aHomography,
-                                         const Eigen::Vector3f &aP1,
-                                         const Eigen::Vector3f &aP2,
-                                         const double aInvSigmaSquare);
+                                const Eigen::Vector3f &aP1,
+                                const Eigen::Vector3f &aP2,
+                                const double aInvSigmaSquare);
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>> recoverPoseFromHomography(
-  const Eigen::Matrix3f aHomography,
-  const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-  const std::vector<bool> &aInliers);
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
+recoverPoseFromHomography(
+    const Eigen::Matrix3f aHomography,
+    const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
+    const std::vector<bool> &aInliers);
 
 // ----------
 // -------------------------- Common -------------------------------------
 // -----------------------------------------------------------------------
-std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>>
+std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2> >
 selectCandidates(const std::vector<Eigen::Vector3f> &aPoints1,
                  const std::vector<Eigen::Vector3f> &aPoints2,
                  std::uint32_t aNumCandidates);
 
 std::vector<std::uint32_t> getSparseSubset(std::uint32_t N, std::uint32_t T);
 
-Eigen::Vector3f euclidean(const Eigen::Vector4f& aPT);
+Eigen::Vector3f euclidean(const Eigen::Vector4f &aPT);
 
 #endif // SCHLAM_RANSAC_H

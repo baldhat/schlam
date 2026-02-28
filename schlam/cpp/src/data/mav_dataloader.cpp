@@ -1,5 +1,5 @@
 #include "mav_dataloader.hpp"
-#include "src/tft/rigid_transform_3d.hpp"
+#include "tft/rigid_transform_3d.hpp"
 
 #include <Eigen/Dense>
 

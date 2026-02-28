@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "src/schlam/Ransac.h"
+#include "schlam/Ransac.h"
 
 class RansacTest : public ::testing::Test {
   protected:

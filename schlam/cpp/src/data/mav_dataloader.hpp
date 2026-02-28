@@ -2,7 +2,7 @@
 #pragma once
 #include "image_data.hpp"
 #include "imu_data.hpp"
-#include "src/tft/transformer.hpp"
+#include "tft/transformer.hpp"
 #include "gt_data.hpp"
 
 #include <boost/thread/concurrent_queues/sync_bounded_queue.hpp>

@@ -8,7 +8,7 @@
 
 #include "KeyPoint.h"
 #include "utils.h"
-#include "src/plotting/plotter.hpp"
+#include "plotting/plotter.hpp"
 
 class ORBFeatureDetector {
 public:

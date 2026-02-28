@@ -7,7 +7,7 @@
 #include <pangolin/gl/gldraw.h>
 #include <pangolin/handler/handler.h>
 
-#include "src/schlam/KeyPoint.h"
+#include "schlam/KeyPoint.h"
 
 // -----------------------------
 // Helper drawing functions

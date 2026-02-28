@@ -6,7 +6,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "src/plotting/plotter.hpp"
+#include "plotting/plotter.hpp"
 
 #include <algorithm>
 #include <bitset>

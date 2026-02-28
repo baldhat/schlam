@@ -14,7 +14,7 @@
 #include <set>
 #include <opencv2/core/eigen.hpp>
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > > reconstructInitial(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > > reconstructInitial(
     const std::vector<KeyPoint> aKeypoints1,
     const std::vector<KeyPoint> aKeypoints2,
     const Eigen::Matrix3f aIntrinsics) {
@@ -57,15 +57,17 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         // cv::decomposeHomographyMat()
         return recoverPoseFromHomography(homography, {points1, points2}, inliersHomography);
     } else {
-        //cv::Mat R1;
-        //cv::Mat R2;
+        // cv::Mat R1;
+        // cv::Mat R2;
         // cv::Vec3f t;
         // cv::Mat ess;
         // cv::eigen2cv(essential, ess);
         // cv::decomposeEssentialMat(ess, R1, R2, t);
+        // std::cout << "OpenCV: " << R1 << " or " << R2 << std::endl;
         auto output = recoverPoseFromEssential(essential, {points1, points2}, inliersEssential);
         if (output.has_value()) {
-            auto [R, t, pts] = output.value();
+            auto [R, t, pts, inliers] = output.value();
+            // std::cout << "Ours: " << R << std::endl;
         }
         return output;
     }
@@ -74,7 +76,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
 // ------------------------------------------------------------
 // ---------------------- Homography --------------------------
 // ------------------------------------------------------------
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > > recoverPoseFromHomography(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > > recoverPoseFromHomography(
     const Eigen::Matrix3f aHomography,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
     const std::vector<bool> &aInliers) {
@@ -142,6 +144,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     reconstructedPts.reserve(aInliers.size());
     std::uint32_t bestNumPositive{0};
     std::uint32_t secondBstNumPositive{0};
+    std::vector<bool> triangulated;
     int numInliers = 0;
     for (const auto &inlier: aInliers) {
         numInliers += inlier ? 1 : 0;
@@ -154,34 +157,47 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         transformMat.block<3, 3>(0, 0) = std::get<0>(solutions[i]);
         transformMat.block<3, 1>(0, 3) = -std::get<0>(solutions[i]) * std::get<1>(solutions[i]);
         std::vector<Eigen::Vector3f> pts;
+        std::vector<bool> currentTriangulated;
         pts.reserve(aInliers.size());
 
-
         for (std::uint32_t j = 0; j < aAllPoints[0].size(); ++j) {
-            if (!aInliers[j]) continue;
+            // if (!aInliers[j]) {
+            //     currentTriangulated.push_back(false);
+            //     continue;
+            // }
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
             const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
             pts.push_back(p1_3D);
             if (p1_3D.z() > 0 && p2_3D.z() > 0) {
                 numPositive++;
+                currentTriangulated.push_back(true);
+            } else {
+                currentTriangulated.push_back(false);
             }
         }
+        std::cout << "Num positive: " << numPositive << std::endl;
         if (numPositive > bestNumPositive) {
             secondBstNumPositive = bestNumPositive;
             bestNumPositive = numPositive;
             bestRot = std::get<0>(solutions[i]);
             bestTrans = std::get<1>(solutions[i]); //-Rs[i]*ts[i]; // TODO: Why different to what is used above?
             reconstructedPts = pts;
+            triangulated = currentTriangulated;
         } else if (numPositive > secondBstNumPositive) {
             secondBstNumPositive = numPositive;
         }
     }
 
+    std::cout << "Best num positive: " << bestNumPositive << std::endl;
+    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
+    std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
-        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > >({
-            bestRot, bestTrans, reconstructedPts
+        std::cout << "Best solution is valid" << std::endl;
+        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >({
+            bestRot, bestTrans, reconstructedPts, triangulated
         });
     }
+    std::cout << "Best solution is not that much better" << std::endl;
     return std::nullopt;
 }
 
@@ -370,7 +386,7 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3f &aLine,
     return (residual * residual / denominator) * aInvSigmaSquare;
 }
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > > recoverPoseFromEssential(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > > recoverPoseFromEssential(
         const Eigen::Matrix3f aEssential,
         const std::array<std::vector<Eigen::Vector3f>, 2>& aAllPoints,
         const std::vector<bool>& aInliers) {
@@ -401,6 +417,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     Eigen::Matrix3f bestRot;
     Eigen::Vector3f bestTrans;
     std::vector<Eigen::Vector3f> reconstructedPts;
+    std::vector<bool> triangulated;
     reconstructedPts.reserve(aInliers.size()); // Note: This drops outliers from the final vector length
 
     std::uint32_t bestNumPositive = 0;
@@ -416,15 +433,22 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         transformMat.block<3, 3>(0, 0) = Rs[i];
         transformMat.block<3, 1>(0, 3) = -Rs[i] * ts[i];
         std::vector<Eigen::Vector3f> pts;
+        std::vector<bool> currentTriangulated;
         pts.reserve(aInliers.size());
 
         for (std::uint32_t j = 0; j < aAllPoints[0].size(); ++j) {
-            if (!aInliers[j]) continue;
+            // if (!aInliers[j]) {
+            //     currentTriangulated.push_back(false);
+            //     continue;
+            // }
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
             const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
             pts.push_back(p1_3D);
             if (p1_3D.z() > 0 && p2_3D.z() > 0) {
                 numPositive++;
+                currentTriangulated.push_back(true);
+            } else {
+                currentTriangulated.push_back(false);
             }
         }
         if (numPositive > bestNumPositive) {
@@ -433,16 +457,22 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
             bestRot = Rs[i];
             bestTrans = ts[i]; //-Rs[i]*ts[i]; // TODO: Why different to what is used above?
             reconstructedPts = pts;
+            triangulated = currentTriangulated;
         } else if (numPositive > secondBstNumPositive) {
             secondBstNumPositive = numPositive;
         }
     }
 
+    std::cout << "Best num positive: " << bestNumPositive << std::endl;
+    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
+    std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
-        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > >({
-            bestRot, bestTrans, reconstructedPts
+        std::cout << "Best solution is valid" << std::endl;
+        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >({
+            bestRot, bestTrans, reconstructedPts, triangulated
         });
     } else {
+        std::cout << "Best solution is not that much better" << std::endl;
         return std::nullopt;
     }
 }

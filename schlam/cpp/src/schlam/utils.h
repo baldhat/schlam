@@ -31,4 +31,16 @@ std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint> &aKeypoints);
 
 std::vector<Eigen::Vector3f> toNormalized(const std::vector<Eigen::Vector3f>& aPoints , const Eigen::Matrix3f &aInvIntrinsics);
 
+template <typename T>
+std::vector<T> filterByInlierMask(const std::vector<T>& input, const std::vector<bool>& mask) {
+    std::vector<T> result;
+    assert(input.size() == mask.size());
+    for (int i = 0; i < input.size(); ++i) {
+        if (mask[i]) {
+            result.push_back(input[i]);
+        }
+    }
+    return result;
+}
+
 #endif //SCHLAM_UTILS_H
