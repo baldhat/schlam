@@ -78,10 +78,9 @@ Transformer::findTransform(const std::string &source,
   }
 
   // Check if the frames are rooted and the transform can just be looked up
-  // if (mRootedFrames.count(source) > 0 && mRootedFrames.count(target) > 0) {
-  //   std::cout << "Looked up transform " << source << " -> " << target << std::endl;
-  //   return mRootedFrames[target] * mRootedFrames[source]->inverse();
-  // }
+  if (mRootedFrames.count(source) > 0 && mRootedFrames.count(target) > 0) {
+    return mRootedFrames[target] * mRootedFrames[source]->inverse();
+  }
 
   // Do an actual BFS search in the tree
   std::queue<std::tuple<std::string, std::shared_ptr<RigidTransform3D>>> queue;

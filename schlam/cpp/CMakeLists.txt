@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(G2O_USE_LOGGING ON)
+set(SPDLOG_FMT_EXTERNAL)
+add_definitions(-DSPDLOG_FMT_EXTERNAL)
 
 add_compile_options(-fno-omit-frame-pointer)
 
@@ -19,6 +21,7 @@ find_package(Boost REQUIRED COMPONENTS thread)
 find_package(yaml-cpp REQUIRED)
 find_package(fast-cpp-csv-parser REQUIRED)
 find_package(TBB REQUIRED)
+find_package(spdlog REQUIRED)
 
 # 2. Find System Pangolin
 # set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
@@ -75,7 +78,8 @@ add_library(${PROJECT_NAME} SHARED
 )
 
 target_link_libraries(${PROJECT_NAME} 
-    fmt::fmt 
+    fmt::fmt
+    spdlog::spdlog
     ${OpenCV_LIBS} 
     Eigen3::Eigen 
     pango_core pango_display pango_plot pango_image pango_geometry pango_opengl pango_video

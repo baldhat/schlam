@@ -18,13 +18,17 @@ int main() {
 
     auto dataloader = std::make_shared<MAVDataloader>(pTransformer);
 
-    auto featureDetector = std::make_shared<ORBFeatureDetector>(500, plotter, 8);
+    auto featureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 1);
 
     auto optimizer = std::make_shared<Optimizer>();
 
     auto oldImageData = dataloader->getNextImageData();
     auto oldFeatures = featureDetector->getFeatures(oldImageData->mImage);
 
+
+    bool initialized = false;
+    int i = 0;
+    std::string prevFrameName;
     while (!dataloader->empty()) {
         auto now = std::chrono::system_clock::now();
 
@@ -38,6 +42,14 @@ int main() {
             imuData = std::make_shared<IMUData>(newIMUData->first);
             gtData = std::make_shared<GTData>(newIMUData->second);
             cnt++;
+        }
+
+        if (!initialized) {
+            pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
+                "imu_pred0", "world", gtData->mRotation,
+                gtData->mPosition));
+            initialized = true;
+            prevFrameName = "imu_pred0";
         }
 
         pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
@@ -55,7 +67,6 @@ int main() {
         plotter->plotMatches(oldImageData->mImage, newImageData->mImage, oldFeatures, newFeatures, matches);
         auto [matchedOldFeatures, matchedNewFeatures] = getMatched(oldFeatures, newFeatures, matches);
 
-
         auto reconstructOpt = reconstructInitial(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
 
         if (reconstructOpt.has_value()) {
@@ -63,11 +74,17 @@ int main() {
             auto filtered_pts = filterByInlierMask(pts, inliers);
             auto pts2D_1 = filterByInlierMask(matchedOldFeatures, inliers);
             auto pts2D_2 = filterByInlierMask(matchedNewFeatures, inliers);
-            if (filtered_pts.size() > 0) {
-                plotter->updatePointCloud(filtered_pts, "cam0");
-            }
 
             auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, newImageData->mIntrinsics);
+
+            plotter->updatePointCloud(std::get<2>(updated), "cam0");
+
+            std::string frameName = "imu_pred" + std::to_string(++i);
+            pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
+                frameName, prevFrameName, std::get<0>(updated),
+                std::get<1>(updated)));
+            pTransformer->findTransform(frameName, "world");
+            prevFrameName = frameName;
         }
 
         if (reconstructOpt.has_value()) {
@@ -79,6 +96,9 @@ int main() {
         std::cout << "Frame handling took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count()
                 <<
                 " ms" << std::endl;
+        while (plotter->shouldPause()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
 
     render_loop.join();

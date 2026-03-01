@@ -24,6 +24,8 @@ public:
 
     ~Plotter() = default;
 
+    bool shouldPause();
+
     // Update point cloud
     void updatePointCloud(const std::vector<Eigen::Vector3f> &points, const std::string aCF);
 
@@ -43,6 +45,9 @@ public:
     void setup();
 
 private:
+    std::atomic_bool mPause{false};
+    std::mutex mPauseMutex;
+
     std::shared_ptr<tft::Transformer> mpTransformer;
     std::vector<Eigen::Vector3f> mCloud;
     std::vector<std::shared_ptr<tft::RigidTransform3D> > mTransforms;

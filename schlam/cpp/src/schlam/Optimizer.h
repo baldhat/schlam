@@ -15,16 +15,13 @@ public:
     Optimizer();
 
 
-    std::tuple<std::vector<std::vector<KeyPoint>>,Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>>
+    std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> >
     optimize(const std::vector<std::vector<KeyPoint>>& aKeyPoints,
              const Eigen::Matrix3f& aRotation,
              const Eigen::Vector3f& aTranslation,
              const std::vector<Eigen::Vector3f>& aPoints,
              const Eigen::Matrix3f& aIntrinsics);
 
-    g2o::SparseOptimizer mOptimizer;
-    std::string mSolverName{"lm_fix6_3"};
-    g2o::OptimizationAlgorithmProperty mSolverProperty;
 };
 
 

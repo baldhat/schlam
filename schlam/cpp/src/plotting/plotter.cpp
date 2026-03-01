@@ -33,6 +33,11 @@ Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer)
     setup();
 }
 
+bool Plotter::shouldPause() {
+    std::lock_guard guard(mPauseMutex);
+    return mPause;
+}
+
 void Plotter::setup() {
     pangolin::CreateWindowAndBind("3D Visualizer", 1920, 1080);
 
@@ -351,6 +356,7 @@ void Plotter::run() {
 
     pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0,
                                             pangolin::Attach::Pix(200));
+    pangolin::Var<bool> menu_pause("menu.Pause", false, true);
     pangolin::Var<bool> menu_showFrames("menu.Show Frames", true, true);
     pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
     pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
@@ -380,6 +386,14 @@ void Plotter::run() {
 
         if (menu_showFrustums && mFrustum) {
             plotFrustum(mFrustum, mFrustumPose, menu_3DImageAlpha);
+        }
+
+        if (menu_pause) {
+            std::lock_guard guard(mPauseMutex);
+            mPause = true;
+        } else {
+            std::lock_guard guard(mPauseMutex);
+            mPause = false;
         }
 
         // Draw all transforms

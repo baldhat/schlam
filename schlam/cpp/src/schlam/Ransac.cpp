@@ -48,9 +48,9 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
                    scoreHomography, homography, sigma);
 
     auto rh = scoreHomography / (scoreHomography + scoreEssential);
-    std::cout << (rh > 0.45 ? "Choosing Homography" : "Choosing Essential")
+    std::cout << (rh > 0.4 ? "Choosing Homography" : "Choosing Essential")
             << std::endl;
-    if (rh > 0.45) {
+    if (rh > 0.4) {
         // cv::Mat ho;
         // cv::eigen2cv(homography, ho);
         //cv::Mat
@@ -168,14 +168,14 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
             const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
             pts.push_back(p1_3D);
-            if (p1_3D.z() > 0 && p2_3D.z() > 0) {
+            if (aInliers[j] && p1_3D.z() > 0 && p2_3D.z() > 0) {
                 numPositive++;
                 currentTriangulated.push_back(true);
             } else {
                 currentTriangulated.push_back(false);
             }
         }
-        std::cout << "Num positive: " << numPositive << std::endl;
+        // std::cout << "Num positive: " << numPositive << std::endl;
         if (numPositive > bestNumPositive) {
             secondBstNumPositive = bestNumPositive;
             bestNumPositive = numPositive;
@@ -188,11 +188,11 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         }
     }
 
-    std::cout << "Best num positive: " << bestNumPositive << std::endl;
-    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
-    std::cout << "Num inliers: " << numInliers << std::endl;
+    // std::cout << "Best num positive: " << bestNumPositive << std::endl;
+    // std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
+    // std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
-        std::cout << "Best solution is valid" << std::endl;
+        // std::cout << "Best solution is valid" << std::endl;
         return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >({
             bestRot, bestTrans, reconstructedPts, triangulated
         });
@@ -437,14 +437,10 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         pts.reserve(aInliers.size());
 
         for (std::uint32_t j = 0; j < aAllPoints[0].size(); ++j) {
-            // if (!aInliers[j]) {
-            //     currentTriangulated.push_back(false);
-            //     continue;
-            // }
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
             const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
             pts.push_back(p1_3D);
-            if (p1_3D.z() > 0 && p2_3D.z() > 0) {
+            if (aInliers[j] && p1_3D.z() > 0 && p2_3D.z() > 0) {
                 numPositive++;
                 currentTriangulated.push_back(true);
             } else {
@@ -455,7 +451,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
             secondBstNumPositive = bestNumPositive;
             bestNumPositive = numPositive;
             bestRot = Rs[i];
-            bestTrans = ts[i]; //-Rs[i]*ts[i]; // TODO: Why different to what is used above?
+            bestTrans = ts[i];
             reconstructedPts = pts;
             triangulated = currentTriangulated;
         } else if (numPositive > secondBstNumPositive) {
@@ -463,11 +459,11 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         }
     }
 
-    std::cout << "Best num positive: " << bestNumPositive << std::endl;
-    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
-    std::cout << "Num inliers: " << numInliers << std::endl;
+    // std::cout << "Best num positive: " << bestNumPositive << std::endl;
+    // std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
+    // std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
-        std::cout << "Best solution is valid" << std::endl;
+        // std::cout << "Best solution is valid" << std::endl;
         return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >({
             bestRot, bestTrans, reconstructedPts, triangulated
         });

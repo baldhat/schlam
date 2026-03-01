@@ -27,9 +27,6 @@ MAVDataloader::MAVDataloader(std::shared_ptr<tft::Transformer> aTransformer)
         mGTCamera0CF, mGTCF, mCamera0Rotation, mCamera0Translation));
 
     loadIMUConfig();
-    aTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
-        mIMUCF, mCamera0CF, mCamera0Rotation, mCamera0Translation));
-
     mImageLoader = std::thread(std::bind(&MAVDataloader::loadImageData, this));
     mIMULoader = std::thread(std::bind(&MAVDataloader::loadIMUData, this));
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
