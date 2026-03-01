@@ -75,9 +75,11 @@ int main() {
             auto pts2D_1 = filterByInlierMask(matchedOldFeatures, inliers);
             auto pts2D_2 = filterByInlierMask(matchedNewFeatures, inliers);
 
+            plotter->updatePointCloud(filtered_pts, "cam0");
+
             auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, newImageData->mIntrinsics);
 
-            plotter->updatePointCloud(std::get<2>(updated), "cam0");
+            //plotter->updatePointCloud(std::get<2>(updated), "cam0");
 
             std::string frameName = "imu_pred" + std::to_string(++i);
             pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(

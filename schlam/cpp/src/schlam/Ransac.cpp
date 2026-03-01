@@ -48,26 +48,27 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
                    scoreHomography, homography, sigma);
 
     auto rh = scoreHomography / (scoreHomography + scoreEssential);
-    std::cout << (rh > 0.4 ? "Choosing Homography" : "Choosing Essential")
+    std::cout << (rh > 0.5 ? "Choosing Homography" : "Choosing Essential")
             << std::endl;
-    if (rh > 0.4) {
+    if (rh > 0.5) {
         // cv::Mat ho;
         // cv::eigen2cv(homography, ho);
         //cv::Mat
         // cv::decomposeHomographyMat()
         return recoverPoseFromHomography(homography, {points1, points2}, inliersHomography);
     } else {
-        // cv::Mat R1;
-        // cv::Mat R2;
-        // cv::Vec3f t;
-        // cv::Mat ess;
-        // cv::eigen2cv(essential, ess);
-        // cv::decomposeEssentialMat(ess, R1, R2, t);
-        // std::cout << "OpenCV: " << R1 << " or " << R2 << std::endl;
+
         auto output = recoverPoseFromEssential(essential, {points1, points2}, inliersEssential);
         if (output.has_value()) {
             auto [R, t, pts, inliers] = output.value();
-            // std::cout << "Ours: " << R << std::endl;
+            std::cout << "Ours: " << R << std::endl;
+            cv::Mat R1;
+            cv::Mat R2;
+            cv::Vec3f t_;
+            cv::Mat ess;
+            cv::eigen2cv(essential, ess);
+            cv::decomposeEssentialMat(ess, R1, R2, t_);
+            std::cout << "OpenCV: " << R1 << " or " << R2 << std::endl;
         }
         return output;
     }
@@ -155,7 +156,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         std::uint32_t numPositive{0};
         Eigen::Matrix4f transformMat = Eigen::Matrix4f::Identity();
         transformMat.block<3, 3>(0, 0) = std::get<0>(solutions[i]);
-        transformMat.block<3, 1>(0, 3) = -std::get<0>(solutions[i]) * std::get<1>(solutions[i]);
+        transformMat.block<3, 1>(0, 3) = std::get<1>(solutions[2]); //-std::get<0>(solutions[i]) * std::get<1>(solutions[i]);
         std::vector<Eigen::Vector3f> pts;
         std::vector<bool> currentTriangulated;
         pts.reserve(aInliers.size());
@@ -395,10 +396,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     auto svd = aEssential.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix3f U = svd.matrixU();
     Eigen::Matrix3f V = svd.matrixV();
-
-    // Ensure U and V are proper rotation matrices (det == 1)
-    if (U.determinant() < 0) { U.col(2) *= -1.f; }
-    if (V.determinant() < 0) { V.col(2) *= -1.f; }
+    Eigen::Vector3f t = U.col(2);
 
     // W matrix for 90-degree rotation
     Eigen::Matrix3f W;
@@ -409,7 +407,10 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     // 2. The 4 possible solutions
     Eigen::Matrix3f R1 = U * W * V.transpose();
     Eigen::Matrix3f R2 = U * W.transpose() * V.transpose();
-    Eigen::Vector3f t = U.col(2); // This is already the translation vector 't', not the center 'C'
+
+    // Ensure U and V are proper rotation matrices (det == 1)
+    if (R1.determinant() < 0) { R1 = -R1; }
+    if (R2.determinant() < 0) { R2 = -R2; }
 
     std::array<Eigen::Matrix3f, 4> Rs = {R1, R1, R2, R2};
     std::array<Eigen::Vector3f, 4> ts = {t, -t, t, -t};
@@ -418,7 +419,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     Eigen::Vector3f bestTrans;
     std::vector<Eigen::Vector3f> reconstructedPts;
     std::vector<bool> triangulated;
-    reconstructedPts.reserve(aInliers.size()); // Note: This drops outliers from the final vector length
+    reconstructedPts.reserve(aInliers.size());
 
     std::uint32_t bestNumPositive = 0;
     std::uint32_t secondBstNumPositive = 0;
@@ -431,7 +432,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         std::uint32_t numPositive{0};
         Eigen::Matrix4f transformMat = Eigen::Matrix4f::Identity();
         transformMat.block<3, 3>(0, 0) = Rs[i];
-        transformMat.block<3, 1>(0, 3) = -Rs[i] * ts[i];
+        transformMat.block<3, 1>(0, 3) = ts[i]; //-Rs[i] * ts[i];
         std::vector<Eigen::Vector3f> pts;
         std::vector<bool> currentTriangulated;
         pts.reserve(aInliers.size());
