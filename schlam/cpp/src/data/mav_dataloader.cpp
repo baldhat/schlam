@@ -39,7 +39,7 @@ MAVDataloader::~MAVDataloader() {
         mIMULoader.join();
 }
 
-bool MAVDataloader::empty() { return mImageQueue.empty() || mIMUQueue.empty(); }
+bool MAVDataloader::empty() { return (mImageQueue.empty() && mAllImagesRead) || (mIMUQueue.empty() && mAllIMURead); }
 
 void MAVDataloader::loadCamera0Config() {
     mCamera0Path = mDatasetPath / "cam0";
@@ -103,6 +103,7 @@ void MAVDataloader::loadImageData() {
             timestamp, image, mCamera0Intrinsics, mCamera0CF);
         mImageQueue.push_back(imageData);
     }
+    mAllImagesRead = true;
 }
 
 void MAVDataloader::loadIMUData() {
@@ -128,6 +129,7 @@ void MAVDataloader::loadIMUData() {
 
         mIMUQueue.push_back(data);
     }
+    mAllIMURead = true;
 }
 
 std::shared_ptr<ImageData> MAVDataloader::getNextImageData() {

@@ -59,6 +59,8 @@ private:
 
   std::uint32_t mImageIndex{0};
   std::uint32_t mIMUIndex{0};
+  std::atomic_bool mAllImagesRead{false};
+  std::atomic_bool mAllIMURead{false};
 };
 
 std::chrono::system_clock::time_point

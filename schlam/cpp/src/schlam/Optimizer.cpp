@@ -107,7 +107,7 @@ Optimizer::optimize(const std::vector<std::vector<KeyPoint> > &aKeyPoints,
     // OPTIMIZE
     optimizer.initializeOptimization();
     optimizer.setVerbose(true);
-    optimizer.optimize(100);
+    optimizer.optimize(50);
 
     g2o::VertexSE3Expmap* v_pose = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(1));
     g2o::SE3Quat optimized_pose = v_pose->estimate();

@@ -49,16 +49,17 @@ reconstructInitial(
                    scoreHomography, homography, sigma);
 
     auto rh = scoreHomography / (scoreHomography + scoreEssential);
-    std::cout << (rh > 0.5 ? "Choosing Homography" : "Choosing Essential")
+    std::cout << (rh > 0.45 ? "Choosing Homography" : "Choosing Essential")
             << std::endl;
-    if (rh > 0.5) {
+    if (rh > 0.45) {
         // cv::Mat ho;
         // cv::eigen2cv(homography, ho);
         //cv::Mat
         // cv::decomposeHomographyMat()
         return recoverPoseFromHomography(homography, {points1, points2}, inliersHomography);
     } else {
-        auto output = recoverPoseFromEssential(essential, {points1, points2}, inliersEssential);
+        auto output = recoverPoseFromEssential(essential, {points1, points2}, {aKeypoints1, aKeypoints2},
+                                               inliersEssential, aIntrinsics);
         if (output.has_value()) {
             auto [R, t, pts, inliers] = output.value();
             std::cout << "Ours: " << R << std::endl;
@@ -77,7 +78,8 @@ reconstructInitial(
 // ------------------------------------------------------------
 // ---------------------- Homography --------------------------
 // ------------------------------------------------------------
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > > recoverPoseFromHomography(
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
+recoverPoseFromHomography(
     const Eigen::Matrix3f aHomography,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
     const std::vector<bool> &aInliers) {
@@ -195,7 +197,8 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     // std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
         // std::cout << "Best solution is valid" << std::endl;
-        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >({
+        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<
+            bool> > >({
             bestRot, bestTrans, reconstructedPts, triangulated
         });
     }
@@ -393,7 +396,8 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
 recoverPoseFromEssential(
     const Eigen::Matrix3f aEssential,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-    const std::vector<bool> &aInliers) {
+    const std::array<std::vector<KeyPoint>, 2> &aKeyPoints,
+    const std::vector<bool> &aInliers, const Eigen::Matrix3f aIntrinsics) {
     auto svd = aEssential.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix3f U = svd.matrixU();
     Eigen::Matrix3f V = svd.matrixV();
@@ -401,8 +405,8 @@ recoverPoseFromEssential(
 
     Eigen::Matrix3f W;
     W << 0, -1, 0,
-         1,  0, 0,
-         0,  0, 1;
+            1, 0, 0,
+            0, 0, 1;
 
     if (U.determinant() < 0) {
         U.col(2) = -U.col(2);
@@ -424,6 +428,7 @@ recoverPoseFromEssential(
     reconstructedPts.reserve(aInliers.size());
 
     std::uint32_t bestNumPositive = 0;
+    float bestParallax = 0;
     std::uint32_t secondBstNumPositive = 0;
     int numInliers = 0;
     for (const auto &inlier: aInliers) {
@@ -431,41 +436,54 @@ recoverPoseFromEssential(
     }
 
     for (std::uint32_t i = 0; i < 4; ++i) {
-        std::uint32_t numPositive{0};
+        std::uint32_t numValid{0};
         Eigen::Matrix4f transformMat = Eigen::Matrix4f::Identity();
         transformMat.block<3, 3>(0, 0) = Rs[i];
         transformMat.block<3, 1>(0, 3) = ts[i]; //-Rs[i] * ts[i];
         std::vector<Eigen::Vector3f> pts;
         std::vector<bool> currentTriangulated;
         pts.reserve(aInliers.size());
+        std::vector<float> currentParallaxes;
 
         for (std::uint32_t j = 0; j < aAllPoints[0].size(); ++j) {
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
             const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
             pts.push_back(p1_3D);
-            if (aInliers[j] && p1_3D.z() > 0 && p2_3D.z() > 0) {
-                numPositive++;
+            auto kp1 = aKeyPoints[0][i];
+            auto kp2 = aKeyPoints[1][i];
+            auto [valid, parallax] = isValid(p1_3D, p2_3D, Rs[i], ts[i], aIntrinsics, kp1, kp2);
+            currentParallaxes.push_back(parallax);
+            if (aInliers[j] && valid) {
+                numValid++;
                 currentTriangulated.push_back(true);
             } else {
                 currentTriangulated.push_back(false);
             }
         }
-        if (numPositive > bestNumPositive) {
+        float parallax = 0;
+        if (numValid > 0) {
+            std::sort(currentParallaxes.begin(), currentParallaxes.end());
+
+            size_t idx = std::min(50, int(currentParallaxes.size() - 1));
+            parallax = acos(currentParallaxes[idx]) * 180 / CV_PI;
+        }
+        if (numValid > bestNumPositive) {
             secondBstNumPositive = bestNumPositive;
-            bestNumPositive = numPositive;
+            bestNumPositive = numValid;
+            bestParallax = parallax;
             bestRot = Rs[i];
             bestTrans = ts[i];
             reconstructedPts = pts;
             triangulated = currentTriangulated;
-        } else if (numPositive > secondBstNumPositive) {
-            secondBstNumPositive = numPositive;
+        } else if (numValid > secondBstNumPositive) {
+            secondBstNumPositive = numValid;
         }
     }
 
     // std::cout << "Best num positive: " << bestNumPositive << std::endl;
     // std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
     // std::cout << "Num inliers: " << numInliers << std::endl;
-    if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
+    if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers && bestParallax > 1.0) {
         // std::cout << "Best solution is valid" << std::endl;
         return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<
             bool> > >({
@@ -475,6 +493,69 @@ recoverPoseFromEssential(
         std::cout << "Best solution is not that much better" << std::endl;
         return std::nullopt;
     }
+}
+
+std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector3f &p2_3D, const Eigen::Matrix3f &R,
+                               const Eigen::Vector3f &t, const Eigen::Matrix3f &intrinsics, const KeyPoint &aKP1,
+                               const KeyPoint &aKP2) {
+    bool finite = std::isfinite(p1_3D.x()) && std::isfinite(p1_3D.y()) &&
+                  std::isfinite(p1_3D.z());
+    if (!finite) return {false, 0};
+
+    Eigen::Vector3f O2 = -R.transpose() * t;
+
+    Eigen::Vector3f normal1 = p1_3D;
+    float dist1 = normal1.norm();
+
+    Eigen::Vector3f normal2 = p1_3D - O2;
+    float dist2 = normal2.norm();
+
+    float cosParallax = normal1.dot(normal2) / (dist1 * dist2);
+
+    // Check depth in front of first camera (only if enough parallax, as "infinite" points can easily go to negative depth)
+    if (p1_3D(2) <= 0 && cosParallax < 0.99998)
+        return {false, cosParallax};
+
+    // Check depth in front of second camera (only if enough parallax, as "infinite" points can easily go to negative depth)
+    Eigen::Vector3f p3dC2 = R * p1_3D + t;
+    //assert(p3dC2 == p2_3D);
+
+    if (p3dC2(2) <= 0 && cosParallax < 0.99998)
+        return {false, cosParallax};
+
+    // Check reprojection error in first image
+    float im1x, im1y;
+    float invZ1 = 1.0 / p1_3D(2);
+
+    const float fx = intrinsics(0, 0);
+    const float fy = intrinsics(1, 1);
+    const float cx = intrinsics(0, 2);
+    const float cy = intrinsics(1, 2);
+    im1x = fx * p1_3D(0) * invZ1 + cx;
+    im1y = fy * p1_3D(1) * invZ1 + cy;
+
+    float squareError1 = (im1x - aKP1.getImgX()) * (im1x - aKP1.getImgX()) + (im1y - aKP1.getImgY()) * (
+                             im1y - aKP1.getImgY());
+
+    if (squareError1 > 4)
+        return {false, cosParallax};
+
+    // Check reprojection error in second image
+    float im2x, im2y;
+    float invZ2 = 1.0 / p3dC2(2);
+    im2x = fx * p3dC2(0) * invZ2 + cx;
+    im2y = fy * p3dC2(1) * invZ2 + cy;
+
+    float squareError2 = (im2x - aKP2.getImgX()) * (im2x - aKP2.getImgX()) + (im2y - aKP2.getImgY()) * (
+                             im2y - aKP2.getImgY());
+
+    if (squareError2 > 4)
+        return {false, cosParallax};
+
+    if (cosParallax < 0.99998)
+        return {true, cosParallax};
+
+    return {false, cosParallax};
 }
 
 std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f &aP1, const Eigen::Vector3f &aP2,
