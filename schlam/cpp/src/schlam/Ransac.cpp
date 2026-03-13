@@ -14,10 +14,11 @@
 #include <set>
 #include <opencv2/core/eigen.hpp>
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > > reconstructInitial(
-    const std::vector<KeyPoint> aKeypoints1,
-    const std::vector<KeyPoint> aKeypoints2,
-    const Eigen::Matrix3f aIntrinsics) {
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
+reconstructInitial(
+    const std::vector<KeyPoint> &aKeypoints1,
+    const std::vector<KeyPoint> &aKeypoints2,
+    const Eigen::Matrix3f &aIntrinsics) {
     assert(aKeypoints1.size() == aKeypoints2.size());
 
     if (aKeypoints1.size() < 8 || aKeypoints2.size() < 8) {
@@ -57,7 +58,6 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         // cv::decomposeHomographyMat()
         return recoverPoseFromHomography(homography, {points1, points2}, inliersHomography);
     } else {
-
         auto output = recoverPoseFromEssential(essential, {points1, points2}, inliersEssential);
         if (output.has_value()) {
             auto [R, t, pts, inliers] = output.value();
@@ -125,7 +125,7 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     for (const auto &combination: combinations) {
         Eigen::Vector3f x = {combination[0] * stretch, 0, combination[1] * compression};
         auto sin = ((lambdas[0] + lambdas[2]) * x[0] * x[2]);
-        auto cos = lambdas[0] * x[2] * x[2] + lambdas[1] * x[0] * x[0];
+        auto cos = lambdas[0] * x[2] * x[2] + lambdas[2] * x[0] * x[0];
         Eigen::Matrix3f R{
             {cos, 0, sin},
             {0, -1, 0},
@@ -156,7 +156,8 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
         std::uint32_t numPositive{0};
         Eigen::Matrix4f transformMat = Eigen::Matrix4f::Identity();
         transformMat.block<3, 3>(0, 0) = std::get<0>(solutions[i]);
-        transformMat.block<3, 1>(0, 3) = std::get<1>(solutions[2]); //-std::get<0>(solutions[i]) * std::get<1>(solutions[i]);
+        transformMat.block<3, 1>(0, 3) = std::get<1>(solutions[i]);
+        //-std::get<0>(solutions[i]) * std::get<1>(solutions[i]);
         std::vector<Eigen::Vector3f> pts;
         std::vector<bool> currentTriangulated;
         pts.reserve(aInliers.size());
@@ -226,6 +227,7 @@ void findHomography(
 Eigen::Matrix3f
 computeHomography(std::array<Eigen::Matrix<float, 8, 3>, 2> &aPoints) {
     Eigen::Matrix<float, 8, 9> res;
+    res.setZero();
     for (std::uint32_t i = 0; i < 4; i++) {
         Eigen::Vector<float, 9> row1;
         Eigen::Vector<float, 9> row2;
@@ -381,36 +383,36 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3f &aLine,
 
     // Division durch Null verhindern, falls die Linie ungültig ist
     if (denominator < 1e-9) {
-        return 0.0;
+        return std::numeric_limits<double>::max();
     }
 
     return (residual * residual / denominator) * aInvSigmaSquare;
 }
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > > recoverPoseFromEssential(
-        const Eigen::Matrix3f aEssential,
-        const std::array<std::vector<Eigen::Vector3f>, 2>& aAllPoints,
-        const std::vector<bool>& aInliers) {
-
-    // 1. Standard Hartley-Zisserman SVD on the Essential Matrix
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
+recoverPoseFromEssential(
+    const Eigen::Matrix3f aEssential,
+    const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
+    const std::vector<bool> &aInliers) {
     auto svd = aEssential.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix3f U = svd.matrixU();
     Eigen::Matrix3f V = svd.matrixV();
     Eigen::Vector3f t = U.col(2);
 
-    // W matrix for 90-degree rotation
     Eigen::Matrix3f W;
     W << 0, -1, 0,
          1,  0, 0,
          0,  0, 1;
 
-    // 2. The 4 possible solutions
+    if (U.determinant() < 0) {
+        U.col(2) = -U.col(2);
+    }
+    if (V.determinant() < 0) {
+        V.col(2) = -V.col(2);
+    }
+
     Eigen::Matrix3f R1 = U * W * V.transpose();
     Eigen::Matrix3f R2 = U * W.transpose() * V.transpose();
-
-    // Ensure U and V are proper rotation matrices (det == 1)
-    if (R1.determinant() < 0) { R1 = -R1; }
-    if (R2.determinant() < 0) { R2 = -R2; }
 
     std::array<Eigen::Matrix3f, 4> Rs = {R1, R1, R2, R2};
     std::array<Eigen::Vector3f, 4> ts = {t, -t, t, -t};
@@ -465,7 +467,8 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
     // std::cout << "Num inliers: " << numInliers << std::endl;
     if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
         // std::cout << "Best solution is valid" << std::endl;
-        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >({
+        return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<
+            bool> > >({
             bestRot, bestTrans, reconstructedPts, triangulated
         });
     } else {
@@ -476,14 +479,14 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
 
 std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f &aP1, const Eigen::Vector3f &aP2,
                                            const Eigen::Matrix4f &aTransform) {
-    Eigen::Matrix<float,3,4> P1;
+    Eigen::Matrix<float, 3, 4> P1;
     P1.setZero();
-    P1.block<3,3>(0,0) = Eigen::Matrix3f::Identity();
+    P1.block<3, 3>(0, 0) = Eigen::Matrix3f::Identity();
 
-    Eigen::Matrix<float,3,4> P2;
+    Eigen::Matrix<float, 3, 4> P2;
     P2.setZero();
-    P2.block<3,3>(0,0) = aTransform.block<3,3>(0,0);
-    P2.block<3,1>(0,3) = aTransform.block<3,1>(0,3);
+    P2.block<3, 3>(0, 0) = aTransform.block<3, 3>(0, 0);
+    P2.block<3, 1>(0, 3) = aTransform.block<3, 1>(0, 3);
 
     Eigen::Matrix4f A;
     A.row(0) = aP1.x() * P1.row(2) - P1.row(0);
@@ -495,8 +498,8 @@ std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f &aP1, const Eig
     auto pt1_3d = svd.matrixV().col(3);
     auto pt2_3d = aTransform * pt1_3d;
 
-    Eigen::Vector3f pt1 = pt1_3d.head(3)/pt1_3d(3);
-    Eigen::Vector3f pt2 = pt2_3d.head(3)/pt2_3d(3);
+    Eigen::Vector3f pt1 = pt1_3d.head(3) / pt1_3d(3);
+    Eigen::Vector3f pt2 = pt2_3d.head(3) / pt2_3d(3);
 
     return {pt1, pt2};
 }

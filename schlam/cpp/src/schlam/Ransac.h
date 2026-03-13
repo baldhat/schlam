@@ -14,10 +14,11 @@
 #include <optional>
 #include <vector>
 
-std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > > reconstructInitial(
-    const std::vector<KeyPoint> aKeypoints1,
-    const std::vector<KeyPoint> aKeypoints2,
-    const Eigen::Matrix3f aIntrinsics);
+std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
+reconstructInitial(
+    const std::vector<KeyPoint> &aKeypoints1,
+    const std::vector<KeyPoint> &aKeypoints2,
+    const Eigen::Matrix3f &aIntrinsics);
 
 // -----------------------------------------------------------------------
 // ------------------------ Essential Matrix -----------------------------

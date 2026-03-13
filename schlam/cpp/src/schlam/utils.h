@@ -43,4 +43,6 @@ std::vector<T> filterByInlierMask(const std::vector<T>& input, const std::vector
     return result;
 }
 
+Eigen::Matrix3f computeNormalizationMatrix(const std::vector<Eigen::Vector3f>& aPoints);
+
 #endif //SCHLAM_UTILS_H

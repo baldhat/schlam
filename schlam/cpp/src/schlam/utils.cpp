@@ -72,3 +72,27 @@ std::vector<Eigen::Vector3f> toNormalized(const std::vector<Eigen::Vector3f>& aP
   }
   return points;
 }
+
+Eigen::Matrix3f computeNormalizationMatrix(const std::vector<Eigen::Vector3f>& aPoints) {
+  Eigen::Vector2f centroid(0, 0);
+  for (const auto& p : aPoints) {
+    centroid += p.head<2>();
+  }
+  centroid /= static_cast<float>(aPoints.size());
+
+  float meanDist = 0;
+  for (const auto& p : aPoints) {
+    meanDist += (p.head<2>() - centroid).norm();
+  }
+  meanDist /= static_cast<float>(aPoints.size());
+
+  float scale = std::sqrt(2.0f) / meanDist;
+
+  Eigen::Matrix3f T = Eigen::Matrix3f::Identity();
+  T(0, 0) = scale;
+  T(1, 1) = scale;
+  T(0, 2) = -scale * centroid.x();
+  T(1, 2) = -scale * centroid.y();
+
+  return T;
+}
