@@ -8,9 +8,19 @@
 #include "KeyPoint.h"
 
 #include <eigen3/Eigen/Core>
+#include <opencv2/core/mat.hpp>
 
-struct Frame {
-    std::vector<KeyPoint> mKeyPoints;
+#include "QuadTreeNode.h"
+
+class ImageData;
+
+class Frame {
+public:
+    Frame(const std::shared_ptr<ImageData> aImageData);
+
+    cv::Mat mImage;
+    Eigen::Matrix3f mIntrinsics;
+    std::shared_ptr<QuadTreeNode> mKeypointTree;
     Eigen::Matrix3f mRotation;
     Eigen::Vector3f mPosition;
 };

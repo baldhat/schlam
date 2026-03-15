@@ -9,6 +9,8 @@
 #include "KeyPoint.h"
 #include "utils.h"
 #include "plotting/plotter.hpp"
+#include "QuadTreeNode.h"
+#include "Frame.h"
 
 class ORBFeatureDetector {
 public:
@@ -16,13 +18,14 @@ public:
                        const std::uint8_t aNumLevels,
                        const double aLevelFactor = 1 / 1.2);
 
-    std::vector<KeyPoint> getFeatures(const cv::Mat &aImage);
+    void detectFeatures(Frame& frame);
 
     void distributeFeaturesToLevels();
 
 private:
     std::uint32_t mNumFeatures{0};
     std::uint8_t mNumLevels{0};
+    std::uint32_t mOrientationRadius{15};
     double mLevelFactor{0};
     std::vector<double> mLevelFactors;
     std::vector<Point> mOrientationIndices;
@@ -62,25 +65,27 @@ private:
          0,  0,  0,
          1,  2,  1);
 
-    std::vector<KeyPoint> calcFeatures(const std::vector<cv::Mat> &aPyramid);
+    std::unique_ptr<QuadTreeNode> calcFeatures(const std::vector<cv::Mat> &aPyramid);
 
-    void addDescriptors(const std::vector<cv::Mat>& aPyramid, std::vector<KeyPoint>& aFeatures);
+    void addDescriptors(const std::vector<cv::Mat>& aPyramid, QuadTreeNode* aTree);
 
     std::vector<KeyPoint> calculateFastFeatures(const cv::Mat &aImage);
 
     void addOrientation(const std::vector<cv::Mat> &aPyramid,
-                        std::vector<KeyPoint> &aFeatures);
+                        QuadTreeNode* aTree);
 
     void computeHarrisResponse(const cv::Mat &aImage, std::vector<KeyPoint> &aFeatures,
                                const std::uint8_t blockSize = 7, const double aHarrisK = 0.04);
 
     std::tuple<double, double> applyGradKernels(const cv::Mat &aImage, int x, int y);
 
-    std::vector<KeyPoint> filterWithOctree(std::vector<KeyPoint> &aFeatures, const std::uint32_t aWidth,
+    std::unique_ptr<QuadTreeNode> filterWithOctree(std::vector<KeyPoint> &aFeatures, const std::uint32_t aWidth,
                                                            const std::uint32_t aHeight,
                                                            const std::uint32_t aNumFeatures);
 
     void rescaleFeatures(std::vector<KeyPoint>& aFeatures, const double aScale, const std::uint32_t aLevel);
+
+    void retainTopN(QuadTreeNode* aTree, std::uint32_t aTopN);
 };
 
 

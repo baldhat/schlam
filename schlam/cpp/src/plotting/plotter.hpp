@@ -4,6 +4,7 @@
 #include "../tft/rigid_transform_3d.hpp"
 #include "../tft/transformer.hpp"
 #include "../data/image_data.hpp"
+#include "schlam/Frame.h"
 
 // pangolin
 #include <pangolin/pangolin.h>
@@ -33,10 +34,9 @@ public:
 
     void updateFrustum(const std::shared_ptr<ImageData> aImageData);
 
-    void plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &aFeatures);
+    void plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint*> &aFeatures);
 
-    void plotMatches(const cv::Mat &aImage1, const cv::Mat &aImage2, const std::vector<KeyPoint> &aFeatures1,
-                     const std::vector<KeyPoint> &aFeatures2,
+    void plotMatches(const Frame& oldFrame, const Frame& newFrame,
                      const std::vector<std::array<std::uint32_t, 2> > aMatches);
 
     // Start visualization (runs in main thread)

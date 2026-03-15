@@ -16,7 +16,7 @@ public:
 
 
     std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> >
-    optimize(const std::vector<std::vector<KeyPoint>>& aKeyPoints,
+    optimize(const std::vector<std::vector<KeyPoint*>>& aKeyPoints,
              const Eigen::Matrix3f& aRotation,
              const Eigen::Vector3f& aTranslation,
              const std::vector<Eigen::Vector3f>& aPoints,

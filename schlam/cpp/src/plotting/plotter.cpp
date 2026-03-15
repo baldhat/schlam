@@ -205,7 +205,7 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr
     glDepthMask(GL_TRUE);
 }
 
-void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &aFeatures) {
+void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint*> &aFeatures) {
     if (aImage.empty()) {
         std::cout << "Invalid image!" << std::endl;
         return;
@@ -218,8 +218,8 @@ void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &a
     }
 
     for (const auto &p: aFeatures) {
-        int targetX = p.getImgX(); // * aFactor;
-        int targetY = p.getImgY(); //* aFactor;
+        int targetX = p->getImgX(); // * aFactor;
+        int targetY = p->getImgY(); //* aFactor;
 
         if (targetX >= 0 && targetX < colorResult.cols &&
             targetY >= 0 && targetY < colorResult.rows) {
@@ -230,15 +230,14 @@ void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint> &a
     setFeatureTexture(colorResult);
 }
 
-void Plotter::plotMatches(const cv::Mat &aImage1, const cv::Mat &aImage2, const std::vector<KeyPoint> &aFeatures1,
-                  const std::vector<KeyPoint> &aFeatures2, const std::vector<std::array<std::uint32_t, 2>> aMatches) {
-    if (aImage1.empty() || aImage2.empty()) {
+void Plotter::plotMatches(const Frame& oldFrame, const Frame& newFrame, const std::vector<std::array<std::uint32_t, 2>> aMatches) {
+    if (oldFrame.mImage.empty() || newFrame.mImage.empty()) {
         std::cout << "Invalid image!" << std::endl;
         return;
     }
 
     cv::Mat combined;
-    cv::vconcat(aImage1, aImage2, combined);
+    cv::vconcat(oldFrame.mImage, newFrame.mImage, combined);
 
     cv::Mat colorResult;
     if (combined.channels() == 1) {
@@ -247,23 +246,26 @@ void Plotter::plotMatches(const cv::Mat &aImage1, const cv::Mat &aImage2, const 
         colorResult = combined.clone();
     }
 
-    int offset = aImage1.rows;
+    int offset = oldFrame.mImage.rows;
+
+    auto features1 = oldFrame.mKeypointTree->getFeatures();
+    auto features2 = newFrame.mKeypointTree->getFeatures();
 
     for (const auto& [idx1, idx2] : aMatches) {
-        if (idx1 < aFeatures1.size() && idx2 < aFeatures2.size()) {
-            cv::Point2f pt1{static_cast<float>(aFeatures1[idx1].getImgX()), static_cast<float>(aFeatures1[idx1].getImgY())};
-            cv::Point2f pt2{static_cast<float>(aFeatures2[idx2].getImgX()), static_cast<float>(aFeatures2[idx2].getImgY() + offset)};
+        if (idx1 < features1.size() && idx2 < features2.size()) {
+            cv::Point2f pt1{static_cast<float>(features1[idx1]->getImgX()), static_cast<float>(features1[idx1]->getImgY())};
+            cv::Point2f pt2{static_cast<float>(features2[idx2]->getImgX()), static_cast<float>(features2[idx2]->getImgY() + offset)};
             cv::line(colorResult, pt1, pt2, cv::Scalar(0, 255, 0), 1, cv::LINE_AA);
         }
     }
 
-    for (const auto& kp : aFeatures1) {
-        cv::Point2f pt{static_cast<float>(kp.getImgX()), static_cast<float>(kp.getImgY())};
+    for (const auto& kp : features1) {
+        cv::Point2f pt{static_cast<float>(kp->getImgX()), static_cast<float>(kp->getImgY())};
         cv::circle(colorResult, pt, 3, cv::Scalar(0, 0, 255), -1, cv::LINE_AA);
     }
 
-    for (const auto& kp : aFeatures2) {
-        cv::Point2f pt{static_cast<float>(kp.getImgX()), static_cast<float>(kp.getImgY() + offset)};
+    for (const auto& kp : features2) {
+        cv::Point2f pt{static_cast<float>(kp->getImgX()), static_cast<float>(kp->getImgY() + offset)};
         cv::circle(colorResult, pt, 3, cv::Scalar(0, 0, 255), -1, cv::LINE_AA);
     }
 

@@ -16,8 +16,8 @@
 
 std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
 reconstructInitial(
-    const std::vector<KeyPoint> &aKeypoints1,
-    const std::vector<KeyPoint> &aKeypoints2,
+    const std::vector<KeyPoint*> &aKeypoints1,
+    const std::vector<KeyPoint*> &aKeypoints2,
     const Eigen::Matrix3f &aIntrinsics) {
     assert(aKeypoints1.size() == aKeypoints2.size());
 
@@ -28,7 +28,7 @@ reconstructInitial(
 
     Eigen::Matrix3f invIntrinsics = aIntrinsics.inverse().cast<float>();
 
-    // TODO: make this an actual normalization, not just inverseK
+    // TODO: Use hartley normalization, not just inverseK
     auto points1 = toNormalized(toEigen(aKeypoints1), invIntrinsics);
     auto points2 = toNormalized(toEigen(aKeypoints2), invIntrinsics);
 
@@ -52,24 +52,14 @@ reconstructInitial(
     std::cout << (rh > 0.45 ? "Choosing Homography" : "Choosing Essential")
             << std::endl;
     if (rh > 0.45) {
-        // cv::Mat ho;
-        // cv::eigen2cv(homography, ho);
-        //cv::Mat
-        // cv::decomposeHomographyMat()
-        return recoverPoseFromHomography(homography, {points1, points2}, inliersHomography);
+        return recoverPoseFromHomography(homography, {points1, points2}, {aKeypoints1, aKeypoints2}, inliersHomography,
+                                         aIntrinsics);
     } else {
         auto output = recoverPoseFromEssential(essential, {points1, points2}, {aKeypoints1, aKeypoints2},
                                                inliersEssential, aIntrinsics);
         if (output.has_value()) {
+            // Returns the transformation that expresses C1 in coordinate frame C2
             auto [R, t, pts, inliers] = output.value();
-            std::cout << "Ours: " << R << std::endl;
-            cv::Mat R1;
-            cv::Mat R2;
-            cv::Vec3f t_;
-            cv::Mat ess;
-            cv::eigen2cv(essential, ess);
-            cv::decomposeEssentialMat(ess, R1, R2, t_);
-            std::cout << "OpenCV: " << R1 << " or " << R2 << std::endl;
         }
         return output;
     }
@@ -80,9 +70,10 @@ reconstructInitial(
 // ------------------------------------------------------------
 std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
 recoverPoseFromHomography(
-    const Eigen::Matrix3f aHomography,
+    const Eigen::Matrix3f &aHomography,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-    const std::vector<bool> &aInliers) {
+    const std::array<std::vector<KeyPoint*>, 2> &aKeyPoints,
+    const std::vector<bool> &aInliers, const Eigen::Matrix3f &aIntrinsics) {
     Eigen::JacobiSVD<Eigen::MatrixXf> svd(aHomography, Eigen::ComputeFullV);
     auto normalizedHomography = (1.0 / svd.singularValues()[1]) * aHomography;
     auto normalizedSVD = normalizedHomography.jacobiSvd(Eigen::ComputeEigenvectors | Eigen::ComputeFullV);
@@ -146,6 +137,8 @@ recoverPoseFromHomography(
     std::vector<Eigen::Vector3f> reconstructedPts;
     reconstructedPts.reserve(aInliers.size());
     std::uint32_t bestNumPositive{0};
+    std::vector<float> currentParallaxes;
+    float bestParallax = 0;
     std::uint32_t secondBstNumPositive{0};
     std::vector<bool> triangulated;
     int numInliers = 0;
@@ -155,48 +148,51 @@ recoverPoseFromHomography(
 
 
     for (std::uint32_t i = 0; i < solutions.size(); ++i) {
-        std::uint32_t numPositive{0};
+        std::uint32_t numValid{0};
         Eigen::Matrix4f transformMat = Eigen::Matrix4f::Identity();
         transformMat.block<3, 3>(0, 0) = std::get<0>(solutions[i]);
         transformMat.block<3, 1>(0, 3) = std::get<1>(solutions[i]);
-        //-std::get<0>(solutions[i]) * std::get<1>(solutions[i]);
         std::vector<Eigen::Vector3f> pts;
         std::vector<bool> currentTriangulated;
         pts.reserve(aInliers.size());
 
         for (std::uint32_t j = 0; j < aAllPoints[0].size(); ++j) {
-            // if (!aInliers[j]) {
-            //     currentTriangulated.push_back(false);
-            //     continue;
-            // }
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
             const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
+            auto kp1 = aKeyPoints[0][j];
+            auto kp2 = aKeyPoints[1][j];
+            auto [valid, parallax] = isValid(p1_3D, p2_3D, std::get<0>(solutions[i]), std::get<1>(solutions[i]),
+                                             aIntrinsics, kp1, kp2);
             pts.push_back(p1_3D);
-            if (aInliers[j] && p1_3D.z() > 0 && p2_3D.z() > 0) {
-                numPositive++;
+            currentParallaxes.push_back(parallax);
+            if (aInliers[j] && valid) {
+                numValid++;
                 currentTriangulated.push_back(true);
             } else {
                 currentTriangulated.push_back(false);
             }
         }
-        // std::cout << "Num positive: " << numPositive << std::endl;
-        if (numPositive > bestNumPositive) {
+        float parallax = 0;
+        if (numValid > 0) {
+            std::sort(currentParallaxes.begin(), currentParallaxes.end());
+            size_t idx = std::min(50, static_cast<int>(currentParallaxes.size() - 1));
+            parallax = acos(currentParallaxes[idx]) * 180 / CV_PI;
+        }
+
+        if (numValid > bestNumPositive) {
             secondBstNumPositive = bestNumPositive;
-            bestNumPositive = numPositive;
+            bestNumPositive = numValid;
             bestRot = std::get<0>(solutions[i]);
-            bestTrans = std::get<1>(solutions[i]); //-Rs[i]*ts[i]; // TODO: Why different to what is used above?
+            bestTrans = std::get<1>(solutions[i]);
+            bestParallax = parallax;
             reconstructedPts = pts;
             triangulated = currentTriangulated;
-        } else if (numPositive > secondBstNumPositive) {
-            secondBstNumPositive = numPositive;
+        } else if (numValid > secondBstNumPositive) {
+            secondBstNumPositive = numValid;
         }
     }
 
-    // std::cout << "Best num positive: " << bestNumPositive << std::endl;
-    // std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
-    // std::cout << "Num inliers: " << numInliers << std::endl;
-    if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers) {
-        // std::cout << "Best solution is valid" << std::endl;
+    if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers && bestParallax > 1.0) {
         return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<
             bool> > >({
             bestRot, bestTrans, reconstructedPts, triangulated
@@ -396,8 +392,8 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
 recoverPoseFromEssential(
     const Eigen::Matrix3f aEssential,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-    const std::array<std::vector<KeyPoint>, 2> &aKeyPoints,
-    const std::vector<bool> &aInliers, const Eigen::Matrix3f aIntrinsics) {
+    const std::array<std::vector<KeyPoint*>, 2> &aKeyPoints,
+    const std::vector<bool> &aInliers, const Eigen::Matrix3f &aIntrinsics) {
     auto svd = aEssential.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix3f U = svd.matrixU();
     Eigen::Matrix3f V = svd.matrixV();
@@ -449,8 +445,8 @@ recoverPoseFromEssential(
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
             const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
             pts.push_back(p1_3D);
-            auto kp1 = aKeyPoints[0][i];
-            auto kp2 = aKeyPoints[1][i];
+            auto kp1 = aKeyPoints[0][j];
+            auto kp2 = aKeyPoints[1][j];
             auto [valid, parallax] = isValid(p1_3D, p2_3D, Rs[i], ts[i], aIntrinsics, kp1, kp2);
             currentParallaxes.push_back(parallax);
             if (aInliers[j] && valid) {
@@ -496,8 +492,8 @@ recoverPoseFromEssential(
 }
 
 std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector3f &p2_3D, const Eigen::Matrix3f &R,
-                               const Eigen::Vector3f &t, const Eigen::Matrix3f &intrinsics, const KeyPoint &aKP1,
-                               const KeyPoint &aKP2) {
+                               const Eigen::Vector3f &t, const Eigen::Matrix3f &intrinsics, const KeyPoint* aKP1,
+                               const KeyPoint* aKP2) {
     bool finite = std::isfinite(p1_3D.x()) && std::isfinite(p1_3D.y()) &&
                   std::isfinite(p1_3D.z());
     if (!finite) return {false, 0};
@@ -534,8 +530,8 @@ std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector
     im1x = fx * p1_3D(0) * invZ1 + cx;
     im1y = fy * p1_3D(1) * invZ1 + cy;
 
-    float squareError1 = (im1x - aKP1.getImgX()) * (im1x - aKP1.getImgX()) + (im1y - aKP1.getImgY()) * (
-                             im1y - aKP1.getImgY());
+    float squareError1 = (im1x - aKP1->getImgX()) * (im1x - aKP1->getImgX()) + (im1y - aKP1->getImgY()) * (
+                             im1y - aKP1->getImgY());
 
     if (squareError1 > 4)
         return {false, cosParallax};
@@ -546,8 +542,8 @@ std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector
     im2x = fx * p3dC2(0) * invZ2 + cx;
     im2y = fy * p3dC2(1) * invZ2 + cy;
 
-    float squareError2 = (im2x - aKP2.getImgX()) * (im2x - aKP2.getImgX()) + (im2y - aKP2.getImgY()) * (
-                             im2y - aKP2.getImgY());
+    float squareError2 = (im2x - aKP2->getImgX()) * (im2x - aKP2->getImgX()) + (im2y - aKP2->getImgY()) * (
+                             im2y - aKP2->getImgY());
 
     if (squareError2 > 4)
         return {false, cosParallax};

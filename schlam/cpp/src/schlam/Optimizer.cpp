@@ -29,7 +29,7 @@ Optimizer::Optimizer() {
 }
 
 std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> >
-Optimizer::optimize(const std::vector<std::vector<KeyPoint> > &aKeyPoints,
+Optimizer::optimize(const std::vector<std::vector<KeyPoint*> > &aKeyPoints,
                     const Eigen::Matrix3f &aRotation,
                     const Eigen::Vector3f &aTranslation,
                     const std::vector<Eigen::Vector3f> &aPoints,
@@ -88,7 +88,7 @@ Optimizer::optimize(const std::vector<std::vector<KeyPoint> > &aKeyPoints,
             edge->setVertex(1, optimizer.vertex(i));
 
             // Set the 2D pixel measurement
-            edge->setMeasurement(Eigen::Vector2d(aKeyPoints[i][j].getImgX(), aKeyPoints[i][j].getImgY()));
+            edge->setMeasurement(Eigen::Vector2d(aKeyPoints[i][j]->getImgX(), aKeyPoints[i][j]->getImgY()));
 
             // Set Information Matrix (Inverse Covariance).
             // Identity means we trust x and y equally and errors are uncorrelated.

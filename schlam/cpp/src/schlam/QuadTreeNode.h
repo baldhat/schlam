@@ -12,15 +12,31 @@
 
 
 class QuadTreeNode {
-    public:
+public:
+    QuadTreeNode(const double aLeft, const double aRight, const double aTop, const double aBottom,
+                 const std::vector<KeyPoint> &aFeatures);
 
-    QuadTreeNode(const double aLeft, const double aRight, const double aTop, const double aBottom, const std::vector<KeyPoint> aFeatures);
+    QuadTreeNode(const double aLeft, const double aRight,
+                 const double aTop, const double aBottom,
+                 const std::vector<KeyPoint> &aFeatures,
+                 QuadTreeNode *aParent);
 
-    std::vector<std::shared_ptr<QuadTreeNode>> divide() const;
+    void divide();
 
     bool isLeaf() const;
-    bool isEmpty() const;
-    KeyPoint getMaxFeature() const;
+
+    void retainBestFeaturesPerLeaf();
+
+    std::vector<KeyPoint*> getFeatures();
+    std::vector<KeyPoint> getFeatures(double xMin, double xMax, double yMin, double yMax);
+
+    void removeChild(QuadTreeNode* aChild);
+
+    std::vector<QuadTreeNode *> getChildren() const;
+
+    double getMaxScore() const;
+
+    QuadTreeNode *getParent() const;
 
 private:
     // X borders
@@ -31,11 +47,21 @@ private:
     // helpers
     double mHalfX{0}, mHalfY{0};
 
+    double mMaxScore = -std::numeric_limits<double>::max();
+
+    QuadTreeNode *mParent{nullptr};
+
+    std::unique_ptr<QuadTreeNode> mTL;
+    std::unique_ptr<QuadTreeNode> mTR;
+    std::unique_ptr<QuadTreeNode> mBL;
+    std::unique_ptr<QuadTreeNode> mBR;
+
     // All features within this node and its subnodes
-    const std::vector<KeyPoint> mFeatures;
+    std::vector<KeyPoint> mFeatures;
 
-    bool mIsLeaf{false}, mIsEmpty{false};
+    const bool mIsLeaf{false}, mIsEmpty{false};
 
+    bool overlaps(double xMin, double xMax, double yMin, double yMax);
 
     KeyPoint findMaxFeature() const;
 };

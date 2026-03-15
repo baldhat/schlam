@@ -16,8 +16,8 @@
 
 std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
 reconstructInitial(
-    const std::vector<KeyPoint> &aKeypoints1,
-    const std::vector<KeyPoint> &aKeypoints2,
+    const std::vector<KeyPoint*> &aKeypoints1,
+    const std::vector<KeyPoint*> &aKeypoints2,
     const Eigen::Matrix3f &aIntrinsics);
 
 // -----------------------------------------------------------------------
@@ -45,8 +45,8 @@ std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Ve
 recoverPoseFromEssential(
     const Eigen::Matrix3f aEssential,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-    const std::array<std::vector<KeyPoint>, 2> &aKeyPoints,
-    const std::vector<bool> &aInliers, const Eigen::Matrix3f aIntrinsics);
+    const std::array<std::vector<KeyPoint*>, 2> &aKeyPoints,
+    const std::vector<bool> &aInliers, const Eigen::Matrix3f& aIntrinsics);
 
 std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f &aP1, const Eigen::Vector3f &aP2,
                                            const Eigen::Matrix4f &aTransform);
@@ -76,9 +76,10 @@ double calculateErrorHomography(const Eigen::Matrix3f &aHomography,
 
 std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<bool> > >
 recoverPoseFromHomography(
-    const Eigen::Matrix3f aHomography,
+    const Eigen::Matrix3f& aHomography,
     const std::array<std::vector<Eigen::Vector3f>, 2> &aAllPoints,
-    const std::vector<bool> &aInliers);
+    const std::array<std::vector<KeyPoint*>, 2> &aKeyPoints,
+    const std::vector<bool> &aInliers, const Eigen::Matrix3f& aIntrinsics);
 
 // ----------
 // -------------------------- Common -------------------------------------
@@ -93,6 +94,6 @@ std::vector<std::uint32_t> getSparseSubset(std::uint32_t N, std::uint32_t T);
 Eigen::Vector3f euclidean(const Eigen::Vector4f &aPT);
 
 std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector3f &p2_3D, const Eigen::Matrix3f &R,
-             const Eigen::Vector3f &t, const Eigen::Matrix3f &intrinsics, const KeyPoint &aKP1, const KeyPoint &aKP2);
+             const Eigen::Vector3f &t, const Eigen::Matrix3f &intrinsics, const KeyPoint* aKP1, const KeyPoint* aKP2);
 
 #endif // SCHLAM_RANSAC_H

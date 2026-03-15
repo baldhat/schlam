@@ -27,7 +27,7 @@ std::vector<Point> getPointsInRadius(int aRadius);
 std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint> &aKps, const std::uint32_t aImageWidth, const std::uint32_t aImageHeight,
                          const std::uint16_t aBorderSize);
 
-std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint> &aKeypoints);
+std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint*> &aKeypoints);
 
 std::vector<Eigen::Vector3f> toNormalized(const std::vector<Eigen::Vector3f>& aPoints , const Eigen::Matrix3f &aInvIntrinsics);
 

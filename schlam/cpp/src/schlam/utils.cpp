@@ -55,11 +55,11 @@ std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint>& aKps,
   return filtered;
 }
 
-std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint> &aKeypoints) {
+std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint*> &aKeypoints) {
   std::vector<Eigen::Vector3f> points;
   for (const auto &keyPoint : aKeypoints) {
-    points.emplace_back(static_cast<float>(keyPoint.getImgX()),
-                  static_cast<float>(keyPoint.getImgY()), 1);
+    points.emplace_back(static_cast<float>(keyPoint->getImgX()),
+                  static_cast<float>(keyPoint->getImgY()), 1);
   }
   return points;
 

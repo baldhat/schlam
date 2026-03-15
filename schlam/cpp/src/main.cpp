@@ -9,6 +9,7 @@
 #include "schlam/ORBFeatureDetector.h"
 #include "schlam/Matcher.h"
 #include "schlam/Optimizer.h"
+#include "schlam/Frame.h"
 
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
@@ -22,22 +23,26 @@ int main() {
 
     auto optimizer = std::make_shared<Optimizer>();
 
-    auto oldImageData = dataloader->getNextImageData();
-    auto oldFeatures = featureDetector->getFeatures(oldImageData->mImage);
-
+    auto imageData = dataloader->getNextImageData();
+    auto prevFrame = std::make_unique<Frame>(imageData);
+    featureDetector->detectFeatures(*prevFrame);
 
     bool initialized = false;
     int i = 0;
     std::string prevFrameName;
+
+    std::vector<std::unique_ptr<Frame> > frames;
+    frames.emplace_back(std::move(prevFrame));
+
     while (!dataloader->empty()) {
         auto now = std::chrono::system_clock::now();
 
-        auto newImageData = dataloader->getNextImageData();
+        imageData = dataloader->getNextImageData();
         auto newIMUData = dataloader->getNextIMUData();
         std::shared_ptr<IMUData> imuData = std::make_shared<IMUData>(newIMUData->first);
         std::shared_ptr<GTData> gtData = std::make_shared<GTData>(newIMUData->second);
         std::uint32_t cnt = 0;
-        while (imuData->mTimestamp < newImageData->mTimestamp) {
+        while (imuData->mTimestamp < imageData->mTimestamp) {
             newIMUData = dataloader->getNextIMUData();
             imuData = std::make_shared<IMUData>(newIMUData->first);
             gtData = std::make_shared<GTData>(newIMUData->second);
@@ -59,15 +64,21 @@ int main() {
         pTransformer->findTransform("imu", "world");
         pTransformer->findTransform("cam0", "world");
 
-        plotter->updateFrustum(newImageData);
+        plotter->updateFrustum(imageData);
 
-        auto newFeatures = featureDetector->getFeatures(newImageData->mImage);
+        auto frame = std::make_unique<Frame>(imageData);
 
-        auto matches = match(oldFeatures, newFeatures, 20);
-        plotter->plotMatches(oldImageData->mImage, newImageData->mImage, oldFeatures, newFeatures, matches);
+        featureDetector->detectFeatures(*frame);
+
+        auto oldFrame = frames.back().get();
+        auto oldFeatures = oldFrame->mKeypointTree->getFeatures();
+        auto newFeatures = frame->mKeypointTree->getFeatures();
+        auto matches = matchGlobally(oldFeatures,
+                                     newFeatures, 20);
+        plotter->plotMatches(*oldFrame, *frame, matches);
         auto [matchedOldFeatures, matchedNewFeatures] = getMatched(oldFeatures, newFeatures, matches);
 
-        auto reconstructOpt = reconstructInitial(matchedOldFeatures, matchedNewFeatures, newImageData->mIntrinsics);
+        auto reconstructOpt = reconstructInitial(matchedOldFeatures, matchedNewFeatures, imageData->mIntrinsics);
 
         if (reconstructOpt.has_value()) {
             auto [R, t, pts, inliers] = reconstructOpt.value();
@@ -75,11 +86,9 @@ int main() {
             auto pts2D_1 = filterByInlierMask(matchedOldFeatures, inliers);
             auto pts2D_2 = filterByInlierMask(matchedNewFeatures, inliers);
 
-            plotter->updatePointCloud(filtered_pts, "cam0");
+            auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
 
-            auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, newImageData->mIntrinsics);
-
-            //plotter->updatePointCloud(std::get<2>(updated), "cam0");
+            plotter->updatePointCloud(std::get<2>(updated), "cam0");
 
             std::string frameName = "imu_pred" + std::to_string(++i);
             pTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
@@ -87,11 +96,8 @@ int main() {
                 std::get<1>(updated)));
             pTransformer->findTransform(frameName, "world");
             prevFrameName = frameName;
-        }
 
-        if (reconstructOpt.has_value()) {
-            oldFeatures = newFeatures;
-            oldImageData = newImageData;
+            frames.push_back(std::move(frame));
         }
 
         auto end = std::chrono::system_clock::now();
