@@ -27,10 +27,10 @@ public:
 
     void retainBestFeaturesPerLeaf();
 
-    std::vector<KeyPoint*> getFeatures();
-    std::vector<KeyPoint> getFeatures(double xMin, double xMax, double yMin, double yMax);
+    std::vector<KeyPoint*> getFeatures() const;
+    std::vector<KeyPoint*> getFeatures(double xMin, double xMax, double yMin, double yMax) const;
 
-    void removeChild(QuadTreeNode* aChild);
+    void removeChild(const QuadTreeNode* aChild);
 
     std::vector<QuadTreeNode *> getChildren() const;
 
@@ -56,14 +56,9 @@ private:
     std::unique_ptr<QuadTreeNode> mBL;
     std::unique_ptr<QuadTreeNode> mBR;
 
-    // All features within this node and its subnodes
     std::vector<KeyPoint> mFeatures;
 
-    const bool mIsLeaf{false}, mIsEmpty{false};
-
-    bool overlaps(double xMin, double xMax, double yMin, double yMax);
-
-    KeyPoint findMaxFeature() const;
+    bool overlaps(double xMin, double xMax, double yMin, double yMax) const;
 };
 
 

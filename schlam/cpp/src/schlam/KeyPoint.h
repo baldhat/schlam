@@ -27,6 +27,8 @@ public:
     void setScore(const double aScore);
     void setLevel(const double aLevel);
     void setDescriptor(const  std::array<uint8_t, 32>& aDescriptor);
+    bool isMatched() const;
+    void setMatched(bool aMatched);
 
 private:
     std::uint32_t mImgX{0};
@@ -35,6 +37,7 @@ private:
     std::uint8_t mLevel{0};
     double mAngle{0};
     std::array<uint8_t, 32> mDescriptor;
+    bool mMatched{false};
 };
 
 

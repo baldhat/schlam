@@ -50,5 +50,12 @@ void KeyPoint::setDescriptor(const std::array<uint8_t, 32>& aDescriptor) {
 void KeyPoint::setAngle(const double aAngle) {
     mAngle = aAngle;
 }
+bool KeyPoint::isMatched() const {
+    return mMatched;
+}
+void KeyPoint::setMatched(bool aMatched) {
+    mMatched = aMatched;
+}
+
 
 

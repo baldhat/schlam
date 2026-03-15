@@ -73,18 +73,19 @@ int main() {
         auto oldFrame = frames.back().get();
         auto oldFeatures = oldFrame->mKeypointTree->getFeatures();
         auto newFeatures = frame->mKeypointTree->getFeatures();
-        auto matches = matchGlobally(oldFeatures,
-                                     newFeatures, 20);
-        plotter->plotMatches(*oldFrame, *frame, matches);
-        auto [matchedOldFeatures, matchedNewFeatures] = getMatched(oldFeatures, newFeatures, matches);
+        // auto matches = matchWindow(oldFrame->mKeypointTree.get(),
+        //                              frame->mKeypointTree.get(), 20, 100);
+        auto matches = matchWindow(oldFrame->mKeypointTree.get(),
+                                     frame->mKeypointTree.get(), 20, 100);
+        //plotter->plotMatches(*oldFrame, *frame, matches);
 
-        auto reconstructOpt = reconstructInitial(matchedOldFeatures, matchedNewFeatures, imageData->mIntrinsics);
+        auto reconstructOpt = reconstructInitial(matches[0], matches[1], imageData->mIntrinsics);
 
         if (reconstructOpt.has_value()) {
             auto [R, t, pts, inliers] = reconstructOpt.value();
             auto filtered_pts = filterByInlierMask(pts, inliers);
-            auto pts2D_1 = filterByInlierMask(matchedOldFeatures, inliers);
-            auto pts2D_2 = filterByInlierMask(matchedNewFeatures, inliers);
+            auto pts2D_1 = filterByInlierMask(matches[0], inliers);
+            auto pts2D_2 = filterByInlierMask(matches[1], inliers);
 
             auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
 

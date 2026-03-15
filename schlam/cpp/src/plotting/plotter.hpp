@@ -37,7 +37,7 @@ public:
     void plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint*> &aFeatures);
 
     void plotMatches(const Frame& oldFrame, const Frame& newFrame,
-                     const std::vector<std::array<std::uint32_t, 2> > aMatches);
+                     const std::array<std::vector<KeyPoint *>, 2>& aMatches);
 
     // Start visualization (runs in main thread)
     void run();

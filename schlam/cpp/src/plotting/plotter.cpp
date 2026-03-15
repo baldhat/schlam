@@ -50,7 +50,7 @@ void Plotter::setup() {
 void Plotter::updatePointCloud(const std::vector<Eigen::Vector3f> &aPoints, const std::string aCF) {
     std::vector<Eigen::Vector3f> points;
     auto transform = mpTransformer->findTransform(aCF, "world");
-    for (const auto& pt : aPoints) {
+    for (const auto &pt: aPoints) {
         points.push_back(transform->mRotation * pt + transform->mTranslation);
     }
     mCloud = points;
@@ -132,6 +132,55 @@ void Plotter::drawAxes(const double radius, const double length) {
     glPopMatrix();
 }
 
+void Plotter::plotMatches(const Frame &oldFrame, const Frame &newFrame,
+                          const std::array<std::vector<KeyPoint *>, 2>& aMatches) {
+    if (oldFrame.mImage.empty() || newFrame.mImage.empty()) {
+        std::cerr << "Invalid image!" << std::endl;
+        return;
+    }
+
+    cv::Mat combined;
+    cv::vconcat(oldFrame.mImage, newFrame.mImage, combined);
+
+    cv::Mat colorResult;
+    if (combined.channels() == 1) {
+        cv::cvtColor(combined, colorResult, cv::COLOR_GRAY2BGR);
+    } else {
+        colorResult = combined.clone();
+    }
+
+    const int offset = oldFrame.mImage.rows;
+    const auto &features1 = aMatches[0];
+    const auto &features2 = aMatches[1];
+
+    const int halfSize = 4;
+    const cv::Scalar green{0, 255, 0};
+
+    for (size_t i = 0; i < std::min(features1.size(), features2.size()); ++i) {
+        cv::Point2f pt1{static_cast<float>(features1[i]->getImgX()), static_cast<float>(features1[i]->getImgY()+ halfSize) };
+        cv::Point2f pt2{static_cast<float>(features2[i]->getImgX()), static_cast<float>(features2[i]->getImgY() + offset - halfSize)};
+        cv::line(colorResult, pt1, pt2, green, 1, cv::LINE_AA);
+    }
+
+    for (const auto &kp : features1) {
+        cv::Point pt{kp->getImgX(), kp->getImgY()};
+        cv::rectangle(colorResult,
+                      {pt.x - halfSize, pt.y - halfSize},
+                      {pt.x + halfSize, pt.y + halfSize},
+                      green, 1);
+    }
+
+    for (const auto &kp : features2) {
+        cv::Point pt{kp->getImgX(), kp->getImgY() + offset};
+        cv::rectangle(colorResult,
+                      {pt.x - halfSize, pt.y - halfSize},
+                      {pt.x + halfSize, pt.y + halfSize},
+                      green, 1);
+    }
+
+    setMatcherTexture(colorResult);
+}
+
 void Plotter::drawCylinder(float radius, float length, int slices) {
     const float TWO_PI = 2.0f * M_PI;
 
@@ -152,7 +201,8 @@ void Plotter::drawCylinder(float radius, float length, int slices) {
     glEnd();
 }
 
-void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform, double alpha) {
+void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform,
+                          double alpha) {
     std::lock_guard guard(mFrustumMutex);
     glPushMatrix();
 
@@ -205,7 +255,7 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr
     glDepthMask(GL_TRUE);
 }
 
-void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint*> &aFeatures) {
+void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint *> &aFeatures) {
     if (aImage.empty()) {
         std::cout << "Invalid image!" << std::endl;
         return;
@@ -228,48 +278,6 @@ void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint*> &
     }
 
     setFeatureTexture(colorResult);
-}
-
-void Plotter::plotMatches(const Frame& oldFrame, const Frame& newFrame, const std::vector<std::array<std::uint32_t, 2>> aMatches) {
-    if (oldFrame.mImage.empty() || newFrame.mImage.empty()) {
-        std::cout << "Invalid image!" << std::endl;
-        return;
-    }
-
-    cv::Mat combined;
-    cv::vconcat(oldFrame.mImage, newFrame.mImage, combined);
-
-    cv::Mat colorResult;
-    if (combined.channels() == 1) {
-        cv::cvtColor(combined, colorResult, cv::COLOR_GRAY2BGR);
-    } else {
-        colorResult = combined.clone();
-    }
-
-    int offset = oldFrame.mImage.rows;
-
-    auto features1 = oldFrame.mKeypointTree->getFeatures();
-    auto features2 = newFrame.mKeypointTree->getFeatures();
-
-    for (const auto& [idx1, idx2] : aMatches) {
-        if (idx1 < features1.size() && idx2 < features2.size()) {
-            cv::Point2f pt1{static_cast<float>(features1[idx1]->getImgX()), static_cast<float>(features1[idx1]->getImgY())};
-            cv::Point2f pt2{static_cast<float>(features2[idx2]->getImgX()), static_cast<float>(features2[idx2]->getImgY() + offset)};
-            cv::line(colorResult, pt1, pt2, cv::Scalar(0, 255, 0), 1, cv::LINE_AA);
-        }
-    }
-
-    for (const auto& kp : features1) {
-        cv::Point2f pt{static_cast<float>(kp->getImgX()), static_cast<float>(kp->getImgY())};
-        cv::circle(colorResult, pt, 3, cv::Scalar(0, 0, 255), -1, cv::LINE_AA);
-    }
-
-    for (const auto& kp : features2) {
-        cv::Point2f pt{static_cast<float>(kp->getImgX()), static_cast<float>(kp->getImgY() + offset)};
-        cv::circle(colorResult, pt, 3, cv::Scalar(0, 0, 255), -1, cv::LINE_AA);
-    }
-
-    setMatcherTexture(colorResult);
 }
 
 void Plotter::setFeatureTexture(const cv::Mat &aImage) {
@@ -351,8 +359,8 @@ void Plotter::run() {
             .SetLock(pangolin::LockRight, pangolin::LockTop);
 
     pangolin::View &matcherView = pangolin::CreateDisplay()
-        .SetBounds(0.0, 0.6, 0.6, 1.0, 1920.f / (1080*2))
-        .SetLock(pangolin::LockRight, pangolin::LockBottom);
+            .SetBounds(0.0, 0.6, 0.6, 1.0, 1920.f / (1080 * 2))
+            .SetLock(pangolin::LockRight, pangolin::LockBottom);
 
     glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
 
@@ -363,7 +371,7 @@ void Plotter::run() {
     pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
     pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
     pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
-    pangolin::Var<bool> menu_showFeatures("menu.Show Features", false, true);
+    pangolin::Var<bool> menu_showFeatures("menu.Show Features", true, true);
     pangolin::Var<bool> menu_showMatches("menu.Show Matches", true, true);
 
     // 3. Main loop
@@ -380,7 +388,7 @@ void Plotter::run() {
             glPointSize(5.0f);
             glColor3f(1.f, 0.f, 0.f);
             glBegin(GL_POINTS);
-            for (const auto& p : mCloud) {
+            for (const auto &p: mCloud) {
                 glVertex3f(p.x(), p.y(), p.z());
             }
             glEnd();
@@ -414,7 +422,6 @@ void Plotter::run() {
         if (menu_showMatches) {
             showMatches();
         }
-
 
 
         pangolin::FinishFrame();

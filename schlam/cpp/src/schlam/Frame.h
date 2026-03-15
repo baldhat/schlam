@@ -20,7 +20,7 @@ public:
 
     cv::Mat mImage;
     Eigen::Matrix3f mIntrinsics;
-    std::shared_ptr<QuadTreeNode> mKeypointTree;
+    std::unique_ptr<QuadTreeNode> mKeypointTree;
     Eigen::Matrix3f mRotation;
     Eigen::Vector3f mPosition;
 };
