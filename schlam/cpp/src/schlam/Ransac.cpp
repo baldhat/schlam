@@ -9,6 +9,7 @@
 
 #include <Eigen/Dense>
 
+#include <algorithm>
 #include <optional>
 #include <random>
 #include <set>
@@ -76,7 +77,10 @@ recoverPoseFromHomography(
     const std::vector<bool> &aInliers, const Eigen::Matrix3f &aIntrinsics) {
     Eigen::JacobiSVD<Eigen::MatrixXf> svd(aHomography, Eigen::ComputeFullV);
     auto normalizedHomography = (1.0 / svd.singularValues()[1]) * aHomography;
-    auto normalizedSVD = normalizedHomography.jacobiSvd(Eigen::ComputeEigenvectors | Eigen::ComputeFullV);
+    auto normalizedSVD = normalizedHomography.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
+    const Eigen::Matrix3f U = normalizedSVD.matrixU();
+    const Eigen::Matrix3f V = normalizedSVD.matrixV();
+    const float rotationSign = U.determinant() * V.determinant() < 0 ? -1.0f : 1.0f;
     auto lambdas = normalizedSVD.singularValues();
     auto stretch = sqrt(
         (lambdas[0] * lambdas[0] - lambdas[1] * lambdas[1]) / (lambdas[0] * lambdas[0] - lambdas[2] * lambdas[2]));
@@ -113,23 +117,23 @@ recoverPoseFromHomography(
             0,
             -(lambdas[0] - lambdas[2]) * x[2]
         };
-        solutions.push_back({R, t});
+        solutions.push_back({rotationSign * U * R * V.transpose(), U * t});
     }
     for (const auto &combination: combinations) {
         Eigen::Vector3f x = {combination[0] * stretch, 0, combination[1] * compression};
         auto sin = ((lambdas[0] + lambdas[2]) * x[0] * x[2]);
-        auto cos = lambdas[0] * x[2] * x[2] + lambdas[2] * x[0] * x[0];
+        auto cos = lambdas[2] * x[0] * x[0] - lambdas[0] * x[2] * x[2];
         Eigen::Matrix3f R{
             {cos, 0, sin},
             {0, -1, 0},
-            {-sin, 0, -cos}
+            {sin, 0, -cos}
         };
         Eigen::Vector3f t{
             (lambdas[0] + lambdas[2]) * x[0],
             0,
             (lambdas[0] + lambdas[2]) * x[2]
         };
-        solutions.push_back({R, t});
+        solutions.push_back({rotationSign * U * R * V.transpose(), U * t});
     }
 
     Eigen::Matrix3f bestRot;
@@ -137,7 +141,6 @@ recoverPoseFromHomography(
     std::vector<Eigen::Vector3f> reconstructedPts;
     reconstructedPts.reserve(aInliers.size());
     std::uint32_t bestNumPositive{0};
-    std::vector<float> currentParallaxes;
     float bestParallax = 0;
     std::uint32_t secondBstNumPositive{0};
     std::vector<bool> triangulated;
@@ -149,6 +152,7 @@ recoverPoseFromHomography(
 
     for (std::uint32_t i = 0; i < solutions.size(); ++i) {
         std::uint32_t numValid{0};
+        std::vector<float> currentParallaxes;
         Eigen::Matrix4f transformMat = Eigen::Matrix4f::Identity();
         transformMat.block<3, 3>(0, 0) = std::get<0>(solutions[i]);
         transformMat.block<3, 1>(0, 3) = std::get<1>(solutions[i]);
@@ -164,10 +168,10 @@ recoverPoseFromHomography(
             auto [valid, parallax] = isValid(p1_3D, p2_3D, std::get<0>(solutions[i]), std::get<1>(solutions[i]),
                                              aIntrinsics, kp1, kp2);
             pts.push_back(p1_3D);
-            currentParallaxes.push_back(parallax);
             if (aInliers[j] && valid) {
                 numValid++;
                 currentTriangulated.push_back(true);
+                currentParallaxes.push_back(parallax);
             } else {
                 currentTriangulated.push_back(false);
             }
@@ -176,7 +180,7 @@ recoverPoseFromHomography(
         if (numValid > 0) {
             std::sort(currentParallaxes.begin(), currentParallaxes.end());
             size_t idx = std::min(50, static_cast<int>(currentParallaxes.size() - 1));
-            parallax = acos(currentParallaxes[idx]) * 180 / CV_PI;
+            parallax = std::acos(std::clamp(currentParallaxes[idx], -1.0f, 1.0f)) * 180.0 / CV_PI;
         }
 
         if (numValid > bestNumPositive) {
@@ -448,8 +452,8 @@ recoverPoseFromEssential(
             auto kp1 = aKeyPoints[0][j];
             auto kp2 = aKeyPoints[1][j];
             auto [valid, parallax] = isValid(p1_3D, p2_3D, Rs[i], ts[i], aIntrinsics, kp1, kp2);
-            currentParallaxes.push_back(parallax);
             if (aInliers[j] && valid) {
+                currentParallaxes.push_back(parallax);
                 numValid++;
                 currentTriangulated.push_back(true);
             } else {
@@ -461,7 +465,7 @@ recoverPoseFromEssential(
             std::sort(currentParallaxes.begin(), currentParallaxes.end());
 
             size_t idx = std::min(50, int(currentParallaxes.size() - 1));
-            parallax = acos(currentParallaxes[idx]) * 180 / CV_PI;
+            parallax = std::acos(std::clamp(currentParallaxes[idx], -1.0f, 1.0f)) * 180.0 / CV_PI;
         }
         if (numValid > bestNumPositive) {
             secondBstNumPositive = bestNumPositive;
@@ -476,19 +480,20 @@ recoverPoseFromEssential(
         }
     }
 
-    // std::cout << "Best num positive: " << bestNumPositive << std::endl;
-    // std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
-    // std::cout << "Num inliers: " << numInliers << std::endl;
-    if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers && bestParallax > 1.0) {
+    std::cout << "Best num positive: " << bestNumPositive << std::endl;
+    std::cout << "Second Best num positive: " << secondBstNumPositive << std::endl;
+    std::cout << "Num inliers: " << numInliers << std::endl;
+    std::cout << "Best parallax: " << bestParallax << std::endl;
+
+    if ((secondBstNumPositive < (0.75 * bestNumPositive)) && (bestNumPositive > (0.9 * numInliers)) && bestParallax > 1.0) {
         // std::cout << "Best solution is valid" << std::endl;
         return std::optional<std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f>, std::vector<
             bool> > >({
             bestRot, bestTrans, reconstructedPts, triangulated
         });
-    } else {
-        std::cout << "Best solution is not that much better" << std::endl;
-        return std::nullopt;
     }
+    std::cout << "Solution not clear enough, not returning pose" << std::endl;
+    return std::nullopt;
 }
 
 std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector3f &p2_3D, const Eigen::Matrix3f &R,

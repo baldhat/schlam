@@ -73,11 +73,9 @@ int main() {
         auto oldFrame = frames.back().get();
         auto oldFeatures = oldFrame->mKeypointTree->getFeatures();
         auto newFeatures = frame->mKeypointTree->getFeatures();
-        // auto matches = matchWindow(oldFrame->mKeypointTree.get(),
-        //                              frame->mKeypointTree.get(), 20, 100);
         auto matches = matchWindow(oldFrame->mKeypointTree.get(),
                                      frame->mKeypointTree.get(), 20, 100);
-        //plotter->plotMatches(*oldFrame, *frame, matches);
+        plotter->plotMatches(*oldFrame, *frame, matches);
 
         auto reconstructOpt = reconstructInitial(matches[0], matches[1], imageData->mIntrinsics);
 
