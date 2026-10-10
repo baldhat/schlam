@@ -68,6 +68,14 @@ void Plotter::updateFrustum(const std::shared_ptr<ImageData> aImageData) {
     m3DImageChanged = true;
 }
 
+void Plotter::updateTimestamp(const utils::TTimestamp& aTimestamp) {
+    std::lock_guard guard(mTimestampMutex);
+    if (!mSequenceStartTimestamp) mSequenceStartTimestamp = aTimestamp;
+    const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+        aTimestamp - *mSequenceStartTimestamp).count();
+    mTimestampText = std::to_string(milliseconds) + " ms";
+}
+
 pangolin::OpenGlMatrix
 Plotter::GetPangolinModelMatrix(const Eigen::Matrix3f &R,
                                 const Eigen::Vector3f &t) const {
@@ -155,11 +163,13 @@ void Plotter::plotMatches(const Frame &oldFrame, const Frame &newFrame,
 
     const int halfSize = 4;
     const cv::Scalar green{0, 255, 0};
+    cv::RNG rng(static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
 
     for (size_t i = 0; i < std::min(features1.size(), features2.size()); ++i) {
         cv::Point2f pt1{static_cast<float>(features1[i]->getImgX()), static_cast<float>(features1[i]->getImgY()+ halfSize) };
         cv::Point2f pt2{static_cast<float>(features2[i]->getImgX()), static_cast<float>(features2[i]->getImgY() + offset - halfSize)};
-        cv::line(colorResult, pt1, pt2, green, 1, cv::LINE_AA);
+        const cv::Scalar lineColor(rng.uniform(64, 256), rng.uniform(64, 256), rng.uniform(64, 256));
+        cv::line(colorResult, pt1, pt2, lineColor, 1, cv::LINE_AA);
     }
 
     for (const auto &kp : features1) {
@@ -328,6 +338,21 @@ void Plotter::showMatches() {
     mMatcherImageTexture->RenderToViewportFlipY();
 }
 
+void Plotter::showTimestamp() {
+    std::string text;
+    {
+        std::lock_guard guard(mTimestampMutex);
+        text = mTimestampText;
+    }
+    if (text.empty()) return;
+
+    glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT);
+    glDisable(GL_DEPTH_TEST);
+    glColor3f(0.f, 0.f, 0.f);
+    pangolin::default_font().Text(text).DrawWindow(10, 10);
+    glPopAttrib();
+}
+
 
 void Plotter::run() {
     pangolin::BindToContext("3D Visualizer");
@@ -373,6 +398,15 @@ void Plotter::run() {
     pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
     pangolin::Var<bool> menu_showFeatures("menu.Show Features", true, true);
     pangolin::Var<bool> menu_showMatches("menu.Show Matches", true, true);
+
+    auto& timestampView = pangolin::CreateDisplay();
+    timestampView.zorder = 1;
+    timestampView.SetBounds(0.0, pangolin::Attach::Pix(35), 0.0, 1.0)
+        .SetDrawFunction([this](pangolin::View& view) {
+            view.Activate();
+            showTimestamp();
+        });
+    pangolin::DisplayBase().ResizeChildren();
 
     // 3. Main loop
     while (!pangolin::ShouldQuit()) {

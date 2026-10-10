@@ -21,7 +21,7 @@ reconstructInitial(
     const std::vector<KeyPoint*> &aKeypoints2,
     const Eigen::Matrix3f &aIntrinsics) {
     assert(aKeypoints1.size() == aKeypoints2.size());
-    const int numCandidates = 500;
+    const int numCandidates = 2000;
 
     if (aKeypoints1.size() < 8 || aKeypoints2.size() < 8) {
         std::cout << "WARN: Not enough matches found!" << std::endl;

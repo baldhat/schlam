@@ -15,6 +15,8 @@
 // STL
 #include <vector>
 #include <mutex>
+#include <string>
+#include <optional>
 
 
 class KeyPoint;
@@ -33,6 +35,8 @@ public:
     void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
 
     void updateFrustum(const std::shared_ptr<ImageData> aImageData);
+
+    void updateTimestamp(const utils::TTimestamp& aTimestamp);
 
     void plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint*> &aFeatures);
 
@@ -55,6 +59,10 @@ private:
     std::shared_ptr<tft::RigidTransform3D> mFrustumPose;
     std::shared_ptr<ImageData> mFrustum;
     std::mutex mFrustumMutex;
+
+    std::string mTimestampText;
+    std::optional<utils::TTimestamp> mSequenceStartTimestamp;
+    std::mutex mTimestampMutex;
 
 
     mutable std::unique_ptr<pangolin::GlTexture> m3DImageTexture;
@@ -90,6 +98,8 @@ private:
     void showFeatures();
 
     void showMatches();
+
+    void showTimestamp();
 
     pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3f &R, const Eigen::Vector3f &t) const;
 
