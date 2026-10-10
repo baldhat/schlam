@@ -8,11 +8,12 @@
 #include <pangolin/handler/handler.h>
 
 #include "schlam/KeyPoint.h"
+#include "random.hpp"
 
 // -----------------------------
 // Helper drawing functions
 // -----------------------------
-void Plotter::DrawGrid(int size, float step) {
+void Plotter::DrawGrid(int size, double step) {
     glColor3f(0.f, 0.f, 0.f);
     glBegin(GL_LINES);
     for (int i = -size; i <= size; ++i) {
@@ -47,8 +48,8 @@ void Plotter::setup() {
     pangolin::GetBoundWindow()->RemoveCurrent();
 }
 
-void Plotter::updatePointCloud(const std::vector<Eigen::Vector3f> &aPoints, const std::string aCF) {
-    std::vector<Eigen::Vector3f> points;
+void Plotter::updatePointCloud(const std::vector<Eigen::Vector3d> &aPoints, const std::string aCF) {
+    std::vector<Eigen::Vector3d> points;
     auto transform = mpTransformer->findTransform(aCF, "world");
     for (const auto &pt: aPoints) {
         points.push_back(transform->mRotation * pt + transform->mTranslation);
@@ -77,8 +78,8 @@ void Plotter::updateTimestamp(const utils::TTimestamp& aTimestamp) {
 }
 
 pangolin::OpenGlMatrix
-Plotter::GetPangolinModelMatrix(const Eigen::Matrix3f &R,
-                                const Eigen::Vector3f &t) const {
+Plotter::GetPangolinModelMatrix(const Eigen::Matrix3d &R,
+                                const Eigen::Vector3d &t) const {
     pangolin::OpenGlMatrix m;
     m.SetIdentity();
 
@@ -163,12 +164,16 @@ void Plotter::plotMatches(const Frame &oldFrame, const Frame &newFrame,
 
     const int halfSize = 4;
     const cv::Scalar green{0, 255, 0};
-    cv::RNG rng(static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    auto& engine = utils::randomEngine();
+    std::uniform_int_distribution<int> colorChannel(64, 255);
 
     for (size_t i = 0; i < std::min(features1.size(), features2.size()); ++i) {
-        cv::Point2f pt1{static_cast<float>(features1[i]->getImgX()), static_cast<float>(features1[i]->getImgY()+ halfSize) };
-        cv::Point2f pt2{static_cast<float>(features2[i]->getImgX()), static_cast<float>(features2[i]->getImgY() + offset - halfSize)};
-        const cv::Scalar lineColor(rng.uniform(64, 256), rng.uniform(64, 256), rng.uniform(64, 256));
+        cv::Point2d pt1{static_cast<double>(features1[i]->getImgX()), static_cast<double>(features1[i]->getImgY()+ halfSize) };
+        cv::Point2d pt2{static_cast<double>(features2[i]->getImgX()), static_cast<double>(features2[i]->getImgY() + offset - halfSize)};
+        const int blue = colorChannel(engine);
+        const int greenValue = colorChannel(engine);
+        const int red = colorChannel(engine);
+        const cv::Scalar lineColor(blue, greenValue, red);
         cv::line(colorResult, pt1, pt2, lineColor, 1, cv::LINE_AA);
     }
 
@@ -191,14 +196,14 @@ void Plotter::plotMatches(const Frame &oldFrame, const Frame &newFrame,
     setMatcherTexture(colorResult);
 }
 
-void Plotter::drawCylinder(float radius, float length, int slices) {
-    const float TWO_PI = 2.0f * M_PI;
+void Plotter::drawCylinder(double radius, double length, int slices) {
+    const double TWO_PI = 2.0f * M_PI;
 
     glBegin(GL_TRIANGLE_STRIP);
     for (int i = 0; i <= slices; ++i) {
-        float theta = TWO_PI * i / slices;
-        float x = radius * cos(theta);
-        float y = radius * sin(theta);
+        double theta = TWO_PI * i / slices;
+        double x = radius * cos(theta);
+        double y = radius * sin(theta);
 
         // Normal
         glNormal3f(cos(theta), sin(theta), 0.0f);
@@ -232,7 +237,7 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr
     glMultMatrixd(Twc.m);
 
     auto kInv = aImageData->mIntrinsics.inverse().eval();
-    float scale = 0.1f; // The depth at which to draw
+    double scale = 0.1f; // The depth at which to draw
     pangolin::glDrawFrustum(kInv, aImageData->mImage.cols, aImageData->mImage.rows, scale);
 
     glDepthMask(GL_FALSE);
@@ -245,16 +250,16 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr
 
     // Define the 4 corners in Camera Space using K-inverse
     glTexCoord2f(0, 1);
-    Eigen::Vector3f bl = kInv * Eigen::Vector3f(0, aImageData->mImage.rows, 1) * scale;
+    Eigen::Vector3d bl = kInv * Eigen::Vector3d(0, aImageData->mImage.rows, 1) * scale;
     glVertex3d(bl[0], bl[1], bl[2]);
     glTexCoord2f(1, 1);
-    Eigen::Vector3f br = kInv * Eigen::Vector3f(aImageData->mImage.cols, aImageData->mImage.rows, 1) * scale;
+    Eigen::Vector3d br = kInv * Eigen::Vector3d(aImageData->mImage.cols, aImageData->mImage.rows, 1) * scale;
     glVertex3d(br[0], br[1], br[2]);
     glTexCoord2f(1, 0);
-    Eigen::Vector3f tr = kInv * Eigen::Vector3f(aImageData->mImage.cols, 0, 1) * scale;
+    Eigen::Vector3d tr = kInv * Eigen::Vector3d(aImageData->mImage.cols, 0, 1) * scale;
     glVertex3d(tr[0], tr[1], tr[2]);
     glTexCoord2f(0, 0);
-    Eigen::Vector3f tl = kInv * Eigen::Vector3f(0, 0, 1) * scale;
+    Eigen::Vector3d tl = kInv * Eigen::Vector3d(0, 0, 1) * scale;
     glVertex3d(tl[0], tl[1], tl[2]);
 
     glEnd();

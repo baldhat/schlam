@@ -19,10 +19,10 @@ public:
     Frame(const std::shared_ptr<ImageData> aImageData);
 
     cv::Mat mImage;
-    Eigen::Matrix3f mIntrinsics;
+    Eigen::Matrix3d mIntrinsics;
     std::unique_ptr<QuadTreeNode> mKeypointTree;
-    Eigen::Matrix3f mRotation;
-    Eigen::Vector3f mPosition;
+    Eigen::Matrix3d mRotation;
+    Eigen::Vector3d mPosition;
 };
 
 

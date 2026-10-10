@@ -98,9 +98,9 @@ void ORBFeatureDetector::addDescriptors(
         const int centerX = int(feature->getImgX() * factor + 0.5);
         const int centerY = int(feature->getImgY() * factor + 0.5);
 
-        const float angle = static_cast<float>(feature->getAngle());
-        const float sinA = std::sin(angle);
-        const float cosA = std::cos(angle);
+        const double angle = static_cast<double>(feature->getAngle());
+        const double sinA = std::sin(angle);
+        const double cosA = std::cos(angle);
 
         uint8_t desc[32] = {0};
 
@@ -304,13 +304,13 @@ void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vecto
         int fx = feature.getImgX();
         int fy = feature.getImgY();
 
-        float sumA{0}, sumB{0}, sumC{0};
+        double sumA{0}, sumB{0}, sumC{0};
 
         // 7x7 window
         for (int y = -3; y <= 3; ++y) {
-            const float *pIx2 = Ix2.ptr<float>(fy + y);
-            const float *pIy2 = Iy2.ptr<float>(fy + y);
-            const float *pIxy = Ixy.ptr<float>(fy + y);
+            const double *pIx2 = Ix2.ptr<double>(fy + y);
+            const double *pIy2 = Iy2.ptr<double>(fy + y);
+            const double *pIxy = Ixy.ptr<double>(fy + y);
 
             for (int x = -3; x <= 3; ++x) {
                 if (fx + x < 0 || fx + x >= aImage.cols) continue;
@@ -359,7 +359,7 @@ void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
                 m10 += offX * pixelVal;
                 m01 += offY * pixelVal;
             }
-            f->setAngle(std::atan2(static_cast<float>(m01), static_cast<float>(m10)));
+            f->setAngle(std::atan2(static_cast<double>(m01), static_cast<double>(m10)));
         }
     }
 }

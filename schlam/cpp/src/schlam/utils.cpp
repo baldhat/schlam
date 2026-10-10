@@ -55,40 +55,40 @@ std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint>& aKps,
   return filtered;
 }
 
-std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint*> &aKeypoints) {
-  std::vector<Eigen::Vector3f> points;
+std::vector<Eigen::Vector3d> toEigen(const std::vector<KeyPoint*> &aKeypoints) {
+  std::vector<Eigen::Vector3d> points;
   for (const auto &keyPoint : aKeypoints) {
-    points.emplace_back(static_cast<float>(keyPoint->getImgX()),
-                  static_cast<float>(keyPoint->getImgY()), 1);
+    points.emplace_back(static_cast<double>(keyPoint->getImgX()),
+                  static_cast<double>(keyPoint->getImgY()), 1);
   }
   return points;
 
 }
 
-std::vector<Eigen::Vector3f> toNormalized(const std::vector<Eigen::Vector3f>& aPoints , const Eigen::Matrix3f &aInvIntrinsics) {
-  std::vector<Eigen::Vector3f> points;
+std::vector<Eigen::Vector3d> toNormalized(const std::vector<Eigen::Vector3d>& aPoints , const Eigen::Matrix3d &aInvIntrinsics) {
+  std::vector<Eigen::Vector3d> points;
   for (const auto &point: aPoints) {
     points.emplace_back(aInvIntrinsics * point);
   }
   return points;
 }
 
-Eigen::Matrix3f computeNormalizationMatrix(const std::vector<Eigen::Vector3f>& aPoints) {
-  Eigen::Vector2f centroid(0, 0);
+Eigen::Matrix3d computeNormalizationMatrix(const std::vector<Eigen::Vector3d>& aPoints) {
+  Eigen::Vector2d centroid(0, 0);
   for (const auto& p : aPoints) {
     centroid += p.head<2>();
   }
-  centroid /= static_cast<float>(aPoints.size());
+  centroid /= static_cast<double>(aPoints.size());
 
-  float meanDist = 0;
+  double meanDist = 0;
   for (const auto& p : aPoints) {
     meanDist += (p.head<2>() - centroid).norm();
   }
-  meanDist /= static_cast<float>(aPoints.size());
+  meanDist /= static_cast<double>(aPoints.size());
 
-  float scale = std::sqrt(2.0f) / meanDist;
+  double scale = std::sqrt(2.0f) / meanDist;
 
-  Eigen::Matrix3f T = Eigen::Matrix3f::Identity();
+  Eigen::Matrix3d T = Eigen::Matrix3d::Identity();
   T(0, 0) = scale;
   T(1, 1) = scale;
   T(0, 2) = -scale * centroid.x();

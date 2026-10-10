@@ -57,12 +57,12 @@ private:
     std::vector<std::uint8_t> mLevels;
 
     std::uint32_t mGradKernelSize{9};
-    cv::Mat mGradKernelX = (cv::Mat_<float>(3, 3) <<
+    cv::Mat mGradKernelX = (cv::Mat_<double>(3, 3) <<
         -1, 0, 1,
         -2, 0, 2,
         -1, 0, 1);
 
-    cv::Mat mGradKernelY = (cv::Mat_<float>(3, 3) <<
+    cv::Mat mGradKernelY = (cv::Mat_<double>(3, 3) <<
         -1, -2, -1,
          0,  0,  0,
          1,  2,  1);

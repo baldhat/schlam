@@ -28,12 +28,12 @@ Optimizer::Optimizer() {
 
 }
 
-std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> >
+std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d> >
 Optimizer::optimize(const std::vector<std::vector<KeyPoint*> > &aKeyPoints,
-                    const Eigen::Matrix3f &aRotation,
-                    const Eigen::Vector3f &aTranslation,
-                    const std::vector<Eigen::Vector3f> &aPoints,
-                    const Eigen::Matrix3f &aIntrinsics) {
+                    const Eigen::Matrix3d &aRotation,
+                    const Eigen::Vector3d &aTranslation,
+                    const std::vector<Eigen::Vector3d> &aPoints,
+                    const Eigen::Matrix3d &aIntrinsics) {
     g2o::SparseOptimizer optimizer;
     g2o::OptimizationAlgorithmProperty solverProp;
     optimizer.setVerbose(true);
@@ -50,8 +50,8 @@ Optimizer::optimize(const std::vector<std::vector<KeyPoint*> > &aKeyPoints,
 
     optimizer.addParameter(cam_params);
 
-    std::vector<std::tuple<Eigen::Matrix3f, Eigen::Vector3f> > cams = {
-        {Eigen::Matrix3f::Identity(3, 3), Eigen::Vector3f::Zero()},
+    std::vector<std::tuple<Eigen::Matrix3d, Eigen::Vector3d> > cams = {
+        {Eigen::Matrix3d::Identity(3, 3), Eigen::Vector3d::Zero()},
         {aRotation, aTranslation}
     };
     int vertex_id{0};
@@ -111,15 +111,15 @@ Optimizer::optimize(const std::vector<std::vector<KeyPoint*> > &aKeyPoints,
 
     g2o::VertexSE3Expmap* v_pose = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(1));
     g2o::SE3Quat optimized_pose = v_pose->estimate();
-    Eigen::Matrix3f R = optimized_pose.rotation().toRotationMatrix().cast<float>();
-    Eigen::Vector3f t = optimized_pose.translation().cast<float>();
+    Eigen::Matrix3d R = optimized_pose.rotation().toRotationMatrix().cast<double>();
+    Eigen::Vector3d t = optimized_pose.translation().cast<double>();
 
 
-    std::vector<Eigen::Vector3f> optimized_points;
+    std::vector<Eigen::Vector3d> optimized_points;
     for (int j = 0; j < aPoints.size(); ++j) {
         g2o::VertexPointXYZ* v_point = static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(cams.size() + j));
         Eigen::Vector3d optimized_point = v_point->estimate();
-        optimized_points.push_back(optimized_point.cast<float>());
+        optimized_points.push_back(optimized_point.cast<double>());
     }
 
     return {R, t, optimized_points};

@@ -10,12 +10,12 @@ namespace tft {
 
 class Transformable3D {
 public:
-  Transformable3D(const Eigen::Vector3f &vector,
+  Transformable3D(const Eigen::Vector3d &vector,
                   const std::string &coordinateFrame);
   ~Transformable3D() = default;
 
   std::string getCF() const;
-  Eigen::Vector3f vector;
+  Eigen::Vector3d vector;
 
   double x() const;
   double y() const;

@@ -15,12 +15,12 @@ public:
     Optimizer();
 
 
-    std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> >
+    std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d> >
     optimize(const std::vector<std::vector<KeyPoint*>>& aKeyPoints,
-             const Eigen::Matrix3f& aRotation,
-             const Eigen::Vector3f& aTranslation,
-             const std::vector<Eigen::Vector3f>& aPoints,
-             const Eigen::Matrix3f& aIntrinsics);
+             const Eigen::Matrix3d& aRotation,
+             const Eigen::Vector3d& aTranslation,
+             const std::vector<Eigen::Vector3d>& aPoints,
+             const Eigen::Matrix3d& aIntrinsics);
 
 };
 

@@ -27,9 +27,9 @@ std::vector<Point> getPointsInRadius(int aRadius);
 std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint> &aKps, const std::uint32_t aImageWidth, const std::uint32_t aImageHeight,
                          const std::uint16_t aBorderSize);
 
-std::vector<Eigen::Vector3f> toEigen(const std::vector<KeyPoint*> &aKeypoints);
+std::vector<Eigen::Vector3d> toEigen(const std::vector<KeyPoint*> &aKeypoints);
 
-std::vector<Eigen::Vector3f> toNormalized(const std::vector<Eigen::Vector3f>& aPoints , const Eigen::Matrix3f &aInvIntrinsics);
+std::vector<Eigen::Vector3d> toNormalized(const std::vector<Eigen::Vector3d>& aPoints , const Eigen::Matrix3d &aInvIntrinsics);
 
 template <typename T>
 std::vector<T> filterByInlierMask(const std::vector<T>& input, const std::vector<bool>& mask) {
@@ -43,6 +43,6 @@ std::vector<T> filterByInlierMask(const std::vector<T>& input, const std::vector
     return result;
 }
 
-Eigen::Matrix3f computeNormalizationMatrix(const std::vector<Eigen::Vector3f>& aPoints);
+Eigen::Matrix3d computeNormalizationMatrix(const std::vector<Eigen::Vector3d>& aPoints);
 
 #endif //SCHLAM_UTILS_H

@@ -15,8 +15,8 @@ namespace tft {
 class RigidTransform3D {
 public:
     RigidTransform3D(const std::string &aSource, const std::string &aTarget,
-                     const Eigen::Matrix3f &aRotation,
-                     const Eigen::Vector3f &aTranslation);
+                     const Eigen::Matrix3d &aRotation,
+                     const Eigen::Vector3d &aTranslation);
 
     ~RigidTransform3D() = default;
 
@@ -25,12 +25,12 @@ public:
     Transformable3D applyInverse(const Transformable3D &aTransformable);
     Transformable3D applyInverse(const Transformable3D &&aTransformable);
     std::shared_ptr<RigidTransform3D> inverse() const;
-    Eigen::Matrix4f matrix() const;
+    Eigen::Matrix4d matrix() const;
 
     static std::shared_ptr<RigidTransform3D> identity(const std::string& source="world", const std::string& target="world");
 
-    const Eigen::Matrix3f mRotation;
-    const Eigen::Vector3f mTranslation;
+    const Eigen::Matrix3d mRotation;
+    const Eigen::Vector3d mTranslation;
     const std::string mSource;
     const std::string mTarget;
 

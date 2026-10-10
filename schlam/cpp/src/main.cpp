@@ -113,14 +113,14 @@ int main() {
             auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
 
             // Use the GT camera baseline to put translation and points in metres.
-            const float gtBaseline = (cameraToWorld->mTranslation -
+            const double gtBaseline = (cameraToWorld->mTranslation -
                                       referenceGTCameraPose->mTranslation).norm();
-            const float estimatedBaseline = std::get<1>(updated).norm();
+            const double estimatedBaseline = std::get<1>(updated).norm();
             if (!std::isfinite(gtBaseline) || gtBaseline <= 0 ||
                 !std::isfinite(estimatedBaseline) || estimatedBaseline <= 0) {
                 continue;
             }
-            const float scale = gtBaseline / estimatedBaseline;
+            const double scale = gtBaseline / estimatedBaseline;
             std::get<1>(updated) *= scale;
             for (auto& point : std::get<2>(updated)) {
                 point *= scale;

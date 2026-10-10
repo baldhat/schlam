@@ -38,6 +38,8 @@ include_directories(
 
 # LIBRARY
 add_library(${PROJECT_NAME} SHARED 
+    src/random.cpp
+    src/random.hpp
     src/plotting/plotter.cpp
     src/tft/rigid_transform_3d.cpp
     src/tft/transformable_3d.cpp

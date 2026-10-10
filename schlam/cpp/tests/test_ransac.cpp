@@ -1,5 +1,25 @@
 #include <gtest/gtest.h>
+#include "random.hpp"
 #include "schlam/Ransac.h"
+
+TEST(RansacSamplingTest, SharedSeedReplaysSuccessiveSubsets) {
+    auto& engine = utils::randomEngine();
+    const auto originalEngine = engine;
+
+    engine.seed(utils::kRandomSeed);
+    const auto first = getSparseSubset(8, 100);
+    const auto second = getSparseSubset(8, 100);
+
+    engine.seed(utils::kRandomSeed);
+    EXPECT_EQ(getSparseSubset(8, 100), first);
+    EXPECT_EQ(getSparseSubset(8, 100), second);
+    EXPECT_NE(first, second);
+
+    engine.seed(utils::kRandomSeed + 1);
+    EXPECT_NE(getSparseSubset(8, 100), first);
+
+    engine = originalEngine;
+}
 
 class RansacTest : public ::testing::Test {
   protected:

@@ -30,7 +30,7 @@ public:
     bool shouldPause();
 
     // Update point cloud
-    void updatePointCloud(const std::vector<Eigen::Vector3f> &points, const std::string aCF);
+    void updatePointCloud(const std::vector<Eigen::Vector3d> &points, const std::string aCF);
 
     void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
 
@@ -53,7 +53,7 @@ private:
     std::mutex mPauseMutex;
 
     std::shared_ptr<tft::Transformer> mpTransformer;
-    std::vector<Eigen::Vector3f> mCloud;
+    std::vector<Eigen::Vector3d> mCloud;
     std::vector<std::shared_ptr<tft::RigidTransform3D> > mTransforms;
 
     std::shared_ptr<tft::RigidTransform3D> mFrustumPose;
@@ -80,7 +80,7 @@ private:
 
 
     // Helper drawing functions
-    void DrawGrid(int size, float step);
+    void DrawGrid(int size, double step);
 
     void plotTransform(const std::shared_ptr<tft::RigidTransform3D> transform,
                        const double radius,
@@ -101,9 +101,9 @@ private:
 
     void showTimestamp();
 
-    pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3f &R, const Eigen::Vector3f &t) const;
+    pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3d &R, const Eigen::Vector3d &t) const;
 
-    void drawCylinder(float radius, float length, int slices = 16);
+    void drawCylinder(double radius, double length, int slices = 16);
 
     void drawAxes(const double radius, const double length);
 };
