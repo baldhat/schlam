@@ -11,6 +11,9 @@
 #include "schlam/Optimizer.h"
 #include "schlam/Frame.h"
 
+
+#define optimizePoints false
+
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
 
@@ -85,7 +88,11 @@ int main() {
             auto pts2D_1 = filterByInlierMask(matches[0], inliers);
             auto pts2D_2 = filterByInlierMask(matches[1], inliers);
 
-            auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
+            // if (optimizePoints) {
+                auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
+            // } else {
+            //     std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > updated = {R, t, pts2D_1};
+            // }
 
             plotter->updatePointCloud(std::get<2>(updated), "cam0");
 

@@ -6,6 +6,9 @@
 #include <csv.h>
 
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/calib3d.hpp>
+#include <opencv2/core/eigen.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include <yaml-cpp/yaml.h>
 
@@ -13,6 +16,7 @@
 #include <filesystem>
 #include <thread>
 #include <chrono>
+#include <stdexcept>
 
 
 MAVDataloader::MAVDataloader(std::shared_ptr<tft::Transformer> aTransformer)
@@ -49,6 +53,23 @@ void MAVDataloader::loadCamera0Config() {
     float cu = camera0Config["intrinsics"][2].as<float>(0.0);
     float cv = camera0Config["intrinsics"][3].as<float>(0.0);
     mCamera0Intrinsics << fu, 0, cu, 0, fv, cv, 0, 0, 1;
+
+    if (camera0Config["distortion_coefficients"]) {
+        const auto coefficients = camera0Config["distortion_coefficients"].as<std::vector<double>>();
+        const auto distortionModel = camera0Config["distortion_model"].as<std::string>("rad-tan");
+        const auto cameraModel = camera0Config["camera_model"].as<std::string>("pinhole");
+        if (cameraModel != "pinhole") {
+            throw std::runtime_error("Unsupported camera model: " + cameraModel);
+        }
+        if (distortionModel != "radial-tangential" && distortionModel != "rad-tan") {
+            throw std::runtime_error("Unsupported distortion model: " + distortionModel);
+        }
+        const auto count = coefficients.size();
+        if (count != 4 && count != 5 && count != 8 && count != 12 && count != 14) {
+            throw std::runtime_error("Invalid rad-tan distortion coefficients");
+        }
+        mCamera0DistortionCoefficients = cv::Mat(coefficients).clone();
+    }
 
     auto ec = camera0Config["T_BS"]["data"].as<std::vector<double> >();
     mCamera0Rotation << ec[0], ec[1], ec[2], ec[4], ec[5], ec[6], ec[8], ec[9],
@@ -93,12 +114,28 @@ void MAVDataloader::loadImageData() {
     std::copy(imageFilepaths, std::filesystem::directory_iterator(), std::back_inserter(filesInDirectory));
     std::sort(filesInDirectory.begin(), filesInDirectory.end());
 
+    cv::Mat cameraMatrix;
+    cv::eigen2cv(mCamera0Intrinsics, cameraMatrix);
+    cv::Mat map1, map2;
+    cv::Size mapSize;
+
     for (auto &filepath: filesInDirectory) {
         const std::string imageFile = filepath.string();
         utils::TTimestamp timestamp =
                 stringNanoToTimePoint(filepath.filename().stem());
 
         cv::Mat image = cv::imread(imageFile, cv::IMREAD_GRAYSCALE);
+        if (!image.empty() && !mCamera0DistortionCoefficients.empty()) {
+            if (map1.empty() || mapSize != image.size()) {
+                mapSize = image.size();
+                // Keep the original intrinsics for the corrected pinhole image.
+                cv::initUndistortRectifyMap(cameraMatrix, mCamera0DistortionCoefficients,
+                    cv::Mat(), cameraMatrix, mapSize, CV_16SC2, map1, map2);
+            }
+            cv::Mat correctedImage;
+            cv::remap(image, correctedImage, map1, map2, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+            image = std::move(correctedImage);
+        }
         auto imageData = std::make_shared<ImageData>(
             timestamp, image, mCamera0Intrinsics, mCamera0CF);
         mImageQueue.push_back(imageData);

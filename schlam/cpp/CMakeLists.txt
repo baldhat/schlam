@@ -107,7 +107,7 @@ target_link_libraries(tft ${PROJECT_NAME})
 enable_testing()
 find_package(GTest REQUIRED CONFIG)
 
-add_executable(unit_tests tests/test_ransac.cpp)
+add_executable(unit_tests tests/test_ransac.cpp tests/test_features.cpp tests/test_mav_dataloader.cpp)
 
 # Ensure GTest targets are linked correctly
 target_link_libraries(unit_tests PRIVATE 

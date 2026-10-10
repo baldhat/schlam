@@ -54,6 +54,7 @@ private:
 
   const std::string mCamera0CF{"cam0"};
   Eigen::Matrix3f mCamera0Intrinsics;
+  cv::Mat mCamera0DistortionCoefficients;
   Eigen::Matrix3f mCamera0Rotation;
   Eigen::Vector3f mCamera0Translation;
 

@@ -14,7 +14,7 @@ QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
       mFeatures(aFeatures),
       mHalfX(std::floor((mRight - mLeft) / 2.0)),
       mHalfY(std::floor((mBottom - mTop) / 2.0)),
-      mMaxScore(aFeatures[0].getScore()) {
+      mMaxScore(aFeatures.empty() ? -std::numeric_limits<double>::max() : aFeatures[0].getScore()) {
 }
 
 QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
@@ -25,12 +25,16 @@ QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
       mFeatures(aFeatures),
       mHalfX(std::floor((mRight - mLeft) / 2.0)),
       mHalfY(std::floor((mBottom - mTop) / 2.0)),
-      mMaxScore(aFeatures[0].getScore()),
+      mMaxScore(aFeatures.empty() ? -std::numeric_limits<double>::max() : aFeatures[0].getScore()),
       mParent(aParent) {
 }
 
 
 void QuadTreeNode::divide() {
+    if (!isLeaf() || mFeatures.size() < 2 ||
+        (mRight - mLeft <= 1 && mBottom - mTop <= 1)) {
+        return;
+    }
     std::vector<KeyPoint> featuresTL;
     std::vector<KeyPoint> featuresTR;
     std::vector<KeyPoint> featuresBL;
@@ -75,8 +79,12 @@ void QuadTreeNode::divide() {
 }
 
 std::vector<KeyPoint*> QuadTreeNode::getFeatures() const {
-    if (mFeatures.size() >= 1) {
-        return {const_cast<KeyPoint*>(&mFeatures[0])};
+    if (isLeaf()) {
+        std::vector<KeyPoint*> features;
+        for (const auto &feature : mFeatures) {
+            features.push_back(const_cast<KeyPoint*>(&feature));
+        }
+        return features;
     } else {
         std::vector<KeyPoint*> features;
         for (const auto &child: getChildren()) {
@@ -91,26 +99,19 @@ std::vector<KeyPoint*> QuadTreeNode::getFeatures() const {
 }
 
 bool QuadTreeNode::overlaps(double xMin, double xMax, double yMin, double yMax) const {
-    // horizontal
-    if (!((mLeft > xMin && mLeft < xMax) || (mRight > xMin && mRight < xMax))) {
-        return false;
-    }
-    // vertical
-    if (!((mTop > yMin && mTop < yMax) || (mBottom > yMin && mBottom < yMax))) {
-        return false;
-    }
-    return true;
+    return mLeft <= xMax && mRight >= xMin && mTop <= yMax && mBottom >= yMin;
 }
 
 std::vector<KeyPoint*> QuadTreeNode::getFeatures(double xMin, double xMax, double yMin, double yMax) const {
-    if (mFeatures.size() == 1) {
-        auto &feature = mFeatures[0];
-        if (feature.getImgX() >= xMin && feature.getImgX() <= xMax && feature.getImgY() >= yMin && feature.getImgY() <=
-            yMax) {
-            return {const_cast<KeyPoint*>(&feature)};
-        } else {
-            return {};
+    if (isLeaf()) {
+        std::vector<KeyPoint*> features;
+        for (const auto &feature : mFeatures) {
+            if (feature.getImgX() >= xMin && feature.getImgX() <= xMax &&
+                feature.getImgY() >= yMin && feature.getImgY() <= yMax) {
+                features.push_back(const_cast<KeyPoint*>(&feature));
+            }
         }
+        return features;
     } else {
         std::vector<KeyPoint*> features;
         for (const auto &child: getChildren()) {
@@ -137,7 +138,7 @@ void QuadTreeNode::removeChild(const QuadTreeNode *aChild) {
     }
 }
 
-bool QuadTreeNode::isLeaf() const { return mFeatures.size() == 1; }
+bool QuadTreeNode::isLeaf() const { return !mTL && !mTR && !mBL && !mBR; }
 
 std::vector<QuadTreeNode *> QuadTreeNode::getChildren() const {
     std::vector<QuadTreeNode *> children;
@@ -157,8 +158,10 @@ std::vector<QuadTreeNode *> QuadTreeNode::getChildren() const {
 }
 
 void QuadTreeNode::retainBestFeaturesPerLeaf() {
-    if (getChildren().size() == 0) {
-        mFeatures = {mFeatures[0]};
+    if (isLeaf()) {
+        if (!mFeatures.empty()) {
+            mFeatures.erase(mFeatures.begin() + 1, mFeatures.end());
+        }
     } else {
         for (auto const &child: getChildren()) {
             child->retainBestFeaturesPerLeaf();

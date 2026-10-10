@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <bitset>
 #include <execution>
+#include <mutex>
 #include <vector>
 
 #include "orb_pattern.h"
@@ -54,7 +55,8 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
     std::for_each(std::execution::par, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = calculateFastFeatures(aPyramid[level]);
-        levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 16);
+        // Rotating the 31-pixel pattern can place samples up to 18 pixels from the center.
+        levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 19);
         computeHarrisResponse(aPyramid[level], levelFeatures, 7);
         //levelFeatures = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight, mNumFeaturesPerLevel[level]);
         rescaleFeatures(levelFeatures, 1.0 / mLevelFactors[level], level);
@@ -64,7 +66,9 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
     auto tree = filterWithOctree(features, aPyramid[0].cols, aPyramid[0].rows, mNumFeatures);
     auto treeFeatures = tree->getFeatures();
     std::cout << "Returning " << treeFeatures.size() << " features" << std::endl;
-    mpPlotter->plotFeatures(aPyramid[0], treeFeatures);
+    if (mpPlotter) {
+        mpPlotter->plotFeatures(aPyramid[0], treeFeatures);
+    }
     return std::move(tree);
 }
 
@@ -110,10 +114,10 @@ void ORBFeatureDetector::addDescriptors(
             const int x1 = gOrbBitPattern31[idx + 2];
             const int y1 = gOrbBitPattern31[idx + 3];
 
-            const int rx0 = int(x0 * cosA - y0 * sinA + 0.5f);
-            const int ry0 = int(x0 * sinA + y0 * cosA + 0.5f);
-            const int rx1 = int(x1 * cosA - y1 * sinA + 0.5f);
-            const int ry1 = int(x1 * sinA + y1 * cosA + 0.5f);
+            const int rx0 = std::lround(x0 * cosA - y0 * sinA);
+            const int ry0 = std::lround(x0 * sinA + y0 * cosA);
+            const int rx1 = std::lround(x1 * cosA - y1 * sinA);
+            const int ry1 = std::lround(x1 * sinA + y1 * cosA);
 
             const uint8_t p0 = *(centerPtr + ry0 * step + rx0);
             const uint8_t p1 = *(centerPtr + ry1 * step + rx1);
@@ -133,27 +137,30 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::filterWithOctree(std::vector<K
     std::sort(aFeatures.begin(), aFeatures.end(),
         [](KeyPoint &a, KeyPoint &b) { return a.getScore() > b.getScore(); }
     );
+    if (aNumFeatures == 0) {
+        return std::make_unique<QuadTreeNode>(0, aWidth, 0, aHeight, std::vector<KeyPoint>{});
+    }
     auto root = std::make_unique<QuadTreeNode>(0, aWidth, 0, aHeight, aFeatures);
-    if (aNumFeatures > aFeatures.size()) {
+    if (aNumFeatures >= aFeatures.size()) {
         return std::move(root);
     }
     std::vector<QuadTreeNode *> nodes;
     nodes.push_back(root.get());
     while (nodes.size() < aNumFeatures) {
         std::vector<QuadTreeNode *> newNodes;
+        bool divided = false;
         for (auto &node: nodes) {
-            if (node->isLeaf()) {
+            node->divide();
+            const auto children = node->getChildren();
+            if (children.empty()) {
                 newNodes.push_back(node);
                 continue;
             }
-            node->divide();
-            for (auto children = node->getChildren(); auto &child: children) {
-                if (!child->isLeaf()) {
-                    newNodes.push_back(child);
-                }
-            }
+            divided = true;
+            newNodes.insert(newNodes.end(), children.begin(), children.end());
         }
         nodes = newNodes;
+        if (!divided) break;
     }
 
     // Each leaf might have multiple key points right now, so only keep the best feature per leaf
@@ -250,7 +257,7 @@ ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) {
             brighter += (p > t_high);
             darker += (p < t_low);
 
-            if (brighter < 3 && darker < 3)
+            if (brighter < 2 && darker < 2)
                 continue;
 
             int pos_count = 0;
@@ -340,8 +347,9 @@ void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
             int centerX = static_cast<int>(std::round(f->getImgX() * mLevelFactors[level]));
             int centerY = static_cast<int>(std::round(f->getImgY() * mLevelFactors[level]));
 
-            if (centerX < mOrientationRadius || centerX > (cols - mOrientationRadius) ||
-                centerY < mOrientationRadius || centerY > (rows - mOrientationRadius)) {
+            const int radius = static_cast<int>(mOrientationRadius);
+            if (centerX < radius || centerX >= cols - radius ||
+                centerY < radius || centerY >= rows - radius) {
                 continue;
             }
 

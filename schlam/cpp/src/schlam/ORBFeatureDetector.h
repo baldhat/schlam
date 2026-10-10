@@ -8,9 +8,10 @@
 
 #include "KeyPoint.h"
 #include "utils.h"
-#include "plotting/plotter.hpp"
 #include "QuadTreeNode.h"
 #include "Frame.h"
+
+class Plotter;
 
 class ORBFeatureDetector {
 public:
@@ -23,6 +24,7 @@ public:
     void distributeFeaturesToLevels();
 
 private:
+    friend class ORBFeatureDetectorTest;
     std::uint32_t mNumFeatures{0};
     std::uint8_t mNumLevels{0};
     std::uint32_t mOrientationRadius{15};
@@ -39,14 +41,14 @@ private:
         {0, 3},
         {1, 3},
         {2, 2},
+        {3, 1},
         {3, 0},
         {3, -1},
-        {3, -2},
-        {2, -3},
+        {2, -2},
         {1, -3},
         {0, -3},
-        {-1, -2},
-        {-2, -1},
+        {-1, -3},
+        {-2, -2},
         {-3, -1}
     };
     double mFastThreshold = 7;

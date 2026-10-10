@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <unordered_set>
 
 inline int hamming256(const uint8_t *a, const uint8_t *b) {
     const uint64_t *a64 = reinterpret_cast<const uint64_t *>(a);
@@ -55,6 +56,7 @@ std::array<std::vector<KeyPoint *>, 2> matchWindow(const QuadTreeNode *aTree1,
                                                    const double aMaxDistance, const double aWindowSize) {
     std::array<std::vector<KeyPoint *>, 2> matches;
     const auto features1 = aTree1->getFeatures();
+    std::unordered_set<KeyPoint *> matchedTargets;
 
     for (const auto feature: features1) {
         const auto descriptor = feature->getDescriptor();
@@ -66,7 +68,7 @@ std::array<std::vector<KeyPoint *>, 2> matchWindow(const QuadTreeNode *aTree1,
         const auto candidates = aTree2->getFeatures(x1, x2, y1, y2);
 
         for (const auto candidate: candidates) {
-            if (candidate->isMatched()) continue;
+            if (matchedTargets.contains(candidate)) continue;
 
             const auto distance = hamming256(descriptor.data(), candidate->getDescriptor().data());
             if (distance < bestMatchValue) {
@@ -78,7 +80,7 @@ std::array<std::vector<KeyPoint *>, 2> matchWindow(const QuadTreeNode *aTree1,
         if (bestMatch && bestMatchValue < aMaxDistance) {
             matches[0].push_back(feature);
             matches[1].push_back(bestMatch);
-            bestMatch->setMatched(true);
+            matchedTargets.insert(bestMatch);
         }
     }
     return matches;
