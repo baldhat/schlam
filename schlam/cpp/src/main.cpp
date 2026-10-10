@@ -80,6 +80,13 @@ int main() {
                                      frame->mKeypointTree.get(), 20, 100);
         plotter->plotMatches(*oldFrame, *frame, matches);
 
+        if (matches[0].size() < 100) {
+            // if we don't have enough matches, restart with current frame was reference
+            frames.push_back(std::move(frame));
+            std::cout << "Selecting new reference" << std::endl;
+            continue;
+        }
+
         auto reconstructOpt = reconstructInitial(matches[0], matches[1], imageData->mIntrinsics);
 
         if (reconstructOpt.has_value()) {
@@ -88,11 +95,7 @@ int main() {
             auto pts2D_1 = filterByInlierMask(matches[0], inliers);
             auto pts2D_2 = filterByInlierMask(matches[1], inliers);
 
-            // if (optimizePoints) {
-                auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
-            // } else {
-            //     std::tuple<Eigen::Matrix3f, Eigen::Vector3f, std::vector<Eigen::Vector3f> > updated = {R, t, pts2D_1};
-            // }
+            auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
 
             plotter->updatePointCloud(std::get<2>(updated), "cam0");
 

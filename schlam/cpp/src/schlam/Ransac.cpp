@@ -21,6 +21,7 @@ reconstructInitial(
     const std::vector<KeyPoint*> &aKeypoints2,
     const Eigen::Matrix3f &aIntrinsics) {
     assert(aKeypoints1.size() == aKeypoints2.size());
+    const int numCandidates = 500;
 
     if (aKeypoints1.size() < 8 || aKeypoints2.size() < 8) {
         std::cout << "WARN: Not enough matches found!" << std::endl;
@@ -29,11 +30,11 @@ reconstructInitial(
 
     Eigen::Matrix3f invIntrinsics = aIntrinsics.inverse().cast<float>();
 
-    // TODO: Use hartley normalization, not just inverseK
+    // TODO: Check using hartley normalization, not just inverseK
     auto points1 = toNormalized(toEigen(aKeypoints1), invIntrinsics);
     auto points2 = toNormalized(toEigen(aKeypoints2), invIntrinsics);
 
-    auto candidates = selectCandidates(points1, points2, 200);
+    auto candidates = selectCandidates(points1, points2, numCandidates);
 
     std::vector<bool> inliersHomography, inliersEssential;
     double scoreHomography{0}, scoreEssential{0};
@@ -42,14 +43,17 @@ reconstructInitial(
     Eigen::Matrix3f homography;
     double sigma = 1.0 / aIntrinsics(0, 0);
 
-    // TODO Move to thread once it works
     findEssential({points1, points2}, candidates, inliersEssential,
                   scoreEssential, essential, sigma);
 
     findHomography({points1, points2}, candidates, inliersHomography,
                    scoreHomography, homography, sigma);
 
-    auto rh = scoreHomography / (scoreHomography + scoreEssential);
+    const double totalScore = scoreHomography + scoreEssential;
+    if (totalScore <= 0.0 || !std::isfinite(totalScore))
+        return std::nullopt;
+
+    auto rh = scoreHomography / totalScore;
     std::cout << (rh > 0.45 ? "Choosing Homography" : "Choosing Essential")
             << std::endl;
     if (rh > 0.45) {
@@ -170,7 +174,7 @@ recoverPoseFromHomography(
             pts.push_back(p1_3D);
             if (aInliers[j] && valid) {
                 numValid++;
-                currentTriangulated.push_back(true);
+                currentTriangulated.push_back(parallax < 0.99998);
                 currentParallaxes.push_back(parallax);
             } else {
                 currentTriangulated.push_back(false);
@@ -214,8 +218,10 @@ void findHomography(
     std::size_t numCandidates{aAllPoints[0].size()};
     std::vector<bool> inliers(numCandidates, false);
     aScore = 0;
+    aInliers.assign(numCandidates, false);
+    aHomographyMatrix.setZero();
 
-    for (std::uint32_t iter = 0; iter < 200; iter++) {
+    for (std::uint32_t iter = 0; iter < aCandidates.size(); iter++) {
         auto candidates = aCandidates[iter];
         Eigen::Matrix3f homography = computeHomography(candidates);
         double score = checkHomography(homography, aAllPoints, inliers, aSigma);
@@ -307,8 +313,10 @@ void findEssential(
     std::size_t numCandidates{aAllPoints[0].size()};
     std::vector<bool> inliers(numCandidates, false);
     aScore = 0;
+    aInliers.assign(numCandidates, false);
+    aEssentialMatrix.setZero();
 
-    for (std::uint32_t iter = 0; iter < 200; iter++) {
+    for (std::uint32_t iter = 0; iter < aCandidates.size(); iter++) {
         auto candidates = aCandidates[iter];
         Eigen::Matrix3f essentialMatrix = computeEssential(candidates);
         double score = checkEssential(essentialMatrix, aAllPoints, inliers, aSigma);
@@ -455,7 +463,7 @@ recoverPoseFromEssential(
             if (aInliers[j] && valid) {
                 currentParallaxes.push_back(parallax);
                 numValid++;
-                currentTriangulated.push_back(true);
+                currentTriangulated.push_back(parallax < 0.99998);
             } else {
                 currentTriangulated.push_back(false);
             }
@@ -512,6 +520,7 @@ std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector
     float dist2 = normal2.norm();
 
     float cosParallax = normal1.dot(normal2) / (dist1 * dist2);
+    if (!std::isfinite(cosParallax)) return {false, 0};
 
     // Check depth in front of first camera (only if enough parallax, as "infinite" points can easily go to negative depth)
     if (p1_3D(2) <= 0 && cosParallax < 0.99998)
@@ -538,7 +547,7 @@ std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector
     float squareError1 = (im1x - aKP1->getImgX()) * (im1x - aKP1->getImgX()) + (im1y - aKP1->getImgY()) * (
                              im1y - aKP1->getImgY());
 
-    if (squareError1 > 4)
+    if (!std::isfinite(squareError1) || squareError1 > 4)
         return {false, cosParallax};
 
     // Check reprojection error in second image
@@ -550,13 +559,11 @@ std::pair<bool, float> isValid(const Eigen::Vector3f &p1_3D, const Eigen::Vector
     float squareError2 = (im2x - aKP2->getImgX()) * (im2x - aKP2->getImgX()) + (im2y - aKP2->getImgY()) * (
                              im2y - aKP2->getImgY());
 
-    if (squareError2 > 4)
+    if (!std::isfinite(squareError2) || squareError2 > 4)
         return {false, cosParallax};
 
-    if (cosParallax < 0.99998)
-        return {true, cosParallax};
-
-    return {false, cosParallax};
+    // Low-parallax points support the pose, but are excluded from the triangulated mask.
+    return {true, cosParallax};
 }
 
 std::array<Eigen::Vector3f, 2> triangulate(const Eigen::Vector3f &aP1, const Eigen::Vector3f &aP2,

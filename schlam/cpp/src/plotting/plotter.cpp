@@ -163,7 +163,7 @@ void Plotter::plotMatches(const Frame &oldFrame, const Frame &newFrame,
     }
 
     for (const auto &kp : features1) {
-        cv::Point pt{static_cast<int>(kp->getImgX()), kp->getImgY()};
+        cv::Point pt{static_cast<int>(kp->getImgX()), static_cast<int>(kp->getImgY())};
         cv::rectangle(colorResult,
                       {pt.x - halfSize, pt.y - halfSize},
                       {pt.x + halfSize, pt.y + halfSize},
@@ -171,7 +171,7 @@ void Plotter::plotMatches(const Frame &oldFrame, const Frame &newFrame,
     }
 
     for (const auto &kp : features2) {
-        cv::Point pt{kp->getImgX(), kp->getImgY() + offset};
+        cv::Point pt{static_cast<int>(kp->getImgX()), static_cast<int>(kp->getImgY() + offset)};
         cv::rectangle(colorResult,
                       {pt.x - halfSize, pt.y - halfSize},
                       {pt.x + halfSize, pt.y + halfSize},

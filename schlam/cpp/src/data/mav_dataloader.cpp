@@ -54,22 +54,10 @@ void MAVDataloader::loadCamera0Config() {
     float cv = camera0Config["intrinsics"][3].as<float>(0.0);
     mCamera0Intrinsics << fu, 0, cu, 0, fv, cv, 0, 0, 1;
 
-    if (camera0Config["distortion_coefficients"]) {
-        const auto coefficients = camera0Config["distortion_coefficients"].as<std::vector<double>>();
-        const auto distortionModel = camera0Config["distortion_model"].as<std::string>("rad-tan");
-        const auto cameraModel = camera0Config["camera_model"].as<std::string>("pinhole");
-        if (cameraModel != "pinhole") {
-            throw std::runtime_error("Unsupported camera model: " + cameraModel);
-        }
-        if (distortionModel != "radial-tangential" && distortionModel != "rad-tan") {
-            throw std::runtime_error("Unsupported distortion model: " + distortionModel);
-        }
-        const auto count = coefficients.size();
-        if (count != 4 && count != 5 && count != 8 && count != 12 && count != 14) {
-            throw std::runtime_error("Invalid rad-tan distortion coefficients");
-        }
-        mCamera0DistortionCoefficients = cv::Mat(coefficients).clone();
-    }
+    const auto coefficients = camera0Config["distortion_coefficients"].as<std::vector<double>>();
+    const auto distortionModel = camera0Config["distortion_model"].as<std::string>("rad-tan");
+    const auto cameraModel = camera0Config["camera_model"].as<std::string>("pinhole");
+    mCamera0DistortionCoefficients = cv::Mat(coefficients).clone();
 
     auto ec = camera0Config["T_BS"]["data"].as<std::vector<double> >();
     mCamera0Rotation << ec[0], ec[1], ec[2], ec[4], ec[5], ec[6], ec[8], ec[9],
