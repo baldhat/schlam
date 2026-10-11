@@ -7,6 +7,8 @@
 
 #include "KeyPoint.h"
 
+#include <memory>
+
 #include <g2o/core/sparse_optimizer.h>
 #include <g2o/core/optimization_algorithm_property.h>
 
@@ -14,13 +16,21 @@ class Optimizer {
 public:
     Optimizer();
 
-
+    // Anchors monocular scale to the initial translation's baseline length.
     std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d> >
-    optimize(const std::vector<std::vector<KeyPoint*>>& aKeyPoints,
+    optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<KeyPoint>>>& aKeyPoints,
              const Eigen::Matrix3d& aRotation,
              const Eigen::Vector3d& aTranslation,
              const std::vector<Eigen::Vector3d>& aPoints,
              const Eigen::Matrix3d& aIntrinsics);
+
+    // The input and returned pose map aPoints' coordinate frame into the camera.
+    std::tuple<Eigen::Matrix3d, Eigen::Vector3d>
+    optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints,
+                        const Eigen::Matrix3d &aRotation,
+                        const Eigen::Vector3d &aTranslation,
+                        const std::vector<Eigen::Vector3d> &aPoints,
+                        const Eigen::Matrix3d &aIntrinsics);
 
 };
 

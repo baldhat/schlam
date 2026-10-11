@@ -11,9 +11,70 @@
 #include "schlam/Matcher.h"
 #include "schlam/Optimizer.h"
 #include "schlam/Frame.h"
+#include "schlam/Map.h"
+#include "schlam/MotionModel.h"
 
 
 #define optimizePoints false
+
+bool getNextData(std::shared_ptr<tft::Transformer> pTransformer,
+                 std::shared_ptr<MAVDataloader> dataloader,
+                 std::shared_ptr<Plotter> plotter,
+                 const std::shared_ptr<tft::RigidTransform3D> cameraToIMU,
+                 std::shared_ptr<std::pair<IMUData, GTData>> &imuAndGT,
+                 std::shared_ptr<ImageData> &imageData,
+                 std::shared_ptr<tft::RigidTransform3D> &cameraToWorld,
+                 bool &continues) {
+    continues = false;
+    imageData = dataloader->getNextImageData();
+    plotter->updateTimestamp(imageData->mTimestamp);
+    // The GT stream starts later than the images and is not timestamp-aligned
+    // with the IMU rows returned alongside it.
+    if (imageData->mTimestamp < imuAndGT->second.mTimestamp) {
+        continues = true;
+        return false;
+    }
+    while (imuAndGT->second.mTimestamp < imageData->mTimestamp) {
+        auto nextIMUAndGT = dataloader->getNextIMUData();
+        if (nextIMUAndGT->second.mTimestamp <= imuAndGT->second.mTimestamp) {
+            break; // No more GT samples are available.
+        }
+        imuAndGT = std::move(nextIMUAndGT);
+    }
+    if (imuAndGT->second.mTimestamp < imageData->mTimestamp) {
+        return true;
+    }
+    const auto& gtData = imuAndGT->second;
+    const auto imuToWorld = std::make_shared<tft::RigidTransform3D>(
+        "imu", "world", gtData.mRotation, gtData.mPosition);
+    cameraToWorld = imuToWorld * cameraToIMU;
+    pTransformer->registerTransform(imuToWorld);
+    // Register the composed pose directly so cam0s cached world pose is refreshed.
+    pTransformer->registerTransform(cameraToWorld);
+
+    pTransformer->findTransform("imu", "world");
+    pTransformer->findTransform("cam0", "world");
+    return false;
+}
+
+bool scaleToBaseline(std::shared_ptr<tft::RigidTransform3D> referenceGTCameraPose,
+                     std::shared_ptr<tft::RigidTransform3D> cameraToWorld,
+                     Eigen::Vector3d& t_opt,
+                     std::vector<Eigen::Matrix<double, 3, 1>>& pts_opt) {
+    const double gtBaseline = (cameraToWorld->mTranslation -
+                               referenceGTCameraPose->mTranslation).norm();
+    const double estimatedBaseline = t_opt.norm();
+    if (!std::isfinite(gtBaseline) || gtBaseline <= 0 ||
+        !std::isfinite(estimatedBaseline) || estimatedBaseline <= 0) {
+        return true;
+    }
+    const double scale = gtBaseline / estimatedBaseline;
+    t_opt *= scale;
+    for (auto& point : pts_opt) {
+        point *= scale;
+    }
+    return false;
+}
 
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
@@ -28,6 +89,8 @@ int main() {
 
     auto optimizer = std::make_shared<Optimizer>();
 
+    auto motionModel = MotionModel();
+
     const auto cameraToIMU = pTransformer->findTransform("cam0", "imu");
     auto imuAndGT = dataloader->getNextIMUData();
 
@@ -35,6 +98,8 @@ int main() {
     std::string prevFrameName;
     std::shared_ptr<tft::RigidTransform3D> referenceGTCameraPose;
     std::shared_ptr<tft::RigidTransform3D> referenceCameraToWorld;
+
+    std::shared_ptr<Map> map;
 
     std::unique_ptr<Frame> referenceFrame;
     const auto selectReference = [&](std::unique_ptr<Frame> frame,
@@ -47,36 +112,15 @@ int main() {
         referenceFrame = std::move(frame);
     };
 
+    // initialization
     while (!dataloader->empty()) {
         auto now = std::chrono::system_clock::now();
 
-        auto imageData = dataloader->getNextImageData();
-        plotter->updateTimestamp(imageData->mTimestamp);
-        // The GT stream starts later than the images and is not timestamp-aligned
-        // with the IMU rows returned alongside it.
-        if (imageData->mTimestamp < imuAndGT->second.mTimestamp) {
-            continue;
-        }
-        while (imuAndGT->second.mTimestamp < imageData->mTimestamp) {
-            auto nextIMUAndGT = dataloader->getNextIMUData();
-            if (nextIMUAndGT->second.mTimestamp <= imuAndGT->second.mTimestamp) {
-                break; // No more GT samples are available.
-            }
-            imuAndGT = std::move(nextIMUAndGT);
-        }
-        if (imuAndGT->second.mTimestamp < imageData->mTimestamp) {
-            break;
-        }
-        const auto& gtData = imuAndGT->second;
-        const auto imuToWorld = std::make_shared<tft::RigidTransform3D>(
-            "imu", "world", gtData.mRotation, gtData.mPosition);
-        const auto cameraToWorld = imuToWorld * cameraToIMU;
-        pTransformer->registerTransform(imuToWorld);
-        // Register the composed pose directly so cam0s cached world pose is refreshed.
-        pTransformer->registerTransform(cameraToWorld);
-
-        pTransformer->findTransform("imu", "world");
-        pTransformer->findTransform("cam0", "world");
+        std::shared_ptr<ImageData> imageData;
+        std::shared_ptr<tft::RigidTransform3D> cameraToWorld;
+        bool continues;
+        if (getNextData(pTransformer, dataloader, plotter, cameraToIMU, imuAndGT, imageData, cameraToWorld, continues)) break;
+        if (continues) continue;
 
         plotter->updateFrustum(imageData);
 
@@ -92,12 +136,11 @@ int main() {
         auto oldFrame = referenceFrame.get();
         auto oldFeatures = oldFrame->mKeypointTree->getFeatures();
         auto newFeatures = frame->mKeypointTree->getFeatures();
-        auto matches = matchWindow(oldFrame->mKeypointTree.get(),
-                                     frame->mKeypointTree.get(), 20, 100);
-        plotter->plotMatches(*oldFrame, *frame, matches);
+        auto [matches, _] = matchWindow(oldFrame->mKeypointTree,
+                                     frame->mKeypointTree, 20, 100);
+        plotter->plotMatches(oldFrame->mImage, frame->mImage, matches);
 
         if (matches[0].size() < 100) {
-            // Replace the candidate; only an accepted reference is registered for plotting.
             selectReference(std::move(frame), cameraToWorld);
             std::cout << "Selecting new reference" << std::endl;
             continue;
@@ -111,40 +154,31 @@ int main() {
             auto pts2D_1 = filterByInlierMask(matches[0], inliers);
             auto pts2D_2 = filterByInlierMask(matches[1], inliers);
 
-            auto updated = optimizer->optimize({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
+            auto [R_opt, t_opt, pts_opt] = optimizer->optimizePoseAndPoints({pts2D_1, pts2D_2}, R, t, filtered_pts, imageData->mIntrinsics);
 
             // Use the GT camera baseline to put translation and points in metres.
-            const double gtBaseline = (cameraToWorld->mTranslation -
-                                      referenceGTCameraPose->mTranslation).norm();
-            const double estimatedBaseline = std::get<1>(updated).norm();
-            if (!std::isfinite(gtBaseline) || gtBaseline <= 0 ||
-                !std::isfinite(estimatedBaseline) || estimatedBaseline <= 0) {
-                continue;
-            }
-            const double scale = gtBaseline / estimatedBaseline;
-            std::get<1>(updated) *= scale;
-            for (auto& point : std::get<2>(updated)) {
-                point *= scale;
-            }
+            if (scaleToBaseline(referenceGTCameraPose, cameraToWorld, t_opt, pts_opt)) continue;
 
             const std::string frameName = "cam_pred" + std::to_string(i++);
             const auto referenceToNew = std::make_shared<tft::RigidTransform3D>(
-                prevFrameName, frameName, std::get<0>(updated), std::get<1>(updated));
+                prevFrameName, frameName, R_opt, t_opt);
             pTransformer->registerTransform(referenceCameraToWorld);
             pTransformer->findTransform(prevFrameName, "world");
             const auto newCameraToWorld = referenceCameraToWorld * referenceToNew->inverse();
             pTransformer->registerTransform(newCameraToWorld);
             pTransformer->findTransform(frameName, "world");
 
-            plotter->updatePointCloud(std::get<2>(updated), prevFrameName);
+            plotter->updatePointCloud(pts_opt, prevFrameName);
 
-            prevFrameName = frameName;
-            referenceCameraToWorld = newCameraToWorld;
-            referenceGTCameraPose = cameraToWorld;
-            referenceFrame = std::move(frame);
-            while (true) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            motionModel.addPose(pTransformer->findTransform(prevFrameName, "world"), referenceFrame->mTimestamp);
+            motionModel.addPose(pTransformer->findTransform(frameName, "world"), frame->mTimestamp);
+
+            std::vector<MapPoint> mapPoints;
+            for (std::size_t i = 0; i < pts_opt.size(); i++) {
+                mapPoints.emplace_back(pts_opt[i], pts2D_2[i]->getDescriptor());
             }
+            map = std::make_shared<Map>(mapPoints, prevFrameName);
+            break; // Finished initialization
         }
 
         auto end = std::chrono::system_clock::now();
@@ -152,6 +186,55 @@ int main() {
                 <<
                 " ms" << std::endl;
         while (plotter->shouldPause()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+
+    std::cout << "Finished initialization" << std::endl;
+
+    // tracking
+    while (!dataloader->empty()) {
+        std::shared_ptr<ImageData> imageData;
+        std::shared_ptr<tft::RigidTransform3D> cameraToWorld;
+        bool continues;
+        if (getNextData(pTransformer, dataloader, plotter, cameraToIMU, imuAndGT, imageData, cameraToWorld, continues)) break;
+        if (continues) continue;
+
+        auto estimatedPose = motionModel.estimateLinearAt(imageData->mTimestamp);
+
+        pTransformer->registerTransform(estimatedPose);
+        pTransformer->findTransform(estimatedPose->mSource, "world");
+
+        auto frame = std::make_shared<Frame>(imageData);
+        featureDetector->detectFeatures(*frame);
+
+        auto [matches, matched] = matchByProjection(map, frame, estimatedPose, pTransformer, 25, 20);
+        std::cout << "Matched " << matches[0].size() << " out of " << map->mPoints.size() << " map points" << std::endl;
+        plotter->plotMatches(frame->mImage, frame->mImage, matches);
+
+        std::vector<Eigen::Vector3d> matchedMapPoints;
+        for (std::size_t i = 0; i < map->mPoints.size(); i++) {
+            if (matched[i]) {
+                matchedMapPoints.emplace_back(map->mPoints[i].mPosition);
+            }
+        }
+        const auto mapToCamera = pTransformer->findTransform(map->mFrame, estimatedPose->mSource);
+        const auto [rotation, translation] = optimizer->optimizePose(matches[1],
+            mapToCamera->mRotation, mapToCamera->mTranslation,
+            matchedMapPoints, imageData->mIntrinsics);
+        const auto optimizedMapToCamera = std::make_shared<tft::RigidTransform3D>(
+            map->mFrame, estimatedPose->mSource, rotation, translation);
+        const auto mapToWorld = pTransformer->findTransform(map->mFrame, "world");
+        const auto optimizedCameraToWorld = mapToWorld * optimizedMapToCamera->inverse();
+        pTransformer->registerTransform(optimizedCameraToWorld);
+        pTransformer->findTransform(optimizedCameraToWorld->mSource, "world");
+
+
+        if (!matchedMapPoints.empty()) {
+            motionModel.addPose(optimizedCameraToWorld, imageData->mTimestamp);
+        }
+
+        while (true) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }

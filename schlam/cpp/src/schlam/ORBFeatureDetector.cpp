@@ -328,7 +328,7 @@ void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vecto
 
 void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
                                         QuadTreeNode* aTree) {
-    std::vector<std::vector<KeyPoint *> > featuresByLevel(aPyramid.size());
+    std::vector<std::vector<std::shared_ptr<KeyPoint>>> featuresByLevel(aPyramid.size());
     for (auto &f: aTree->getFeatures()) {
         featuresByLevel[f->getLevel()].push_back(f);
     }
@@ -343,7 +343,7 @@ void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
         const int rows = img.rows;
         const int cols = img.cols;
 
-        for (KeyPoint *f: levelFeatures) {
+        for (const auto& f: levelFeatures) {
             int centerX = static_cast<int>(std::round(f->getImgX() * mLevelFactors[level]));
             int centerY = static_cast<int>(std::round(f->getImgY() * mLevelFactors[level]));
 

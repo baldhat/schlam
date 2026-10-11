@@ -12,12 +12,13 @@
 #include <opencv2/core.hpp>
 
 #include <optional>
+#include <memory>
 #include <vector>
 
 std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool> > >
 reconstructInitial(
-    const std::vector<KeyPoint*> &aKeypoints1,
-    const std::vector<KeyPoint*> &aKeypoints2,
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
     const Eigen::Matrix3d &aIntrinsics);
 
 // -----------------------------------------------------------------------
@@ -45,7 +46,7 @@ std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Ve
 recoverPoseFromEssential(
     const Eigen::Matrix3d aEssential,
     const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
-    const std::array<std::vector<KeyPoint*>, 2> &aKeyPoints,
+    const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aKeyPoints,
     const std::vector<bool> &aInliers, const Eigen::Matrix3d& aIntrinsics);
 
 std::array<Eigen::Vector3d, 2> triangulate(const Eigen::Vector3d &aP1, const Eigen::Vector3d &aP2,
@@ -78,7 +79,7 @@ std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Ve
 recoverPoseFromHomography(
     const Eigen::Matrix3d& aHomography,
     const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
-    const std::array<std::vector<KeyPoint*>, 2> &aKeyPoints,
+    const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aKeyPoints,
     const std::vector<bool> &aInliers, const Eigen::Matrix3d& aIntrinsics);
 
 // ----------
@@ -94,6 +95,7 @@ std::vector<std::uint32_t> getSparseSubset(std::uint32_t N, std::uint32_t T);
 Eigen::Vector3d euclidean(const Eigen::Vector4f &aPT);
 
 std::pair<bool, double> isValid(const Eigen::Vector3d &p1_3D, const Eigen::Vector3d &p2_3D, const Eigen::Matrix3d &R,
-             const Eigen::Vector3d &t, const Eigen::Matrix3d &intrinsics, const KeyPoint* aKP1, const KeyPoint* aKP2);
+             const Eigen::Vector3d &t, const Eigen::Matrix3d &intrinsics,
+             const std::shared_ptr<KeyPoint>& aKP1, const std::shared_ptr<KeyPoint>& aKP2);
 
 #endif // SCHLAM_RANSAC_H

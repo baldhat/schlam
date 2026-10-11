@@ -22,6 +22,7 @@ public:
 
     Transformable3D apply(const Transformable3D &aTransformable);
     Transformable3D apply(const Transformable3D &&aTransformable);
+    Eigen::Vector3d apply(const Eigen::Vector3d& aVector);
     Transformable3D applyInverse(const Transformable3D &aTransformable);
     Transformable3D applyInverse(const Transformable3D &&aTransformable);
     std::shared_ptr<RigidTransform3D> inverse() const;

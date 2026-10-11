@@ -143,15 +143,15 @@ void Plotter::drawAxes(const double radius, const double length) {
     glPopMatrix();
 }
 
-void Plotter::plotMatches(const Frame &oldFrame, const Frame &newFrame,
-                          const std::array<std::vector<KeyPoint *>, 2>& aMatches) {
-    if (oldFrame.mImage.empty() || newFrame.mImage.empty()) {
+void Plotter::plotMatches(const cv::Mat &oldFrame, const cv::Mat &newFrame,
+                          const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches) {
+    if (oldFrame.empty() || newFrame.empty()) {
         std::cerr << "Invalid image!" << std::endl;
         return;
     }
 
     cv::Mat combined;
-    cv::vconcat(oldFrame.mImage, newFrame.mImage, combined);
+    cv::vconcat(oldFrame, newFrame, combined);
 
     cv::Mat colorResult;
     if (combined.channels() == 1) {
@@ -160,7 +160,7 @@ void Plotter::plotMatches(const Frame &oldFrame, const Frame &newFrame,
         colorResult = combined.clone();
     }
 
-    const int offset = oldFrame.mImage.rows;
+    const int offset = oldFrame.rows;
     const auto &features1 = aMatches[0];
     const auto &features2 = aMatches[1];
 
@@ -272,7 +272,7 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr
     glDepthMask(GL_TRUE);
 }
 
-void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint *> &aFeatures) {
+void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) {
     if (aImage.empty()) {
         std::cout << "Invalid image!" << std::endl;
         return;

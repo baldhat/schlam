@@ -14,6 +14,7 @@
 
 // STL
 #include <vector>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <optional>
@@ -38,10 +39,10 @@ public:
 
     void updateTimestamp(const utils::TTimestamp& aTimestamp);
 
-    void plotFeatures(const cv::Mat &aImage, const std::vector<KeyPoint*> &aFeatures);
+    void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures);
 
-    void plotMatches(const Frame& oldFrame, const Frame& newFrame,
-                     const std::array<std::vector<KeyPoint *>, 2>& aMatches);
+    void plotMatches(const cv::Mat& oldFrame, const cv::Mat& newFrame,
+                     const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches);
 
     // Start visualization (runs in main thread)
     void run();

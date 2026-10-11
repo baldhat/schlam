@@ -19,7 +19,7 @@ public:
 
     QuadTreeNode(const double aLeft, const double aRight,
                  const double aTop, const double aBottom,
-                 const std::vector<KeyPoint> &aFeatures,
+                 const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
                  QuadTreeNode *aParent);
 
     void divide();
@@ -28,8 +28,8 @@ public:
 
     void retainBestFeaturesPerLeaf();
 
-    std::vector<KeyPoint*> getFeatures() const;
-    std::vector<KeyPoint*> getFeatures(double xMin, double xMax, double yMin, double yMax) const;
+    std::vector<std::shared_ptr<KeyPoint>> getFeatures() const;
+    std::vector<std::shared_ptr<KeyPoint>> getFeatures(double xMin, double xMax, double yMin, double yMax) const;
 
     void removeChild(const QuadTreeNode* aChild);
 
@@ -57,7 +57,7 @@ private:
     std::unique_ptr<QuadTreeNode> mBL;
     std::unique_ptr<QuadTreeNode> mBR;
 
-    std::vector<KeyPoint> mFeatures;
+    std::vector<std::shared_ptr<KeyPoint>> mFeatures;
 
     bool overlaps(double xMin, double xMax, double yMin, double yMax) const;
 };

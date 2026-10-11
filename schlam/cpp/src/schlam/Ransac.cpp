@@ -18,8 +18,8 @@
 
 std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool> > >
 reconstructInitial(
-    const std::vector<KeyPoint*> &aKeypoints1,
-    const std::vector<KeyPoint*> &aKeypoints2,
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
     const Eigen::Matrix3d &aIntrinsics) {
     assert(aKeypoints1.size() == aKeypoints2.size());
     const int numCandidates = 500;
@@ -78,7 +78,7 @@ std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Ve
 recoverPoseFromHomography(
     const Eigen::Matrix3d &aHomography,
     const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
-    const std::array<std::vector<KeyPoint*>, 2> &aKeyPoints,
+    const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aKeyPoints,
     const std::vector<bool> &aInliers, const Eigen::Matrix3d &aIntrinsics) {
     Eigen::JacobiSVD<Eigen::MatrixXd> svd(aHomography, Eigen::ComputeFullV);
     auto normalizedHomography = (1.0 / svd.singularValues()[1]) * aHomography;
@@ -405,7 +405,7 @@ std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Ve
 recoverPoseFromEssential(
     const Eigen::Matrix3d aEssential,
     const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
-    const std::array<std::vector<KeyPoint*>, 2> &aKeyPoints,
+    const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aKeyPoints,
     const std::vector<bool> &aInliers, const Eigen::Matrix3d &aIntrinsics) {
     auto svd = aEssential.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix3d U = svd.matrixU();
@@ -506,8 +506,8 @@ recoverPoseFromEssential(
 }
 
 std::pair<bool, double> isValid(const Eigen::Vector3d &p1_3D, const Eigen::Vector3d &p2_3D, const Eigen::Matrix3d &R,
-                               const Eigen::Vector3d &t, const Eigen::Matrix3d &intrinsics, const KeyPoint* aKP1,
-                               const KeyPoint* aKP2) {
+                               const Eigen::Vector3d &t, const Eigen::Matrix3d &intrinsics,
+                               const std::shared_ptr<KeyPoint>& aKP1, const std::shared_ptr<KeyPoint>& aKP2) {
     bool finite = std::isfinite(p1_3D.x()) && std::isfinite(p1_3D.y()) &&
                   std::isfinite(p1_3D.z());
     if (!finite) return {false, 0};

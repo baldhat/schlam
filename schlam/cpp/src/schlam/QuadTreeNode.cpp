@@ -11,21 +11,24 @@ QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
                            const double aTop, const double aBottom,
                            const std::vector<KeyPoint> &aFeatures)
     : mLeft(aLeft), mRight(aRight), mTop(aTop), mBottom(aBottom),
-      mFeatures(aFeatures),
       mHalfX(std::floor((mRight - mLeft) / 2.0)),
       mHalfY(std::floor((mBottom - mTop) / 2.0)),
       mMaxScore(aFeatures.empty() ? -std::numeric_limits<double>::max() : aFeatures[0].getScore()) {
+    mFeatures.reserve(aFeatures.size());
+    for (const auto& feature : aFeatures) {
+        mFeatures.push_back(std::make_shared<KeyPoint>(feature));
+    }
 }
 
 QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
                            const double aTop, const double aBottom,
-                           const std::vector<KeyPoint> &aFeatures,
+                           const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
                            QuadTreeNode *aParent)
     : mLeft(aLeft), mRight(aRight), mTop(aTop), mBottom(aBottom),
       mFeatures(aFeatures),
       mHalfX(std::floor((mRight - mLeft) / 2.0)),
       mHalfY(std::floor((mBottom - mTop) / 2.0)),
-      mMaxScore(aFeatures.empty() ? -std::numeric_limits<double>::max() : aFeatures[0].getScore()),
+      mMaxScore(aFeatures.empty() ? -std::numeric_limits<double>::max() : aFeatures[0]->getScore()),
       mParent(aParent) {
 }
 
@@ -35,14 +38,14 @@ void QuadTreeNode::divide() {
         (mRight - mLeft <= 1 && mBottom - mTop <= 1)) {
         return;
     }
-    std::vector<KeyPoint> featuresTL;
-    std::vector<KeyPoint> featuresTR;
-    std::vector<KeyPoint> featuresBL;
-    std::vector<KeyPoint> featuresBR;
+    std::vector<std::shared_ptr<KeyPoint>> featuresTL;
+    std::vector<std::shared_ptr<KeyPoint>> featuresTR;
+    std::vector<std::shared_ptr<KeyPoint>> featuresBL;
+    std::vector<std::shared_ptr<KeyPoint>> featuresBR;
 
     for (const auto &feature: mFeatures) {
-        const bool left = feature.getImgX() < (mLeft + mHalfX);
-        const bool top = feature.getImgY() < (mTop + mHalfY);
+        const bool left = feature->getImgX() < (mLeft + mHalfX);
+        const bool top = feature->getImgY() < (mTop + mHalfY);
         if (left) {
             if (top) {
                 featuresTL.emplace_back(feature);
@@ -78,15 +81,11 @@ void QuadTreeNode::divide() {
     mFeatures.clear();
 }
 
-std::vector<KeyPoint*> QuadTreeNode::getFeatures() const {
+std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures() const {
     if (isLeaf()) {
-        std::vector<KeyPoint*> features;
-        for (const auto &feature : mFeatures) {
-            features.push_back(const_cast<KeyPoint*>(&feature));
-        }
-        return features;
+        return mFeatures;
     } else {
-        std::vector<KeyPoint*> features;
+        std::vector<std::shared_ptr<KeyPoint>> features;
         for (const auto &child: getChildren()) {
             auto childFeatures = child->getFeatures();
             features.insert(features.end(), childFeatures.begin(), childFeatures.end());
@@ -102,18 +101,18 @@ bool QuadTreeNode::overlaps(double xMin, double xMax, double yMin, double yMax) 
     return mLeft <= xMax && mRight >= xMin && mTop <= yMax && mBottom >= yMin;
 }
 
-std::vector<KeyPoint*> QuadTreeNode::getFeatures(double xMin, double xMax, double yMin, double yMax) const {
+std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures(double xMin, double xMax, double yMin, double yMax) const {
     if (isLeaf()) {
-        std::vector<KeyPoint*> features;
+        std::vector<std::shared_ptr<KeyPoint>> features;
         for (const auto &feature : mFeatures) {
-            if (feature.getImgX() >= xMin && feature.getImgX() <= xMax &&
-                feature.getImgY() >= yMin && feature.getImgY() <= yMax) {
-                features.push_back(const_cast<KeyPoint*>(&feature));
+            if (feature->getImgX() >= xMin && feature->getImgX() <= xMax &&
+                feature->getImgY() >= yMin && feature->getImgY() <= yMax) {
+                features.push_back(feature);
             }
         }
         return features;
     } else {
-        std::vector<KeyPoint*> features;
+        std::vector<std::shared_ptr<KeyPoint>> features;
         for (const auto &child: getChildren()) {
             if (child->overlaps(xMin, xMax, yMin, yMax)) {
                 auto childFeatures = child->getFeatures(xMin, xMax, yMin, yMax);

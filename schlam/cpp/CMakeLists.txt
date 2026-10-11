@@ -77,6 +77,12 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/Frame.cpp
     src/schlam/Frame.h
     src/schlam/Optimizer.cpp
+        src/schlam/MapPoint.cpp
+        src/schlam/MapPoint.hpp
+        src/schlam/Map.cpp
+        src/schlam/Map.h
+        src/schlam/MotionModel.cpp
+        src/schlam/MotionModel.h
 )
 
 target_link_libraries(${PROJECT_NAME} 
@@ -109,7 +115,7 @@ target_link_libraries(tft ${PROJECT_NAME})
 enable_testing()
 find_package(GTest REQUIRED CONFIG)
 
-add_executable(unit_tests tests/test_ransac.cpp tests/test_features.cpp tests/test_mav_dataloader.cpp)
+add_executable(unit_tests tests/test_ransac.cpp tests/test_features.cpp tests/test_mav_dataloader.cpp tests/test_motion_model.cpp tests/test_optimizer.cpp)
 
 # Ensure GTest targets are linked correctly
 target_link_libraries(unit_tests PRIVATE 

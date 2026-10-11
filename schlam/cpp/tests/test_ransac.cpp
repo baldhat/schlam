@@ -114,7 +114,7 @@ protected:
     const Eigen::Matrix3f rotation = Eigen::Matrix3f::Identity();
     const Eigen::Vector3f translation{-1, 0, 0};
     std::vector<KeyPoint> keypoints1, keypoints2;
-    std::array<std::vector<KeyPoint*>, 2> matches;
+    std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matches;
     std::array<std::vector<Eigen::Vector3f>, 2> points;
 
     void scene(size_t nearCount, size_t farCount) {
@@ -129,8 +129,8 @@ protected:
             const uint32_t disparity = i < nearCount ? 50 : 1;
             keypoints1.emplace_back(x, y);
             keypoints2.emplace_back(x - disparity, y);
-            matches[0].push_back(&keypoints1.back());
-            matches[1].push_back(&keypoints2.back());
+            matches[0].push_back(std::make_shared<KeyPoint>(keypoints1.back()));
+            matches[1].push_back(std::make_shared<KeyPoint>(keypoints2.back()));
             points[0].push_back(inverseIntrinsics * Eigen::Vector3f(x, y, 1));
             points[1].push_back(inverseIntrinsics * Eigen::Vector3f(x - disparity, y, 1));
         }
@@ -146,33 +146,37 @@ protected:
 
 TEST_F(RansacParallaxTest, LowParallaxInlierSupportsPose) {
     const Eigen::Vector3f point1(0, 0, 1000), point2(-1, 0, 1000);
-    const KeyPoint keypoint1(1000, 1000), keypoint2(999, 1000);
+    const auto keypoint1 = std::make_shared<KeyPoint>(1000, 1000);
+    const auto keypoint2 = std::make_shared<KeyPoint>(999, 1000);
     const auto [valid, cosine] = isValid(point1, point2, rotation, translation,
-        intrinsics, &keypoint1, &keypoint2);
+        intrinsics, keypoint1, keypoint2);
     EXPECT_TRUE(valid);
     EXPECT_GE(cosine, 0.99998);
 }
 
 TEST_F(RansacParallaxTest, LowParallaxWithBadReprojectionIsRejected) {
     const Eigen::Vector3f point1(0, 0, 1000), point2(-1, 0, 1000);
-    const KeyPoint keypoint1(1000, 1000), keypoint2(1004, 1000);
+    const auto keypoint1 = std::make_shared<KeyPoint>(1000, 1000);
+    const auto keypoint2 = std::make_shared<KeyPoint>(1004, 1000);
     EXPECT_FALSE(isValid(point1, point2, rotation, translation,
-        intrinsics, &keypoint1, &keypoint2).first);
+        intrinsics, keypoint1, keypoint2).first);
 }
 
 TEST_F(RansacParallaxTest, HighParallaxPointBehindCameraIsRejected) {
     const Eigen::Vector3f point1(0, 0, -20), point2(-1, 0, -20);
-    const KeyPoint keypoint1(1000, 1000), keypoint2(1050, 1000);
+    const auto keypoint1 = std::make_shared<KeyPoint>(1000, 1000);
+    const auto keypoint2 = std::make_shared<KeyPoint>(1050, 1000);
     EXPECT_FALSE(isValid(point1, point2, rotation, translation,
-        intrinsics, &keypoint1, &keypoint2).first);
+        intrinsics, keypoint1, keypoint2).first);
 }
 
 TEST_F(RansacParallaxTest, DegeneratePointsDoNotSupportPose) {
-    const KeyPoint keypoint1(1000, 1000), keypoint2(999, 1000);
+    const auto keypoint1 = std::make_shared<KeyPoint>(1000, 1000);
+    const auto keypoint2 = std::make_shared<KeyPoint>(999, 1000);
     for (const Eigen::Vector3f point1 : {Eigen::Vector3f(0, 0, 0), Eigen::Vector3f(1000, 0, 0)}) {
         const Eigen::Vector3f point2 = point1 + translation;
         EXPECT_FALSE(isValid(point1, point2, rotation, translation,
-            intrinsics, &keypoint1, &keypoint2).first);
+            intrinsics, keypoint1, keypoint2).first);
     }
 }
 
@@ -208,7 +212,7 @@ protected:
         KeyPoint(511, 58), KeyPoint(157, 276), KeyPoint(165, 238), KeyPoint(308, 353),
         KeyPoint(356, 355), KeyPoint(222, 433), KeyPoint(418, 236), KeyPoint(409, 252)
     };
-    std::array<std::vector<KeyPoint*>, 2> matches;
+    std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matches;
     std::array<std::vector<Eigen::Vector3f>, 2> points;
     std::vector<std::array<Eigen::Matrix<float, 8, 3>, 2>> candidates;
 
@@ -216,10 +220,10 @@ protected:
         const Eigen::Matrix3f inverseIntrinsics = intrinsics.inverse();
         std::array<Eigen::Matrix<float, 8, 3>, 2> candidate;
         for (size_t i = 0; i < keypoints1.size(); ++i) {
-            matches[0].push_back(&keypoints1[i]);
-            matches[1].push_back(&keypoints2[i]);
+            matches[0].push_back(std::make_shared<KeyPoint>(keypoints1[i]));
+            matches[1].push_back(std::make_shared<KeyPoint>(keypoints2[i]));
             for (size_t camera = 0; camera < matches.size(); ++camera) {
-                const auto* keypoint = matches[camera][i];
+                const auto& keypoint = matches[camera][i];
                 points[camera].push_back(inverseIntrinsics * Eigen::Vector3f(
                     keypoint->getImgX(), keypoint->getImgY(), 1));
                 candidate[camera].row(i) = points[camera].back();

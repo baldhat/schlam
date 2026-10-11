@@ -55,7 +55,7 @@ std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint>& aKps,
   return filtered;
 }
 
-std::vector<Eigen::Vector3d> toEigen(const std::vector<KeyPoint*> &aKeypoints) {
+std::vector<Eigen::Vector3d> toEigen(const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints) {
   std::vector<Eigen::Vector3d> points;
   for (const auto &keyPoint : aKeypoints) {
     points.emplace_back(static_cast<double>(keyPoint->getImgX()),
@@ -95,4 +95,12 @@ Eigen::Matrix3d computeNormalizationMatrix(const std::vector<Eigen::Vector3d>& a
   T(1, 2) = -scale * centroid.y();
 
   return T;
+}
+
+std::optional<Eigen::Vector2d> project(const Eigen::Vector3d& aPoint, const Eigen::Matrix3d& aIntrinsics) {
+  Eigen::Vector3d projected = aIntrinsics * aPoint;
+  if (projected.z() < 0) return std::nullopt;
+  double u = projected.x() / projected.z();
+  double v = projected.y() / projected.z();
+  return Eigen::Vector2d(u, v);
 }

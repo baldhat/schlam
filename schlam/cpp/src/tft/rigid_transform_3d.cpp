@@ -32,6 +32,11 @@ namespace tft {
                                mTarget);
     }
 
+
+    Eigen::Vector3d RigidTransform3D::apply(const Eigen::Vector3d& aVector) {
+        return mRotation * aVector + mTranslation;
+    }
+
     Transformable3D
     RigidTransform3D::applyInverse(const Transformable3D &aTransformable) {
         if (aTransformable.getCF() != mTarget) {

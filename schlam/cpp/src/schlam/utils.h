@@ -7,6 +7,8 @@
 
 #include "KeyPoint.h"
 
+#include <memory>
+
 #include <opencv2/opencv.hpp>
 #include <eigen3/Eigen/Eigen>
 
@@ -27,7 +29,7 @@ std::vector<Point> getPointsInRadius(int aRadius);
 std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint> &aKps, const std::uint32_t aImageWidth, const std::uint32_t aImageHeight,
                          const std::uint16_t aBorderSize);
 
-std::vector<Eigen::Vector3d> toEigen(const std::vector<KeyPoint*> &aKeypoints);
+std::vector<Eigen::Vector3d> toEigen(const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints);
 
 std::vector<Eigen::Vector3d> toNormalized(const std::vector<Eigen::Vector3d>& aPoints , const Eigen::Matrix3d &aInvIntrinsics);
 
@@ -44,5 +46,7 @@ std::vector<T> filterByInlierMask(const std::vector<T>& input, const std::vector
 }
 
 Eigen::Matrix3d computeNormalizationMatrix(const std::vector<Eigen::Vector3d>& aPoints);
+
+std::optional<Eigen::Vector2d> project(const Eigen::Vector3d& aPoint, const Eigen::Matrix3d& aIntrinsics);
 
 #endif //SCHLAM_UTILS_H

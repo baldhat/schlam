@@ -1,0 +1,51 @@
+//
+// Created by baldhat on 10/11/26.
+//
+
+#include "MotionModel.h"
+
+#include <Eigen/Geometry>
+
+#include <chrono>
+#include <stdexcept>
+
+void MotionModel::addPose(const std::shared_ptr<tft::RigidTransform3D> transform,
+                          const utils::TTimestamp& timestamp) {
+    if (!mPoses.empty()) {
+        const auto& [lastPose, lastTimestamp] = mPoses.back();
+        if (timestamp <= lastTimestamp) {
+            throw std::invalid_argument("MotionModel timestamps must be strictly increasing");
+        }
+        if (transform->mTarget != lastPose->mTarget) {
+            throw std::invalid_argument("MotionModel poses must share a target coordinate frame");
+        }
+    }
+
+    mPoses.emplace_back(transform, timestamp);
+}
+
+std::shared_ptr<tft::RigidTransform3D> MotionModel::estimateLinearAt(const utils::TTimestamp& timestamp) {
+    if (mPoses.empty()) {
+        throw std::logic_error("Cannot estimate motion without a pose");
+    }
+
+    const auto& [lastPose, lastTimestamp] = mPoses.back();
+    if (mPoses.size() == 1) {
+        return lastPose;
+    }
+
+    const auto& [previousPose, previousTimestamp] = mPoses[mPoses.size() - 2];
+    const double interval = std::chrono::duration<double>(lastTimestamp - previousTimestamp).count();
+    const double elapsed = std::chrono::duration<double>(timestamp - lastTimestamp).count();
+    const double factor = elapsed / interval;
+
+    const Eigen::Vector3d translation = lastPose->mTranslation +
+        factor * (lastPose->mTranslation - previousPose->mTranslation);
+
+    // Scale the shortest relative rotation, preserving SO(3).
+    const Eigen::AngleAxisd relativeRotation(previousPose->mRotation.transpose() * lastPose->mRotation);
+    const Eigen::Matrix3d rotation = lastPose->mRotation *
+        Eigen::AngleAxisd(factor * relativeRotation.angle(), relativeRotation.axis()).toRotationMatrix();
+
+    return std::make_shared<tft::RigidTransform3D>(lastPose->mSource  + "_est", lastPose->mTarget, rotation, translation);
+}
