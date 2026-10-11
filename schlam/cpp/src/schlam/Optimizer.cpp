@@ -163,6 +163,16 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints
                     const Eigen::Vector3d &aTranslation,
                     const std::vector<Eigen::Vector3d> &aPoints,
                     const Eigen::Matrix3d &aIntrinsics) {
+    const auto result = optimizePoseWithInliers(aKeyPoints, aRotation, aTranslation, aPoints, aIntrinsics);
+    return {result.rotation, result.translation};
+}
+
+PoseOptimizationResult
+Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints,
+                                 const Eigen::Matrix3d& aRotation,
+                                 const Eigen::Vector3d& aTranslation,
+                                 const std::vector<Eigen::Vector3d>& aPoints,
+                                 const Eigen::Matrix3d& aIntrinsics) {
     if (aKeyPoints.size() != aPoints.size()) {
         throw std::invalid_argument("Pose optimization requires one observation per map point");
     }
@@ -172,7 +182,7 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints
         }
     }
     if (aPoints.empty()) {
-        return {aRotation, aTranslation};
+        return {aRotation, aTranslation, {}};
     }
 
     g2o::SparseOptimizer optimizer;
@@ -217,14 +227,18 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints
     optimizer.optimize(50);
 
     // Squared reprojection error normalized by the observation's octave variance.
-    std::size_t inlierCount = 0;
-    for (auto* edge : projectionEdges) {
+    const auto isInlier = [&](g2o::EdgeSE3ProjectXYZOnlyPose* edge) {
         edge->computeError();
         const double chi2 = edge->chi2();
-        const bool isOutlier = !edge->isDepthPositive() ||
-            !std::isfinite(chi2) || chi2 > monocularChi2Threshold;
-        edge->setLevel(isOutlier ? 1 : 0);
-        if (!isOutlier) {
+        return edge->isDepthPositive() && std::isfinite(chi2) && chi2 <= monocularChi2Threshold;
+    };
+    std::vector<bool> inliers(projectionEdges.size(), false);
+    std::size_t inlierCount = 0;
+    for (std::size_t j = 0; j < projectionEdges.size(); ++j) {
+        auto* edge = projectionEdges[j];
+        inliers[j] = isInlier(edge);
+        edge->setLevel(inliers[j] ? 0 : 1);
+        if (inliers[j]) {
             ++inlierCount;
         }
     }
@@ -232,9 +246,22 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints
     if (inlierCount >= 3 && optimizer.initializeOptimization(0)) {
         std::cout << "Optimizing again with " << (projectionEdges.size() - inlierCount)
                   << " outliers removed" << std::endl;
+        for (std::size_t j = 0; j < projectionEdges.size(); ++j) {
+            if (inliers[j]) projectionEdges[j]->setRobustKernel(nullptr);
+        }
         optimizer.optimize(50);
     }
 
+    // Residuals change during refinement; only final, previously accepted
+    // observations may update the map's descriptors.
+    for (std::size_t j = 0; j < projectionEdges.size(); ++j) {
+        inliers[j] = inliers[j] && isInlier(projectionEdges[j]);
+    }
     const auto& optimizedPose = pose->estimate();
-    return {optimizedPose.rotation().toRotationMatrix(), optimizedPose.translation()};
+    const Eigen::Matrix3d rotation = optimizedPose.rotation().toRotationMatrix();
+    const Eigen::Vector3d translation = optimizedPose.translation();
+    if (!rotation.allFinite() || !translation.allFinite()) {
+        return {aRotation, aTranslation, std::vector<bool>(aPoints.size(), false)};
+    }
+    return {rotation, translation, inliers};
 }

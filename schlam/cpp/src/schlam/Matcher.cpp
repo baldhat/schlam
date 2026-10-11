@@ -115,35 +115,71 @@ matchWindow(const std::shared_ptr<QuadTreeNode>& aTree1,
     return matchWindow(features1, aTree2, aMaxDistance, aWindowSize);
 }
 
+std::vector<MapPointMatch>
+matchMapPointsByProjection(const std::shared_ptr<Map>& map,
+                          const std::shared_ptr<Frame>& frame,
+                          const std::shared_ptr<tft::RigidTransform3D>& estimatedPose,
+                          const std::shared_ptr<tft::Transformer>& aTransformer,
+                          const double aMaxDistance, const double aWindowSize) {
+    const auto mapToCamera = aTransformer->findTransform(map->mFrame, estimatedPose->mSource);
+    std::vector<MapPointMatch> matches;
+    matches.reserve(map->mPoints.size());
+    std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
+    for (std::size_t mapIndex = 0; mapIndex < map->mPoints.size(); ++mapIndex) {
+        const auto& mapPoint = map->mPoints[mapIndex];
+        const auto pointInCamera = mapToCamera->apply(mapPoint.mPosition);
+        const auto projected = project(pointInCamera, frame->mIntrinsics);
+        if (!projected.has_value()
+            || projected->x() < 0 || projected->x() >= frame->mImage.cols
+            || projected->y() < 0 || projected->y() >= frame->mImage.rows) {
+            continue;
+        }
+
+        const auto candidates = frame->mKeypointTree->getFeatures(
+            projected->x() - aWindowSize, projected->x() + aWindowSize,
+            projected->y() - aWindowSize, projected->y() + aWindowSize);
+        const auto findMatch = [&](const MapPoint::Descriptor& descriptor) {
+            std::shared_ptr<KeyPoint> bestMatch;
+            double bestDistance = aMaxDistance;
+            for (const auto& candidate : candidates) {
+                if (matchedTargets.contains(candidate)) continue;
+                const auto distance = hamming256(descriptor.data(), candidate->getDescriptor().data());
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestMatch = candidate;
+                }
+            }
+            return bestMatch;
+        };
+
+        auto feature = findMatch(mapPoint.mLastInlierDescriptor);
+        if (!feature && mapPoint.mLastInlierDescriptor != mapPoint.mDescriptor) {
+            feature = findMatch(mapPoint.mDescriptor);
+        }
+        if (!feature) continue;
+
+        auto projectedFeature = std::make_shared<KeyPoint>(
+            projected->x(), projected->y(), 0, 0, 0, mapPoint.mDescriptor);
+        matches.push_back({mapIndex, feature, projectedFeature});
+        matchedTargets.insert(feature);
+    }
+    return matches;
+}
+
 std::tuple<std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>, std::vector<bool>>
 matchByProjection(const std::shared_ptr<Map> map,
                   std::shared_ptr<Frame> frame,
                   std::shared_ptr<tft::RigidTransform3D> estimatedPose,
                   std::shared_ptr<tft::Transformer> aTransformer,
                   const double aMaxDistance, const double aWindowSize) {
-    // project map points into frame
-    const auto mapToCamera = aTransformer->findTransform(map->mFrame, estimatedPose->mSource);
-    std::vector<std::shared_ptr<KeyPoint>> projectedMapKeypoints;
-    std::vector<std::size_t> projectedMapIndices;
-    projectedMapKeypoints.reserve(map->mPoints.size());
-    projectedMapIndices.reserve(map->mPoints.size());
-    for (std::size_t mapIndex = 0; mapIndex < map->mPoints.size(); ++mapIndex) {
-        const auto& mapPoint = map->mPoints[mapIndex];
-        auto pointInCamera = mapToCamera->apply(mapPoint.mPosition);
-        auto projected = project(pointInCamera, frame->mIntrinsics);
-        if (projected.has_value()
-            && projected->x() >= 0 && projected->x() < frame->mImage.cols
-            && projected->y() >= 0 && projected->y() < frame->mImage.rows) {
-            projectedMapKeypoints.push_back(std::make_shared<KeyPoint>(projected->x(), projected->y(), 0, 0, 0, mapPoint.mDescriptor));
-            projectedMapIndices.push_back(mapIndex);
-        }
-    }
-
-    // find matches by window search
-    auto [matches, projectedMatched] = matchWindow(projectedMapKeypoints, frame->mKeypointTree, aMaxDistance, aWindowSize);
+    const auto associations = matchMapPointsByProjection(
+        map, frame, estimatedPose, aTransformer, aMaxDistance, aWindowSize);
+    std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matches;
     std::vector<bool> matched(map->mPoints.size(), false);
-    for (std::size_t j = 0; j < projectedMatched.size(); ++j) {
-        matched[projectedMapIndices[j]] = projectedMatched[j];
+    for (const auto& association : associations) {
+        matches[0].push_back(association.projectedFeature);
+        matches[1].push_back(association.feature);
+        matched[association.mapPointIndex] = true;
     }
     return {matches, matched};
 }

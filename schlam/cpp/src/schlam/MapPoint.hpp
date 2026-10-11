@@ -6,26 +6,30 @@
 #define SCHLAM_MAPPOINT_H
 
 #include <array>
-#include <memory>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
 
 #include <eigen3/Eigen/Core>
 
 
-class Frame;
-
-struct Observation {
-    std::shared_ptr<Frame> frame;
-
-};
-
 class MapPoint {
 public:
-    MapPoint(Eigen::Vector3d position, std::array<std::uint8_t, 32> descriptor);
+    using Descriptor = std::array<std::uint8_t, 32>;
+
+    MapPoint(Eigen::Vector3d position, Descriptor descriptor);
+
+    void addInlierObservation(const Descriptor& descriptor);
 
     Eigen::Vector3d mPosition;
-    std::array<std::uint8_t, 32> mDescriptor;
-    //std::vector<Observation> mObservations;
+    // Observed descriptor with the lowest median Hamming distance to the history.
+    Descriptor mDescriptor;
+    Descriptor mLastInlierDescriptor;
 
+private:
+    static constexpr std::size_t descriptorHistorySize = 10;
+    // Store descriptor copies rather than retaining frames and their images.
+    std::deque<Descriptor> mDescriptorHistory;
 };
 
 

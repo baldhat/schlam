@@ -8,9 +8,18 @@
 #include "KeyPoint.h"
 
 #include <memory>
+#include <tuple>
+#include <vector>
 
 #include <g2o/core/sparse_optimizer.h>
 #include <g2o/core/optimization_algorithm_property.h>
+
+struct PoseOptimizationResult {
+    Eigen::Matrix3d rotation;
+    Eigen::Vector3d translation;
+    // Indexes the input observations. Rejected first-pass matches stay rejected.
+    std::vector<bool> inliers;
+};
 
 class Optimizer {
 public:
@@ -26,6 +35,15 @@ public:
 
     // The input and returned pose map aPoints' coordinate frame into the camera.
     // Observation uncertainty assumes a 1.2x pyramid and one-pixel sigma at level 0.
+    // The inlier mask is checked again against the final optimized pose.
+    PoseOptimizationResult
+    optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints,
+                           const Eigen::Matrix3d& aRotation,
+                           const Eigen::Vector3d& aTranslation,
+                           const std::vector<Eigen::Vector3d>& aPoints,
+                           const Eigen::Matrix3d& aIntrinsics);
+
+    // Compatibility interface for callers that only need the optimized pose.
     std::tuple<Eigen::Matrix3d, Eigen::Vector3d>
     optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints,
                         const Eigen::Matrix3d &aRotation,

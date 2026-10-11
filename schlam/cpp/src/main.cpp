@@ -3,6 +3,7 @@
 #include "schlam/Ransac.h"
 #include "tft/rigid_transform_3d.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <thread>
@@ -216,35 +217,44 @@ int main() {
         auto frame = std::make_shared<Frame>(imageData);
         featureDetector->detectFeatures(*frame);
 
-        auto [matches, matched] = matchByProjection(map, frame, estimatedPose, pTransformer, 50, 20);
-        std::cout << "Matched " << matches[0].size() << " out of " << map->mPoints.size() << " map points" << std::endl;
-        plotter->plotMatches(frame->mImage, frame->mImage, matches);
-
+        const auto matches = matchMapPointsByProjection(map, frame, estimatedPose, pTransformer, 50, 20);
+        std::cout << "Matched " << matches.size() << " out of " << map->mPoints.size() << " map points" << std::endl;
+        std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchedFeatures;
         std::vector<Eigen::Vector3d> matchedMapPoints;
-        for (std::size_t i = 0; i < map->mPoints.size(); i++) {
-            if (matched[i]) {
-                matchedMapPoints.emplace_back(map->mPoints[i].mPosition);
-            }
+        matchedMapPoints.reserve(matches.size());
+        matchedFeatures[0].reserve(matches.size());
+        matchedFeatures[1].reserve(matches.size());
+        for (const auto& match : matches) {
+            matchedMapPoints.push_back(map->mPoints[match.mapPointIndex].mPosition);
+            matchedFeatures[0].push_back(match.projectedFeature);
+            matchedFeatures[1].push_back(match.feature);
         }
+        plotter->plotMatches(frame->mImage, frame->mImage, matchedFeatures);
+
         const auto mapToCamera = pTransformer->findTransform(map->mFrame, estimatedPose->mSource);
-        const auto [rotation, translation] = optimizer->optimizePose(matches[1],
+        const auto [rotation, translation, inliers] = optimizer->optimizePoseWithInliers(matchedFeatures[1],
             mapToCamera->mRotation, mapToCamera->mTranslation,
             matchedMapPoints, imageData->mIntrinsics);
-        const auto optimizedMapToCamera = std::make_shared<tft::RigidTransform3D>(
-            map->mFrame, estimatedPose->mSource, rotation, translation);
-        const auto mapToWorld = pTransformer->findTransform(map->mFrame, "world");
-        const auto optimizedCameraToWorld = mapToWorld * optimizedMapToCamera->inverse();
-        pTransformer->registerTransform(optimizedCameraToWorld);
-        pTransformer->findTransform(optimizedCameraToWorld->mSource, "world");
-        plotter->updateFrustum(imageData, optimizedCameraToWorld);
-
-
-        if (!matchedMapPoints.empty()) {
+        const auto inlierCount = std::count(inliers.begin(), inliers.end(), true);
+        std::cout << "Retained " << inlierCount << " pose inliers" << std::endl;
+        if (inlierCount >= 3) {
+            for (std::size_t j = 0; j < matches.size(); ++j) {
+                if (inliers[j]) {
+                    map->mPoints[matches[j].mapPointIndex].addInlierObservation(matches[j].feature->getDescriptor());
+                }
+            }
+            const auto optimizedMapToCamera = std::make_shared<tft::RigidTransform3D>(
+                map->mFrame, estimatedPose->mSource, rotation, translation);
+            const auto mapToWorld = pTransformer->findTransform(map->mFrame, "world");
+            const auto optimizedCameraToWorld = mapToWorld * optimizedMapToCamera->inverse();
+            pTransformer->registerTransform(optimizedCameraToWorld);
+            pTransformer->findTransform(optimizedCameraToWorld->mSource, "world");
+            plotter->updateFrustum(imageData, optimizedCameraToWorld);
             motionModel.addPose(optimizedCameraToWorld, imageData->mTimestamp);
             plotter->addPredictedCameraPosition(optimizedCameraToWorld->mTranslation);
         }
 
-        while (plotter->shouldPause() || matchedMapPoints.size() < 60) {
+        while (plotter->shouldPause() || matchedMapPoints.size() < 30) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
