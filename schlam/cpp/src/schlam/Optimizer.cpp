@@ -188,6 +188,11 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints
     pose->setEstimate(g2o::SE3Quat(aRotation, aTranslation));
     optimizer.addVertex(pose);
 
+    // Match the ORB detector's default 1.2x pyramid, with one-pixel sigma at level 0.
+    constexpr double pyramidScaleFactor = 1.2;
+    constexpr double monocularChi2Threshold = 5.991;
+    const double huberDelta = std::sqrt(monocularChi2Threshold);
+
     std::vector<g2o::EdgeSE3ProjectXYZOnlyPose*> projectionEdges;
     projectionEdges.reserve(aPoints.size());
     for (std::size_t j = 0; j < aPoints.size(); ++j) {
@@ -199,8 +204,11 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints
         edge->cx = aIntrinsics(0, 2);
         edge->cy = aIntrinsics(1, 2);
         edge->setMeasurement(Eigen::Vector2d(aKeyPoints[j]->getImgX(), aKeyPoints[j]->getImgY()));
-        edge->setInformation(Eigen::Matrix2d::Identity());
-        edge->setRobustKernel(new g2o::RobustKernelHuber);
+        const double inverseVariance = std::pow(pyramidScaleFactor, -2.0 * aKeyPoints[j]->getLevel());
+        edge->setInformation(Eigen::Matrix2d::Identity() * inverseVariance);
+        auto* robustKernel = new g2o::RobustKernelHuber;
+        robustKernel->setDelta(huberDelta);
+        edge->setRobustKernel(robustKernel);
         optimizer.addEdge(edge);
         projectionEdges.push_back(edge);
     }
@@ -208,14 +216,13 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints
     optimizer.initializeOptimization();
     optimizer.optimize(50);
 
-    // Euclidean distance in pixels.
-    constexpr double outlierThreshold = 1.0;
+    // Squared reprojection error normalized by the observation's octave variance.
     std::size_t inlierCount = 0;
     for (auto* edge : projectionEdges) {
         edge->computeError();
-        const double error = edge->error().norm();
+        const double chi2 = edge->chi2();
         const bool isOutlier = !edge->isDepthPositive() ||
-            !std::isfinite(error) || error > outlierThreshold;
+            !std::isfinite(chi2) || chi2 > monocularChi2Threshold;
         edge->setLevel(isOutlier ? 1 : 0);
         if (!isOutlier) {
             ++inlierCount;

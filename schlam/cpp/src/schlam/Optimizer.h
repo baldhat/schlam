@@ -25,6 +25,7 @@ public:
              const Eigen::Matrix3d& aIntrinsics);
 
     // The input and returned pose map aPoints' coordinate frame into the camera.
+    // Observation uncertainty assumes a 1.2x pyramid and one-pixel sigma at level 0.
     std::tuple<Eigen::Matrix3d, Eigen::Vector3d>
     optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints,
                         const Eigen::Matrix3d &aRotation,

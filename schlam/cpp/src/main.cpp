@@ -244,7 +244,7 @@ int main() {
             plotter->addPredictedCameraPosition(optimizedCameraToWorld->mTranslation);
         }
 
-        while (plotter->shouldPause() || matchedMapPoints.size() < 100) {
+        while (plotter->shouldPause() || matchedMapPoints.size() < 60) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
