@@ -15,6 +15,9 @@
 #include <memory>
 #include <vector>
 
+// R and t map the reference camera into the current camera. Cloud points are in
+// the reference frame, and cloud/mask entries retain the input correspondence order.
+// SCHLAM_USE_OPENCV_RECONSTRUCTION selects the estimation/triangulation backend.
 std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool> > >
 reconstructInitial(
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,

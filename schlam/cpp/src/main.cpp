@@ -79,13 +79,13 @@ bool scaleToBaseline(std::shared_ptr<tft::RigidTransform3D> referenceGTCameraPos
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
 
-
     auto dataloader = std::make_shared<MAVDataloader>(pTransformer);
 
     auto plotter = std::make_shared<Plotter>(pTransformer, dataloader->getCameraIntrinsics());
     auto render_loop = std::thread([plotter] { plotter->run(); });
 
-    auto featureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 1);
+    auto initFeatureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 8);
+    auto featureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 8);
 
     auto optimizer = std::make_shared<Optimizer>();
 
@@ -110,6 +110,7 @@ int main() {
             cameraToWorld->mTranslation);
         referenceGTCameraPose = cameraToWorld;
         referenceFrame = std::move(frame);
+        plotter->resetCameraPaths(referenceGTCameraPose->mTranslation);
     };
 
     // initialization
@@ -126,12 +127,14 @@ int main() {
 
         auto frame = std::make_unique<Frame>(imageData);
 
-        featureDetector->detectFeatures(*frame);
+        initFeatureDetector->detectFeatures(*frame);
 
         if (!referenceFrame) {
             selectReference(std::move(frame), cameraToWorld);
             continue;
         }
+
+        plotter->addGroundTruthCameraPosition(cameraToWorld->mTranslation);
 
         auto oldFrame = referenceFrame.get();
         auto oldFeatures = oldFrame->mKeypointTree->getFeatures();
@@ -167,6 +170,8 @@ int main() {
             const auto newCameraToWorld = referenceCameraToWorld * referenceToNew->inverse();
             pTransformer->registerTransform(newCameraToWorld);
             pTransformer->findTransform(frameName, "world");
+            plotter->addPredictedCameraPosition(newCameraToWorld->mTranslation);
+            plotter->updateFrustum(imageData, newCameraToWorld);
 
             plotter->updatePointCloud(pts_opt, prevFrameName);
 
@@ -200,7 +205,10 @@ int main() {
         if (getNextData(pTransformer, dataloader, plotter, cameraToIMU, imuAndGT, imageData, cameraToWorld, continues)) break;
         if (continues) continue;
 
+        plotter->addGroundTruthCameraPosition(cameraToWorld->mTranslation);
+
         auto estimatedPose = motionModel.estimateLinearAt(imageData->mTimestamp);
+        plotter->updateFrustum(imageData, estimatedPose);
 
         pTransformer->registerTransform(estimatedPose);
         pTransformer->findTransform(estimatedPose->mSource, "world");
@@ -208,7 +216,7 @@ int main() {
         auto frame = std::make_shared<Frame>(imageData);
         featureDetector->detectFeatures(*frame);
 
-        auto [matches, matched] = matchByProjection(map, frame, estimatedPose, pTransformer, 25, 20);
+        auto [matches, matched] = matchByProjection(map, frame, estimatedPose, pTransformer, 50, 20);
         std::cout << "Matched " << matches[0].size() << " out of " << map->mPoints.size() << " map points" << std::endl;
         plotter->plotMatches(frame->mImage, frame->mImage, matches);
 
@@ -228,13 +236,15 @@ int main() {
         const auto optimizedCameraToWorld = mapToWorld * optimizedMapToCamera->inverse();
         pTransformer->registerTransform(optimizedCameraToWorld);
         pTransformer->findTransform(optimizedCameraToWorld->mSource, "world");
+        plotter->updateFrustum(imageData, optimizedCameraToWorld);
 
 
         if (!matchedMapPoints.empty()) {
             motionModel.addPose(optimizedCameraToWorld, imageData->mTimestamp);
+            plotter->addPredictedCameraPosition(optimizedCameraToWorld->mTranslation);
         }
 
-        while (true) {
+        while (plotter->shouldPause() || matchedMapPoints.size() < 100) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }

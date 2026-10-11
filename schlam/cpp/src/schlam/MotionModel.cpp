@@ -47,5 +47,5 @@ std::shared_ptr<tft::RigidTransform3D> MotionModel::estimateLinearAt(const utils
     const Eigen::Matrix3d rotation = lastPose->mRotation *
         Eigen::AngleAxisd(factor * relativeRotation.angle(), relativeRotation.axis()).toRotationMatrix();
 
-    return std::make_shared<tft::RigidTransform3D>(lastPose->mSource  + "_est", lastPose->mTarget, rotation, translation);
+    return std::make_shared<tft::RigidTransform3D>(lastPose->mSource, lastPose->mTarget, rotation, translation);
 }

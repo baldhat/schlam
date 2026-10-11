@@ -64,10 +64,14 @@ void Plotter::addTransform(
     mTransforms.push_back(transform);
 }
 
-void Plotter::updateFrustum(const std::shared_ptr<ImageData> aImageData) {
+void Plotter::updateFrustum(const std::shared_ptr<ImageData> aImageData,
+                           const std::shared_ptr<tft::RigidTransform3D> aPredictedPose) {
+    const auto cam0Pose = aImageData
+        ? mpTransformer->findTransform(aImageData->mCoordinateFrame, "world") : nullptr;
     std::lock_guard guard(mFrustumMutex);
     mFrustum = aImageData;
-    mFrustumPose = mpTransformer->findTransform(mFrustum->mCoordinateFrame, "world");
+    mFrustumPose = cam0Pose;
+    mPredictedFrustumPose = aPredictedPose;
     m3DImageChanged = true;
 }
 
@@ -77,6 +81,45 @@ void Plotter::updateTimestamp(const utils::TTimestamp& aTimestamp) {
     const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
         aTimestamp - *mSequenceStartTimestamp).count();
     mTimestampText = std::to_string(milliseconds) + " ms";
+}
+
+void Plotter::resetCameraPaths(const Eigen::Vector3d& aReferencePosition) {
+    std::lock_guard guard(mCameraPathsMutex);
+    mGroundTruthCameraPath = {aReferencePosition};
+    mPredictedCameraPath = {aReferencePosition};
+}
+
+void Plotter::addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition) {
+    std::lock_guard guard(mCameraPathsMutex);
+    mGroundTruthCameraPath.push_back(aPosition);
+}
+
+void Plotter::addPredictedCameraPosition(const Eigen::Vector3d& aPosition) {
+    std::lock_guard guard(mCameraPathsMutex);
+    mPredictedCameraPath.push_back(aPosition);
+}
+
+void Plotter::drawCameraPaths(bool aShowGroundTruth, bool aShowPredicted) {
+    std::lock_guard guard(mCameraPathsMutex);
+    glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_LINE_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_TEXTURE_2D);
+
+    const auto drawPath = [](const std::vector<Eigen::Vector3d>& path,
+                             float red, float green, float blue, float width) {
+        if (path.size() < 2) return;
+        glColor3f(red, green, blue);
+        glLineWidth(width);
+        glBegin(GL_LINE_STRIP);
+        for (const auto& position : path) {
+            glVertex3d(position.x(), position.y(), position.z());
+        }
+        glEnd();
+    };
+
+    if (aShowGroundTruth) drawPath(mGroundTruthCameraPath, 0.f, 1.f, 0.f, 3.f);
+    if (aShowPredicted) drawPath(mPredictedCameraPath, 0.f, 0.f, 1.f, 2.f);
+    glPopAttrib();
 }
 
 pangolin::OpenGlMatrix
@@ -218,21 +261,46 @@ void Plotter::drawCylinder(double radius, double length, int slices) {
     glEnd();
 }
 
-void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform,
-                          double alpha) {
+void Plotter::drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha) {
     std::lock_guard guard(mFrustumMutex);
-    glPushMatrix();
+    if (!mFrustum || mFrustum->mImage.empty()) return;
+    if (!(aShowCam0 && mFrustumPose) && !(aShowPredicted && mPredictedFrustumPose)) return;
 
-    if (m3DImageChanged) {
-        m3DImageTexture = std::make_unique<pangolin::GlTexture>(
-            aImageData->mImage.cols,
-            aImageData->mImage.rows,
-            GL_LUMINANCE8, true, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE
-        );
+    glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT | GL_TEXTURE_BIT | GL_LINE_BIT);
+    glDisable(GL_TEXTURE_2D);
 
-        m3DImageTexture->Upload(aImageData->mImage.data, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+    if (m3DImageChanged || !m3DImageTexture) {
+        const auto& image = mFrustum->mImage;
+        if (!m3DImageTexture || m3DImageTexture->width != image.cols ||
+            m3DImageTexture->height != image.rows) {
+            m3DImageTexture = std::make_unique<pangolin::GlTexture>(
+                image.cols, image.rows, GL_LUMINANCE8, true, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+        }
+        const cv::Mat pixels = image.isContinuous() ? image : image.clone();
+        glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        m3DImageTexture->Upload(pixels.data, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+        glPopClientAttrib();
         m3DImageChanged = false;
     }
+
+    if (aShowCam0 && mFrustumPose) {
+        glColor3f(0.f, 1.f, 0.f);
+        glLineWidth(3.f);
+        plotFrustum(mFrustum, mFrustumPose, aAlpha);
+    }
+    if (aShowPredicted && mPredictedFrustumPose) {
+        glColor3f(0.f, 0.f, 1.f);
+        glLineWidth(2.f);
+        plotFrustum(mFrustum, mPredictedFrustumPose, aAlpha);
+    }
+    glPopAttrib();
+}
+
+void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform,
+                          double alpha) {
+    glPushMatrix();
 
     pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
         aTransform->mRotation, aTransform->mTranslation);
@@ -399,7 +467,16 @@ void Plotter::run() {
     pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0,
                                             pangolin::Attach::Pix(200));
     pangolin::Var<bool> menu_pause("menu.Pause", false, true);
-    pangolin::Var<std::function<void()>> menu_viewCam0("menu.View cam0", [this, &s_cam] {
+    const auto viewCamera = [this, &s_cam](const std::shared_ptr<tft::RigidTransform3D>& cameraPose) {
+        if (!cameraPose) return;
+        const auto worldToCamera = cameraPose->inverse();
+        // Camera axes are right/down/forward; OpenGL is right/up/backward.
+        const Eigen::Matrix3d cameraToOpenGL = Eigen::Vector3d(1.0, -1.0, -1.0).asDiagonal();
+        s_cam.SetModelViewMatrix(GetPangolinModelMatrix(
+            cameraToOpenGL * worldToCamera->mRotation,
+            cameraToOpenGL * worldToCamera->mTranslation));
+    };
+    pangolin::Var<std::function<void()>> menu_viewCam0("menu.View cam0", [this, viewCamera] {
         std::shared_ptr<tft::RigidTransform3D> cam0Pose;
         {
             std::lock_guard guard(mFrustumMutex);
@@ -407,23 +484,25 @@ void Plotter::run() {
                 cam0Pose = mFrustumPose;
             }
         }
-        if (!cam0Pose) {
-            return;
+        viewCamera(cam0Pose);
+    });
+    pangolin::Var<std::function<void()>> menu_viewPredicted("menu.View predicted", [this, viewCamera] {
+        std::shared_ptr<tft::RigidTransform3D> predictedPose;
+        {
+            std::lock_guard guard(mFrustumMutex);
+            predictedPose = mPredictedFrustumPose;
         }
-
-        const auto worldToCamera = cam0Pose->inverse();
-        // cam0 is right/down/forward; OpenGL is right/up/backward.
-        const Eigen::Matrix3d cameraToOpenGL = Eigen::Vector3d(1.0, -1.0, -1.0).asDiagonal();
-        s_cam.SetModelViewMatrix(GetPangolinModelMatrix(
-            cameraToOpenGL * worldToCamera->mRotation,
-            cameraToOpenGL * worldToCamera->mTranslation));
+        viewCamera(predictedPose);
     });
     pangolin::Var<bool> menu_showFrames("menu.Show Frames", true, true);
     pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
-    pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
+    pangolin::Var<bool> menu_showCam0Frustum("menu.cam0 Frustum", true, true);
+    pangolin::Var<bool> menu_showPredictedFrustum("menu.Predicted Frustum", true, true);
     pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
     pangolin::Var<bool> menu_showFeatures("menu.Show Features", true, true);
     pangolin::Var<bool> menu_showMatches("menu.Show Matches", true, true);
+    pangolin::Var<bool> menu_showGroundTruthPath("menu.Ground Truth Path", true, true);
+    pangolin::Var<bool> menu_showPredictedPath("menu.Predicted Path", true, true);
 
     auto& timestampView = pangolin::CreateDisplay();
     timestampView.zorder = 1;
@@ -454,9 +533,9 @@ void Plotter::run() {
             glEnd();
         }
 
-        if (menu_showFrustums && mFrustum) {
-            plotFrustum(mFrustum, mFrustumPose, menu_3DImageAlpha);
-        }
+        drawCameraPaths(menu_showGroundTruthPath, menu_showPredictedPath);
+
+        drawFrustums(menu_showCam0Frustum, menu_showPredictedFrustum, menu_3DImageAlpha);
 
         if (menu_pause) {
             std::lock_guard guard(mPauseMutex);

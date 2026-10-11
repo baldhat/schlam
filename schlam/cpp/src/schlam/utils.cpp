@@ -46,7 +46,7 @@ std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint>& aKps,
                          const std::uint16_t aBorderSize) {
   std::vector<KeyPoint> filtered;
   for (std::uint32_t i = 0; i < aKps.size(); i++) {
-    std::uint32_t x{aKps[i].getImgX()}, y{aKps[i].getImgY()};
+    const auto x = aKps[i].getImgX(), y = aKps[i].getImgY();
     if (x >= aBorderSize && y >= aBorderSize &&
         x < (aImageWidth - aBorderSize) && y < (aImageHeight - aBorderSize)) {
       filtered.push_back(aKps[i]);

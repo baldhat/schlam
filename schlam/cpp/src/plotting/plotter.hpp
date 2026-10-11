@@ -35,9 +35,18 @@ public:
 
     void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
 
-    void updateFrustum(const std::shared_ptr<ImageData> aImageData);
+    // The predicted pose maps the camera into world coordinates.
+    void updateFrustum(const std::shared_ptr<ImageData> aImageData,
+                       const std::shared_ptr<tft::RigidTransform3D> aPredictedPose = nullptr);
 
     void updateTimestamp(const utils::TTimestamp& aTimestamp);
+
+    // Camera positions are expressed in world coordinates.
+    void resetCameraPaths(const Eigen::Vector3d& aReferencePosition);
+
+    void addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition);
+
+    void addPredictedCameraPosition(const Eigen::Vector3d& aPosition);
 
     void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures);
 
@@ -60,12 +69,17 @@ private:
     std::vector<std::shared_ptr<tft::RigidTransform3D> > mTransforms;
 
     std::shared_ptr<tft::RigidTransform3D> mFrustumPose;
+    std::shared_ptr<tft::RigidTransform3D> mPredictedFrustumPose;
     std::shared_ptr<ImageData> mFrustum;
     std::mutex mFrustumMutex;
 
     std::string mTimestampText;
     std::optional<utils::TTimestamp> mSequenceStartTimestamp;
     std::mutex mTimestampMutex;
+
+    std::vector<Eigen::Vector3d> mGroundTruthCameraPath;
+    std::vector<Eigen::Vector3d> mPredictedCameraPath;
+    std::mutex mCameraPathsMutex;
 
 
     mutable std::unique_ptr<pangolin::GlTexture> m3DImageTexture;
@@ -94,6 +108,8 @@ private:
     void plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform,
                      double alpha);
 
+    void drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha);
+
     void setFeatureTexture(const cv::Mat &aImage);
 
     void setMatcherTexture(const cv::Mat &aImage);
@@ -103,6 +119,8 @@ private:
     void showMatches();
 
     void showTimestamp();
+
+    void drawCameraPaths(bool aShowGroundTruth, bool aShowPredicted);
 
     pangolin::OpenGlMatrix GetPangolinModelMatrix(const Eigen::Matrix3d &R, const Eigen::Vector3d &t) const;
 

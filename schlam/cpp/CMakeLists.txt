@@ -4,6 +4,9 @@ project(Schlam LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(SCHLAM_USE_OPENCV_RECONSTRUCTION
+    "Use OpenCV essential-matrix estimation and triangulation for reconstruction" OFF)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(G2O_USE_LOGGING ON)
 set(SPDLOG_FMT_EXTERNAL)
@@ -85,6 +88,9 @@ add_library(${PROJECT_NAME} SHARED
         src/schlam/MotionModel.h
 )
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    SCHLAM_USE_OPENCV_RECONSTRUCTION=$<BOOL:${SCHLAM_USE_OPENCV_RECONSTRUCTION}>)
+
 target_link_libraries(${PROJECT_NAME} 
     fmt::fmt
     spdlog::spdlog
@@ -115,7 +121,7 @@ target_link_libraries(tft ${PROJECT_NAME})
 enable_testing()
 find_package(GTest REQUIRED CONFIG)
 
-add_executable(unit_tests tests/test_ransac.cpp tests/test_features.cpp tests/test_mav_dataloader.cpp tests/test_motion_model.cpp tests/test_optimizer.cpp)
+add_executable(unit_tests tests/test_ransac.cpp tests/test_reconstruction.cpp tests/test_features.cpp tests/test_mav_dataloader.cpp tests/test_motion_model.cpp tests/test_optimizer.cpp)
 
 # Ensure GTest targets are linked correctly
 target_link_libraries(unit_tests PRIVATE 

@@ -15,7 +15,6 @@
 #include <g2o/types/sba/types_six_dof_expmap.h>
 
 #include "linear_solver_csparse.h"
-#include "parameter_cameraparameters.h"
 #include "g2o/core/block_solver.h"
 #include "g2o/core/robust_kernel_impl.h"
 #include "g2o/core/sparse_optimizer.h"
@@ -84,14 +83,6 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
                                                                  solverProp)
     );
 
-    g2o::CameraParameters *cam_params =
-            new g2o::CameraParameters(
-                aIntrinsics(0, 0),
-                Eigen::Vector2d(aIntrinsics(0, 2), aIntrinsics(1, 2)), 0.f);
-    cam_params->setId(0);
-
-    optimizer.addParameter(cam_params);
-
     std::vector<std::tuple<Eigen::Matrix3d, Eigen::Vector3d> > cams = {
         {Eigen::Matrix3d::Identity(3, 3), Eigen::Vector3d::Zero()},
         {aRotation, aTranslation}
@@ -129,12 +120,15 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
     // Create edges between poses and points
     for (int i = 0; i < cams.size(); i++) {
         for (int j = 0; j < aKeyPoints[0].size(); j++) {
-            g2o::EdgeProjectXYZ2UV *edge = new g2o::EdgeProjectXYZ2UV();
+            g2o::EdgeSE3ProjectXYZ *edge = new g2o::EdgeSE3ProjectXYZ();
             edge->setVertex(0, optimizer.vertex(cams.size() + j));
             edge->setVertex(1, optimizer.vertex(i));
+            edge->fx = aIntrinsics(0, 0);
+            edge->fy = aIntrinsics(1, 1);
+            edge->cx = aIntrinsics(0, 2);
+            edge->cy = aIntrinsics(1, 2);
             edge->setMeasurement(Eigen::Vector2d(aKeyPoints[i][j]->getImgX(), aKeyPoints[i][j]->getImgY()));
             edge->setInformation(Eigen::Matrix2d::Identity());
-            edge->setParameterId(0, 0);
             edge->setRobustKernel(new g2o::RobustKernelHuber);
 
             optimizer.addEdge(edge);
@@ -156,7 +150,7 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
     for (int j = 0; j < aPoints.size(); ++j) {
         g2o::VertexPointXYZ* v_point = static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(cams.size() + j));
         Eigen::Vector3d optimized_point = v_point->estimate();
-        optimized_points.push_back(optimized_point.cast<double>());
+        optimized_points.push_back(optimized_point);
     }
 
     return {R, t, optimized_points};

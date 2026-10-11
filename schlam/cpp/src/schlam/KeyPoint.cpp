@@ -5,7 +5,7 @@
 #include "KeyPoint.h"
 
 
-KeyPoint::KeyPoint(const std::uint32_t aImgX, const std::uint32_t aImgY, const std::uint8_t aLevel, double aScore,
+KeyPoint::KeyPoint(const double aImgX, const double aImgY, const std::uint8_t aLevel, double aScore,
                    double aAngle,const std::array<uint8_t, 32>& apDescriptor)
     : mImgX(aImgX)
       , mImgY(aImgY)
@@ -19,10 +19,10 @@ void KeyPoint::scaleBy(const double aXFactor, const double aYFactor) {
     mImgY *= aYFactor;
 }
 
-std::uint32_t KeyPoint::getImgX() const {
+double KeyPoint::getImgX() const {
     return mImgX;
 }
-std::uint32_t KeyPoint::getImgY() const {
+double KeyPoint::getImgY() const {
     return mImgY;
 }
 std::uint8_t KeyPoint::getLevel() const {
