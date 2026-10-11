@@ -65,6 +65,11 @@ void MAVDataloader::loadCamera0Config() {
     mCamera0Translation = Eigen::Vector3d(ec[3], ec[7], ec[11]);
 }
 
+Eigen::Matrix3d MAVDataloader::getCameraIntrinsics() {
+    return mCamera0Intrinsics;
+}
+
+
 void MAVDataloader::loadIMUConfig() {
     YAML::Node imuConfig = YAML::LoadFile(mDatasetPath / "imu0" / "sensor.yaml");
     double mGyroscopeNoiseDensity =

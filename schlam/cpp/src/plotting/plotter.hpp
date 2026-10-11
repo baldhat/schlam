@@ -23,7 +23,7 @@ class KeyPoint;
 
 class Plotter {
 public:
-    Plotter(std::shared_ptr<tft::Transformer> apTransformer);
+    Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics);
 
     ~Plotter() = default;
 
@@ -51,6 +51,8 @@ public:
 private:
     std::atomic_bool mPause{false};
     std::mutex mPauseMutex;
+
+    Eigen::Matrix3d mCameraIntrinsics;
 
     std::shared_ptr<tft::Transformer> mpTransformer;
     std::vector<Eigen::Vector3d> mCloud;

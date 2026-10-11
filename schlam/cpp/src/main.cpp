@@ -18,10 +18,11 @@
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
 
-    auto plotter = std::make_shared<Plotter>(pTransformer);
-    auto render_loop = std::thread([plotter] { plotter->run(); });
 
     auto dataloader = std::make_shared<MAVDataloader>(pTransformer);
+
+    auto plotter = std::make_shared<Plotter>(pTransformer, dataloader->getCameraIntrinsics());
+    auto render_loop = std::thread([plotter] { plotter->run(); });
 
     auto featureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 1);
 

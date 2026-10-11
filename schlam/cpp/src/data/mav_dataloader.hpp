@@ -24,6 +24,8 @@ public:
 
   bool empty();
 
+  Eigen::Matrix3d getCameraIntrinsics();
+
 private:
   void loadImageData();
   void loadIMUData();

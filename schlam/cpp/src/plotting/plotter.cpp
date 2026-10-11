@@ -2,6 +2,7 @@
 
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <GL/gl.h>
+#include <functional>
 
 #include <pangolin/display/default_font.h>
 #include <pangolin/gl/gldraw.h>
@@ -29,8 +30,9 @@ void Plotter::DrawGrid(int size, double step) {
 // -----------------------------
 // Plotter methods
 // -----------------------------
-Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer)
-    : mpTransformer(apTransformer) {
+Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics)
+    : mpTransformer(apTransformer)
+    , mCameraIntrinsics(aCameraIntrinsics) {
     setup();
 }
 
@@ -373,9 +375,9 @@ void Plotter::run() {
 
     // 1. Camera setup
     pangolin::OpenGlRenderState s_cam(
-        pangolin::ProjectionMatrix(1920, 1080, 840, 840, 1920 / 2, 1080 / 2, 0.1,
-                                   1000),
-        pangolin::ModelViewLookAt(20, -20, 20, 0, 0, 0, pangolin::AxisZ));
+        pangolin::ProjectionMatrix(752, 480, mCameraIntrinsics(0, 0), mCameraIntrinsics(1, 1), mCameraIntrinsics(0, 2), mCameraIntrinsics(1, 2), 0.01,
+                                   100),
+        pangolin::ModelViewLookAt(0, 0, 3, 3, 3, 0, pangolin::AxisZ));
 
     // 2. 3D viewport
     pangolin::Handler3D handler(s_cam, pangolin::AxisZ);
@@ -397,6 +399,25 @@ void Plotter::run() {
     pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0,
                                             pangolin::Attach::Pix(200));
     pangolin::Var<bool> menu_pause("menu.Pause", false, true);
+    pangolin::Var<std::function<void()>> menu_viewCam0("menu.View cam0", [this, &s_cam] {
+        std::shared_ptr<tft::RigidTransform3D> cam0Pose;
+        {
+            std::lock_guard guard(mFrustumMutex);
+            if (mFrustumPose && mFrustumPose->mSource == "cam0") {
+                cam0Pose = mFrustumPose;
+            }
+        }
+        if (!cam0Pose) {
+            return;
+        }
+
+        const auto worldToCamera = cam0Pose->inverse();
+        // cam0 is right/down/forward; OpenGL is right/up/backward.
+        const Eigen::Matrix3d cameraToOpenGL = Eigen::Vector3d(1.0, -1.0, -1.0).asDiagonal();
+        s_cam.SetModelViewMatrix(GetPangolinModelMatrix(
+            cameraToOpenGL * worldToCamera->mRotation,
+            cameraToOpenGL * worldToCamera->mTranslation));
+    });
     pangolin::Var<bool> menu_showFrames("menu.Show Frames", true, true);
     pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
     pangolin::Var<bool> menu_showFrustums("menu.Show Frustums", true, true);
