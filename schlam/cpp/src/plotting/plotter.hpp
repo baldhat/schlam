@@ -36,9 +36,6 @@ public:
     // The caller owns the map and must keep it alive while visualization runs.
     void setMap(const Map* map);
 
-    // Update point cloud
-    void updatePointCloud(const std::vector<Eigen::Vector3d> &points, const std::string aCF);
-
     void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
 
     // The predicted pose maps the camera into world coordinates.
@@ -77,13 +74,13 @@ private:
     std::mutex mMapMutex;
     std::uint64_t mKeyFrameTextureMapRevision{0};
     std::unordered_map<KeyFrameId, std::unique_ptr<pangolin::GlTexture>> mKeyFrameTextures;
-    std::vector<Eigen::Vector3d> mCloud;
     std::vector<std::shared_ptr<tft::RigidTransform3D> > mTransforms;
 
     std::shared_ptr<tft::RigidTransform3D> mFrustumPose;
     std::shared_ptr<tft::RigidTransform3D> mPredictedFrustumPose;
     std::shared_ptr<ImageData> mFrustum;
-    std::mutex mFrustumMutex;
+    // Camera paths and frustums must be rendered from the same pose state.
+    std::mutex mCameraVisualizationMutex;
 
     std::string mTimestampText;
     std::optional<utils::TTimestamp> mSequenceStartTimestamp;
@@ -91,7 +88,6 @@ private:
 
     std::vector<Eigen::Vector3d> mGroundTruthCameraPath;
     std::vector<Eigen::Vector3d> mPredictedCameraPath;
-    std::mutex mCameraPathsMutex;
 
 
     mutable std::unique_ptr<pangolin::GlTexture> m3DImageTexture;
@@ -121,9 +117,13 @@ private:
                      const std::shared_ptr<tft::RigidTransform3D>& transform,
                      pangolin::GlTexture& texture, double alpha);
 
+    void drawCameras(bool showGroundTruthPath, bool showPredictedPath,
+                     bool showCam0Frustum, bool showPredictedFrustum, double alpha);
+
+    // Called with mCameraVisualizationMutex held by drawCameras.
     void drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha);
 
-    void drawKeyFrameFrustums(bool showFrameNames, double alpha);
+    void drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alpha);
 
     void setFeatureTexture(const cv::Mat &aImage);
 

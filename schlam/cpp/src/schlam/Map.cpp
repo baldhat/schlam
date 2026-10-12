@@ -25,6 +25,7 @@ std::vector<MapPointId> Map::addMapPoints(const std::vector<Eigen::Vector3d>& po
 }
 MapPointId Map::addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint) {
     auto descriptor = keyPoint->getDescriptor();
+    std::lock_guard guard(mMutex);
     const auto pointId = nextMapPointId;
     mPoints.insert({pointId, MapPoint(point, descriptor, pointId)});
     nextMapPointId++;
@@ -32,7 +33,7 @@ MapPointId Map::addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<
 }
 
 KeyFrameId Map::addKeyFrame(const std::shared_ptr<Frame>& frame) {
-    std::lock_guard guard(mKeyFramesMutex);
+    std::lock_guard guard(mMutex);
     const auto keyFrameId = nextKeyFrameId;
     mKeyFrames.insert({keyFrameId, KeyFrame(keyFrameId, *frame)});
     nextKeyFrameId++;
@@ -40,17 +41,35 @@ KeyFrameId Map::addKeyFrame(const std::shared_ptr<Frame>& frame) {
     return keyFrameId;
 }
 
-std::vector<KeyFrameSnapshot> Map::getKeyFrameSnapshots() const {
-    std::lock_guard guard(mKeyFramesMutex);
-    std::vector<KeyFrameSnapshot> snapshots;
-    snapshots.reserve(mKeyFrames.size());
-    for (const auto& [id, keyFrame] : mKeyFrames) {
-        snapshots.push_back({id, keyFrame.mIntrinsics, keyFrame.mImageData, keyFrame.mMapToCamera});
+MapSnapshot Map::getSnapshot() const {
+    std::lock_guard guard(mMutex);
+    MapSnapshot snapshot;
+    snapshot.points.reserve(mPoints.size());
+    for (const auto& [id, point] : mPoints) {
+        snapshot.points.push_back(point.mPosition);
     }
-    return snapshots;
+    snapshot.keyFrames.reserve(mKeyFrames.size());
+    for (const auto& [id, keyFrame] : mKeyFrames) {
+        snapshot.keyFrames.push_back({id, keyFrame.mIntrinsics, keyFrame.mImageData, *keyFrame.mMapToCamera});
+    }
+    return snapshot;
+}
+
+void Map::updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position) {
+    std::lock_guard guard(mMutex);
+    mPoints.at(pointId).mPosition = position;
+}
+
+void Map::updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D& mapToCamera) {
+    if (mapToCamera.mSource != mFrame) {
+        throw std::invalid_argument("Keyframe pose must use the map coordinate frame");
+    }
+    std::lock_guard guard(mMutex);
+    mKeyFrames.at(keyFrameId).mMapToCamera = std::make_shared<tft::RigidTransform3D>(mapToCamera);
 }
 
 void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId) {
+    std::lock_guard guard(mMutex);
     auto& point = mPoints.at(pointId);
     const auto& feature = mKeyFrames.at(keyFrameId).mKeyPoints.at(featureIndex);
     point.mObservations.insert_or_assign(keyFrameId, featureIndex);
@@ -59,5 +78,6 @@ void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPoi
 
 
 bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe) {
+    // TODO instead of number of frames use % of tracked points of last key frame
     return numInliers >= 50 && framesSinceLastKeyframe >= 15;
 }

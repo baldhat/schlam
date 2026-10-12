@@ -15,6 +15,7 @@
 #include <g2o/types/sba/types_six_dof_expmap.h>
 
 #include "linear_solver_csparse.h"
+#include "Map.h"
 #include "g2o/core/block_solver.h"
 #include "g2o/core/robust_kernel_impl.h"
 #include "g2o/core/sparse_optimizer.h"
@@ -137,7 +138,7 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
 
     // OPTIMIZE
     optimizer.initializeOptimization();
-    optimizer.setVerbose(true);
+    optimizer.setVerbose(false);
     optimizer.optimize(50);
 
     g2o::VertexSE3Expmap* v_pose = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(1));
@@ -154,17 +155,6 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
     }
 
     return {R, t, optimized_points};
-}
-
-
-std::tuple<Eigen::Matrix3d, Eigen::Vector3d>
-Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& aKeyPoints,
-                    const Eigen::Matrix3d &aRotation,
-                    const Eigen::Vector3d &aTranslation,
-                    const std::vector<Eigen::Vector3d> &aPoints,
-                    const Eigen::Matrix3d &aIntrinsics) {
-    const auto result = optimizePoseWithInliers(aKeyPoints, aRotation, aTranslation, aPoints, aIntrinsics);
-    return {result.rotation, result.translation};
 }
 
 PoseOptimizationResult
@@ -264,4 +254,120 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
         return {aRotation, aTranslation, std::vector<bool>(aPoints.size(), false)};
     }
     return {rotation, translation, inliers};
+}
+
+bool Optimizer::optimizeFullMap(Map* map) {
+    if (!map || map->mKeyFrames.size() < 2 || map->mPoints.empty()) return false;
+
+    // buildMap inserts the identity reference pose first and the second
+    // initialization pose next. Their IDs do not depend on hash-table order.
+    constexpr KeyFrameId referenceKeyFrameId = 0;
+    constexpr KeyFrameId initialKeyFrameId = 1;
+    const auto& referencePose = *map->mKeyFrames.at(referenceKeyFrameId).mMapToCamera;
+    const double initialBaseline = map->mKeyFrames.at(initialKeyFrameId).mMapToCamera->mTranslation.norm();
+    if (!referencePose.matrix().isIdentity(1e-10)) {
+        throw std::invalid_argument("Full-map optimization requires the identity reference pose");
+    }
+    if (!std::isfinite(initialBaseline) || initialBaseline <= 0.0) {
+        throw std::invalid_argument("Full-map optimization requires a finite, nonzero initialization baseline");
+    }
+
+    g2o::SparseOptimizer optimizer;
+    g2o::OptimizationAlgorithmProperty solverProp;
+    //optimizer.setVerbose(true);
+    optimizer.setAlgorithm(
+        g2o::OptimizationAlgorithmFactory::instance()->construct("lm_fix6_3",
+                                                                 solverProp)
+    );
+
+
+    int vertex_id{0};
+    // Add camera poses
+    std::unordered_map<KeyFrameId, int> frameToVertexId;
+    for (const auto &[frameId, keyframe]: map->mKeyFrames) {
+        auto transform = keyframe.mMapToCamera;
+        auto R = transform->mRotation;
+        auto t = transform->mTranslation;
+        g2o::SE3Quat pose(R.cast<double>(), t.cast<double>());
+        g2o::VertexSE3Expmap *vertex = new g2o::VertexSE3Expmap();
+        vertex->setId(vertex_id);
+        if (frameId == referenceKeyFrameId) {
+            vertex->setFixed(true);
+        }
+        vertex->setEstimate(pose);
+        optimizer.addVertex(vertex);
+        frameToVertexId.insert({frameId, vertex_id});
+        vertex_id++;
+    }
+
+    auto* baselineEdge = new EdgeBaselineLength;
+    baselineEdge->setVertex(0, optimizer.vertex(frameToVertexId.at(initialKeyFrameId)));
+    baselineEdge->setMeasurement(initialBaseline);
+    baselineEdge->setInformation(Eigen::Matrix<double, 1, 1>::Identity());
+    optimizer.addEdge(baselineEdge);
+
+
+    // Add 3D points
+    std::unordered_map<MapPointId, int> pointToVertexId;
+    for (const auto &[pointId, point]: map->mPoints) {
+        g2o::VertexPointXYZ *v_point = new g2o::VertexPointXYZ();
+        v_point->setId(vertex_id);
+        v_point->setEstimate(point.mPosition.cast<double>());
+        v_point->setMarginalized(true); // Required for BA Schur complement trick
+        optimizer.addVertex(v_point);
+        pointToVertexId.insert({pointId, vertex_id});
+        vertex_id++;
+    }
+
+    // Create edges between poses and points
+    for (const auto& [frameId, frame] : map->mKeyFrames) {
+        for (const auto& [pointId, point] : map->mPoints) {
+            if (!point.mObservations.contains(frameId)) continue;
+
+            g2o::EdgeSE3ProjectXYZ *edge = new g2o::EdgeSE3ProjectXYZ();
+            edge->setVertex(0, optimizer.vertex(pointToVertexId.at(pointId)));
+            edge->setVertex(1, optimizer.vertex(frameToVertexId.at(frameId)));
+            edge->fx = frame.mIntrinsics(0, 0);
+            edge->fy = frame.mIntrinsics(1, 1);
+            edge->cx = frame.mIntrinsics(0, 2);
+            edge->cy = frame.mIntrinsics(1, 2);
+            auto keypoint = frame.mKeyPoints.at(point.mObservations.at(frameId));
+            edge->setMeasurement(Eigen::Vector2d(keypoint->getImgX(), keypoint->getImgY()));
+            edge->setInformation(Eigen::Matrix2d::Identity());
+            edge->setRobustKernel(new g2o::RobustKernelHuber);
+
+            optimizer.addEdge(edge);
+        }
+    }
+
+    // OPTIMIZE
+    if (!optimizer.initializeOptimization()) return false;
+    optimizer.setVerbose(true);
+    if (optimizer.optimize(50) <= 0) return false;
+
+    // Validate the entire result before publishing any changes to the map.
+    for (const auto& [frameId, vertexId] : frameToVertexId) {
+        const auto* pose = static_cast<const g2o::VertexSE3Expmap*>(optimizer.vertex(vertexId));
+        if (!pose->estimate().rotation().coeffs().allFinite() ||
+            !pose->estimate().translation().allFinite()) return false;
+    }
+    for (const auto& [pointId, vertexId] : pointToVertexId) {
+        const auto* point = static_cast<const g2o::VertexPointXYZ*>(optimizer.vertex(vertexId));
+        if (!point->estimate().allFinite()) return false;
+    }
+
+    for (auto& [frameId, frame] : map->mKeyFrames) {
+        g2o::VertexSE3Expmap* v_pose = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(frameToVertexId.at(frameId)));
+        g2o::SE3Quat optimized_pose = v_pose->estimate();
+        Eigen::Matrix3d R = optimized_pose.rotation().toRotationMatrix().cast<double>();
+        Eigen::Vector3d t = optimized_pose.translation().cast<double>();
+        map->updateKeyFramePose(frameId, tft::RigidTransform3D(frame.mMapToCamera->mSource, frame.mMapToCamera->mTarget, R, t));
+    }
+
+    for (auto& [pointId, point] : map->mPoints) {
+        g2o::VertexPointXYZ* v_point = static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(pointToVertexId.at(pointId)));
+        Eigen::Vector3d optimized_point = v_point->estimate();
+        map->updateMapPointPosition(pointId, optimized_point);
+    }
+    return true;
 }

@@ -21,7 +21,7 @@ public:
     const Eigen::Matrix3d mIntrinsics;
     std::shared_ptr<QuadTreeNode> mKeypointTree;
     const std::vector<std::shared_ptr<KeyPoint>> mKeyPoints;
-    tft::RigidTransform3D mMapToCamera;
+    std::shared_ptr<tft::RigidTransform3D> mMapToCamera;
     cv::Mat mImageData;
 };
 

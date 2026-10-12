@@ -14,6 +14,8 @@
 #include <g2o/core/sparse_optimizer.h>
 #include <g2o/core/optimization_algorithm_property.h>
 
+class Map;
+
 struct PoseOptimizationResult {
     Eigen::Matrix3d rotation;
     Eigen::Vector3d translation;
@@ -51,6 +53,9 @@ public:
                         const std::vector<Eigen::Vector3d> &aPoints,
                         const Eigen::Matrix3d &aIntrinsics);
 
+    // Keeps initialization keyframe 0 fixed and preserves the baseline to keyframe 1.
+    // Returns true when finite optimized poses and points were written to the map.
+    bool optimizeFullMap(Map* map);
 };
 
 

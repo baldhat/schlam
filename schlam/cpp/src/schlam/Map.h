@@ -23,6 +23,11 @@ struct KeyFrameSnapshot {
     tft::RigidTransform3D mapToCamera;
 };
 
+struct MapSnapshot {
+    std::vector<Eigen::Vector3d> points;
+    std::vector<KeyFrameSnapshot> keyFrames;
+};
+
 class Map {
 public:
     Map(const std::string& frameName);
@@ -31,7 +36,9 @@ public:
     MapPointId addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint);
 
     KeyFrameId addKeyFrame(const std::shared_ptr<Frame>& frame);
-    std::vector<KeyFrameSnapshot> getKeyFrameSnapshots() const;
+    MapSnapshot getSnapshot() const;
+    void updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position);
+    void updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D& mapToCamera);
     void addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId);
 
     bool decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe);
@@ -44,7 +51,7 @@ public:
     KeyFrameId nextKeyFrameId{0};
 
 private:
-    mutable std::mutex mKeyFramesMutex;
+    mutable std::mutex mMutex;
 };
 
 

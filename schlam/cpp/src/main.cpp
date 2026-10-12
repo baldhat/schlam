@@ -193,8 +193,6 @@ int main() {
             plotter->addPredictedCameraPosition(newCameraToWorld->mTranslation);
             plotter->updateFrustum(imageData, newCameraToWorld);
 
-            plotter->updatePointCloud(pts_opt, prevFrameName);
-
             motionModel.addPose(pTransformer->findTransform(prevFrameName, "world"), referenceFrame->mTimestamp);
             motionModel.addPose(pTransformer->findTransform(frameName, "world"), frame->mTimestamp);
 
@@ -258,7 +256,7 @@ int main() {
             matchedMapPoints, imageData->mIntrinsics);
         const auto inlierCount = std::count(inliers.begin(), inliers.end(), true);
         std::cout << "Retained " << inlierCount << " pose inliers" << std::endl;
-        if (inlierCount >= 30) {
+        if (inlierCount >= 50) {
             for (std::size_t j = 0; j < matches.size(); ++j) {
                 if (inliers[j]) {
                     map->mPoints.at(matches[j].mapPointId).addInlierObservation(matches[j].feature->getDescriptor());
@@ -267,14 +265,9 @@ int main() {
             frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
                 map->mFrame, estimatedPose->mSource, rotation, translation);
             const auto mapToWorld = pTransformer->findTransform(map->mFrame, "world");
-            const auto optimizedCameraToWorld = mapToWorld * frame->mMapToCamera->inverse();
-            pTransformer->registerTransform(optimizedCameraToWorld);
-            pTransformer->findTransform(optimizedCameraToWorld->mSource, "world");
-            plotter->updateFrustum(imageData, optimizedCameraToWorld);
-            motionModel.addPose(optimizedCameraToWorld, imageData->mTimestamp);
-            plotter->addPredictedCameraPosition(optimizedCameraToWorld->mTranslation);
 
             if (map->decideNewKeyframe(inlierCount, framesSinceLastKeyframe)) {
+                // add keyframe
                 framesSinceLastKeyframe = 0;
                 const auto frameId = map->addKeyFrame(frame);
                 for (std::size_t j = 0; j < matches.size(); ++j) {
@@ -283,7 +276,21 @@ int main() {
                     const auto featureIndex = matches[j].feature->getIndex().value();
                     map->addObservation(frameId, featureIndex, matches[j].mapPointId);
                 }
+                // optimize map
+                if (optimizer->optimizeFullMap(map.get())) {
+                    frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
+                    // BA can adjust each pose differently. Start prediction from
+                    // the corrected pose until another accepted frame gives us velocity.
+                    motionModel = MotionModel{};
+                }
             }
+
+            const auto optimizedCameraToWorld = mapToWorld * frame->mMapToCamera->inverse();
+            pTransformer->registerTransform(optimizedCameraToWorld);
+            pTransformer->findTransform(optimizedCameraToWorld->mSource, "world");
+            plotter->updateFrustum(imageData, optimizedCameraToWorld);
+            motionModel.addPose(optimizedCameraToWorld, imageData->mTimestamp);
+            plotter->addPredictedCameraPosition(optimizedCameraToWorld->mTranslation);
         }
 
         framesSinceLastKeyframe++;
