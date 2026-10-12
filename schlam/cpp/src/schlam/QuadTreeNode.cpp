@@ -82,18 +82,27 @@ void QuadTreeNode::divide() {
 }
 
 std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures() const {
+    const auto* root = this;
+    while (root->mParent) root = root->mParent;
+    if (root != this) root->getFeatures();
+
+    std::vector<std::shared_ptr<KeyPoint>> features;
+    collectFeatures(features);
+    if (root == this) {
+        for (std::size_t index = 0; index < features.size(); ++index) {
+            features[index]->setIndex(index);
+        }
+    }
+    return features;
+}
+
+void QuadTreeNode::collectFeatures(std::vector<std::shared_ptr<KeyPoint>>& features) const {
     if (isLeaf()) {
-        return mFeatures;
+        features.insert(features.end(), mFeatures.begin(), mFeatures.end());
     } else {
-        std::vector<std::shared_ptr<KeyPoint>> features;
         for (const auto &child: getChildren()) {
-            auto childFeatures = child->getFeatures();
-            features.insert(features.end(), childFeatures.begin(), childFeatures.end());
+            child->collectFeatures(features);
         }
-        if (features.size() == 0) {
-            return {};
-        }
-        return features;
     }
 }
 

@@ -86,6 +86,8 @@ add_library(${PROJECT_NAME} SHARED
         src/schlam/Map.h
         src/schlam/MotionModel.cpp
         src/schlam/MotionModel.h
+        src/schlam/KeyFrame.cpp
+        src/schlam/KeyFrame.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

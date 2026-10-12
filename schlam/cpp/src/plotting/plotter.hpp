@@ -5,6 +5,7 @@
 #include "../tft/transformer.hpp"
 #include "../data/image_data.hpp"
 #include "schlam/Frame.h"
+#include "schlam/MapTypes.h"
 
 // pangolin
 #include <pangolin/pangolin.h>
@@ -18,9 +19,11 @@
 #include <mutex>
 #include <string>
 #include <optional>
+#include <unordered_map>
 
 
 class KeyPoint;
+class Map;
 
 class Plotter {
 public:
@@ -29,6 +32,9 @@ public:
     ~Plotter() = default;
 
     bool shouldPause();
+
+    // The caller owns the map and must keep it alive while visualization runs.
+    void setMap(const Map* map);
 
     // Update point cloud
     void updatePointCloud(const std::vector<Eigen::Vector3d> &points, const std::string aCF);
@@ -65,6 +71,12 @@ private:
     Eigen::Matrix3d mCameraIntrinsics;
 
     std::shared_ptr<tft::Transformer> mpTransformer;
+    const Map* mpMap{nullptr};
+    std::shared_ptr<tft::RigidTransform3D> mMapToWorld;
+    std::uint64_t mMapRevision{0};
+    std::mutex mMapMutex;
+    std::uint64_t mKeyFrameTextureMapRevision{0};
+    std::unordered_map<KeyFrameId, std::unique_ptr<pangolin::GlTexture>> mKeyFrameTextures;
     std::vector<Eigen::Vector3d> mCloud;
     std::vector<std::shared_ptr<tft::RigidTransform3D> > mTransforms;
 
@@ -105,10 +117,13 @@ private:
                        const bool showFrameNames
     );
 
-    void plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform,
-                     double alpha);
+    void plotFrustum(const cv::Mat& image, const Eigen::Matrix3d& intrinsics,
+                     const std::shared_ptr<tft::RigidTransform3D>& transform,
+                     pangolin::GlTexture& texture, double alpha);
 
     void drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha);
+
+    void drawKeyFrameFrustums(bool showFrameNames, double alpha);
 
     void setFeatureTexture(const cv::Mat &aImage);
 

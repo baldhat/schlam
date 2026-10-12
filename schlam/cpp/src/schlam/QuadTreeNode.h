@@ -28,6 +28,7 @@ public:
 
     void retainBestFeaturesPerLeaf();
 
+    // Full retrieval assigns indices in the root's feature array; window queries preserve them.
     std::vector<std::shared_ptr<KeyPoint>> getFeatures() const;
     std::vector<std::shared_ptr<KeyPoint>> getFeatures(double xMin, double xMax, double yMin, double yMax) const;
 
@@ -60,6 +61,7 @@ private:
     std::vector<std::shared_ptr<KeyPoint>> mFeatures;
 
     bool overlaps(double xMin, double xMax, double yMin, double yMax) const;
+    void collectFeatures(std::vector<std::shared_ptr<KeyPoint>>& features) const;
 };
 
 

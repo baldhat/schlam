@@ -7,28 +7,31 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <deque>
+#include <unordered_map>
 
 #include <eigen3/Eigen/Core>
+
+#include "MapTypes.h"
 
 
 class MapPoint {
 public:
     using Descriptor = std::array<std::uint8_t, 32>;
 
-    MapPoint(Eigen::Vector3d position, Descriptor descriptor);
+    MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id);
 
     void addInlierObservation(const Descriptor& descriptor);
 
     Eigen::Vector3d mPosition;
-    // Observed descriptor with the lowest median Hamming distance to the history.
+    // descriptor with the lowest median Hamming distance to the history
     Descriptor mDescriptor;
     Descriptor mLastInlierDescriptor;
+    MapPointId mId;
+    std::unordered_map<KeyFrameId, std::size_t> mObservations;
 
 private:
     static constexpr std::size_t descriptorHistorySize = 10;
-    // Store descriptor copies rather than retaining frames and their images.
     std::deque<Descriptor> mDescriptorHistory;
 };
 

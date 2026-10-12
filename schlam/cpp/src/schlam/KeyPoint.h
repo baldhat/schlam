@@ -6,13 +6,18 @@
 #define SCHLAM_KEYPOINT_H
 
 #include <cstdint>
+#include <cstddef>
 #include <array>
+#include <optional>
 
+#include "MapTypes.h"
+
+using Descriptor = std::array<uint8_t, 32>;
 
 class KeyPoint {
 public:
     KeyPoint(const double aImgX, const double aImgY, const std::uint8_t aLevel = 0, double aScore = 0,
-             double aAngle = 0, const std::array<uint8_t, 32>& aDescriptor = std::array<uint8_t, 32>());
+             double aAngle = 0, const Descriptor& aDescriptor = Descriptor());
 
     void scaleBy(const double aXFactor, const double aYFactor);
 
@@ -20,25 +25,27 @@ public:
     double getImgY() const;
     std::uint8_t getLevel() const;
     double getScore() const;
-    std::array<uint8_t, 32> getDescriptor() const;
+    Descriptor getDescriptor() const;
+    std::optional<std::size_t> getIndex() const;
 
     void setAngle(const double aAngle);
     double getAngle() const;
     void setScore(const double aScore);
     void setLevel(const double aLevel);
-    void setDescriptor(const  std::array<uint8_t, 32>& aDescriptor);
-    bool isMatched() const;
-    void setMatched(bool aMatched);
+    void setDescriptor(const Descriptor& aDescriptor);
+
+    void setObservation(MapPointId pointId);
+    void setIndex(std::size_t index);
 
 private:
-    // Full-resolution coordinates retain fractions introduced by pyramid scaling.
     double mImgX{0};
     double mImgY{0};
     double mScore{0};
     std::uint8_t mLevel{0};
     double mAngle{0};
-    std::array<uint8_t, 32> mDescriptor;
-    bool mMatched{false};
+    Descriptor mDescriptor;
+    std::optional<MapPointId> mMapPointId;
+    std::optional<std::size_t> mIndex;
 };
 
 

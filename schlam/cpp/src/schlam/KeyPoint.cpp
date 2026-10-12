@@ -6,7 +6,7 @@
 
 
 KeyPoint::KeyPoint(const double aImgX, const double aImgY, const std::uint8_t aLevel, double aScore,
-                   double aAngle,const std::array<uint8_t, 32>& apDescriptor)
+                   double aAngle,const Descriptor& apDescriptor)
     : mImgX(aImgX)
       , mImgY(aImgY)
       , mScore(aScore)
@@ -34,7 +34,7 @@ double KeyPoint::getAngle() const {
 double KeyPoint::getScore() const {
     return mScore;
 }
-std::array<uint8_t, 32> KeyPoint::getDescriptor() const {
+Descriptor KeyPoint::getDescriptor() const {
     return mDescriptor;
 }
 
@@ -44,17 +44,23 @@ void KeyPoint::setScore(const double aScore) {
 void KeyPoint::setLevel(const double aLevel) {
     mLevel = aLevel;
 }
-void KeyPoint::setDescriptor(const std::array<uint8_t, 32>& aDescriptor) {
+void KeyPoint::setDescriptor(const Descriptor& aDescriptor) {
     mDescriptor = aDescriptor;
 }
 void KeyPoint::setAngle(const double aAngle) {
     mAngle = aAngle;
 }
-bool KeyPoint::isMatched() const {
-    return mMatched;
+
+void KeyPoint::setObservation(MapPointId pointId) {
+    mMapPointId = pointId;
 }
-void KeyPoint::setMatched(bool aMatched) {
-    mMatched = aMatched;
+
+void KeyPoint::setIndex(std::size_t index) {
+    mIndex = index;
+}
+
+std::optional<std::size_t> KeyPoint::getIndex() const {
+    return mIndex;
 }
 
 

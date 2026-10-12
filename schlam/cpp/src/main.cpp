@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <stdexcept>
 #include <thread>
 
 #include "schlam/ORBFeatureDetector.h"
@@ -77,6 +78,24 @@ bool scaleToBaseline(std::shared_ptr<tft::RigidTransform3D> referenceGTCameraPos
     return false;
 }
 
+std::unique_ptr<Map> buildMap(std::string prevFrameName,
+              std::shared_ptr<Frame> referenceFrame,
+              std::shared_ptr<Frame> frame,
+              std::vector<std::shared_ptr<KeyPoint>> pts2D_1,
+              std::vector<std::shared_ptr<KeyPoint>> pts2D_2, std::vector<Eigen::Vector3d> pts_opt) {
+    auto map = std::make_unique<Map>(prevFrameName);
+    const auto pointIds = map->addMapPoints(pts_opt, pts2D_2);
+    const auto referenceKeyFrameId = map->addKeyFrame(referenceFrame);
+    const auto initialKeyFrameId = map->addKeyFrame(frame);
+    for (std::size_t pointIndex = 0; pointIndex < pointIds.size(); ++pointIndex) {
+        const auto referenceFeatureIndex = pts2D_1[pointIndex]->getIndex().value();
+        const auto initialFeatureIndex = pts2D_2[pointIndex]->getIndex().value();
+        map->addObservation(referenceKeyFrameId, referenceFeatureIndex, pointIds[pointIndex]);
+        map->addObservation(initialKeyFrameId, initialFeatureIndex, pointIds[pointIndex]);
+    }
+    return std::move(map);
+}
+
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
 
@@ -100,10 +119,10 @@ int main() {
     std::shared_ptr<tft::RigidTransform3D> referenceGTCameraPose;
     std::shared_ptr<tft::RigidTransform3D> referenceCameraToWorld;
 
-    std::shared_ptr<Map> map;
+    std::unique_ptr<Map> map;
 
-    std::unique_ptr<Frame> referenceFrame;
-    const auto selectReference = [&](std::unique_ptr<Frame> frame,
+    std::shared_ptr<Frame> referenceFrame;
+    const auto selectReference = [&](std::shared_ptr<Frame> frame,
                                      const std::shared_ptr<tft::RigidTransform3D>& cameraToWorld) {
         prevFrameName = "cam_ref";
         referenceCameraToWorld = std::make_shared<tft::RigidTransform3D>(
@@ -126,26 +145,24 @@ int main() {
 
         plotter->updateFrustum(imageData);
 
-        auto frame = std::make_unique<Frame>(imageData);
+        auto frame = std::make_shared<Frame>(imageData);
 
         initFeatureDetector->detectFeatures(*frame);
 
         if (!referenceFrame) {
-            selectReference(std::move(frame), cameraToWorld);
+            selectReference(frame, cameraToWorld);
             continue;
         }
 
         plotter->addGroundTruthCameraPosition(cameraToWorld->mTranslation);
 
         auto oldFrame = referenceFrame.get();
-        auto oldFeatures = oldFrame->mKeypointTree->getFeatures();
-        auto newFeatures = frame->mKeypointTree->getFeatures();
         auto [matches, _] = matchWindow(oldFrame->mKeypointTree,
                                      frame->mKeypointTree, 20, 100);
         plotter->plotMatches(oldFrame->mImage, frame->mImage, matches);
 
         if (matches[0].size() < 100) {
-            selectReference(std::move(frame), cameraToWorld);
+            selectReference(frame, cameraToWorld);
             std::cout << "Selecting new reference" << std::endl;
             continue;
         }
@@ -166,6 +183,8 @@ int main() {
             const std::string frameName = "cam_pred" + std::to_string(i++);
             const auto referenceToNew = std::make_shared<tft::RigidTransform3D>(
                 prevFrameName, frameName, R_opt, t_opt);
+            referenceFrame->mMapToCamera = tft::RigidTransform3D::identity(prevFrameName, prevFrameName);
+            frame->mMapToCamera = referenceToNew;
             pTransformer->registerTransform(referenceCameraToWorld);
             pTransformer->findTransform(prevFrameName, "world");
             const auto newCameraToWorld = referenceCameraToWorld * referenceToNew->inverse();
@@ -179,11 +198,9 @@ int main() {
             motionModel.addPose(pTransformer->findTransform(prevFrameName, "world"), referenceFrame->mTimestamp);
             motionModel.addPose(pTransformer->findTransform(frameName, "world"), frame->mTimestamp);
 
-            std::vector<MapPoint> mapPoints;
-            for (std::size_t i = 0; i < pts_opt.size(); i++) {
-                mapPoints.emplace_back(pts_opt[i], pts2D_2[i]->getDescriptor());
-            }
-            map = std::make_shared<Map>(mapPoints, prevFrameName);
+            map = buildMap(prevFrameName, referenceFrame, frame, pts2D_1, pts2D_2, pts_opt);
+            plotter->setMap(map.get());
+
             break; // Finished initialization
         }
 
@@ -199,6 +216,7 @@ int main() {
     std::cout << "Finished initialization" << std::endl;
 
     // tracking
+    std::uint32_t framesSinceLastKeyframe = 0;
     while (!dataloader->empty()) {
         std::shared_ptr<ImageData> imageData;
         std::shared_ptr<tft::RigidTransform3D> cameraToWorld;
@@ -217,7 +235,10 @@ int main() {
         auto frame = std::make_shared<Frame>(imageData);
         featureDetector->detectFeatures(*frame);
 
-        const auto matches = matchMapPointsByProjection(map, frame, estimatedPose, pTransformer, 50, 20);
+        // TODO:
+        // - match only with features in predicted scale
+        // - match only if viewing angle difference to mean viewing angle of point is not too large
+        const auto matches = matchMapPointsByProjection(map.get(), frame, estimatedPose, pTransformer, 50, 20);
         std::cout << "Matched " << matches.size() << " out of " << map->mPoints.size() << " map points" << std::endl;
         std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchedFeatures;
         std::vector<Eigen::Vector3d> matchedMapPoints;
@@ -225,7 +246,7 @@ int main() {
         matchedFeatures[0].reserve(matches.size());
         matchedFeatures[1].reserve(matches.size());
         for (const auto& match : matches) {
-            matchedMapPoints.push_back(map->mPoints[match.mapPointIndex].mPosition);
+            matchedMapPoints.push_back(map->mPoints.at(match.mapPointId).mPosition);
             matchedFeatures[0].push_back(match.projectedFeature);
             matchedFeatures[1].push_back(match.feature);
         }
@@ -237,23 +258,35 @@ int main() {
             matchedMapPoints, imageData->mIntrinsics);
         const auto inlierCount = std::count(inliers.begin(), inliers.end(), true);
         std::cout << "Retained " << inlierCount << " pose inliers" << std::endl;
-        if (inlierCount >= 3) {
+        if (inlierCount >= 30) {
             for (std::size_t j = 0; j < matches.size(); ++j) {
                 if (inliers[j]) {
-                    map->mPoints[matches[j].mapPointIndex].addInlierObservation(matches[j].feature->getDescriptor());
+                    map->mPoints.at(matches[j].mapPointId).addInlierObservation(matches[j].feature->getDescriptor());
                 }
             }
-            const auto optimizedMapToCamera = std::make_shared<tft::RigidTransform3D>(
+            frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
                 map->mFrame, estimatedPose->mSource, rotation, translation);
             const auto mapToWorld = pTransformer->findTransform(map->mFrame, "world");
-            const auto optimizedCameraToWorld = mapToWorld * optimizedMapToCamera->inverse();
+            const auto optimizedCameraToWorld = mapToWorld * frame->mMapToCamera->inverse();
             pTransformer->registerTransform(optimizedCameraToWorld);
             pTransformer->findTransform(optimizedCameraToWorld->mSource, "world");
             plotter->updateFrustum(imageData, optimizedCameraToWorld);
             motionModel.addPose(optimizedCameraToWorld, imageData->mTimestamp);
             plotter->addPredictedCameraPosition(optimizedCameraToWorld->mTranslation);
+
+            if (map->decideNewKeyframe(inlierCount, framesSinceLastKeyframe)) {
+                framesSinceLastKeyframe = 0;
+                const auto frameId = map->addKeyFrame(frame);
+                for (std::size_t j = 0; j < matches.size(); ++j) {
+                    if (!inliers[j]) continue;
+
+                    const auto featureIndex = matches[j].feature->getIndex().value();
+                    map->addObservation(frameId, featureIndex, matches[j].mapPointId);
+                }
+            }
         }
 
+        framesSinceLastKeyframe++;
         while (plotter->shouldPause() || matchedMapPoints.size() < 30) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }

@@ -9,7 +9,10 @@
 #include <pangolin/handler/handler.h>
 
 #include "schlam/KeyPoint.h"
+#include "schlam/Map.h"
 #include "random.hpp"
+
+#include <stdexcept>
 
 // -----------------------------
 // Helper drawing functions
@@ -39,6 +42,17 @@ Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::M
 bool Plotter::shouldPause() {
     std::lock_guard guard(mPauseMutex);
     return mPause;
+}
+
+void Plotter::setMap(const Map* map) {
+    const auto mapToWorld = map ? mpTransformer->findTransform(map->mFrame, "world") : nullptr;
+    if (map && !mapToWorld) {
+        throw std::invalid_argument("Cannot visualize a map without its world transform");
+    }
+    std::lock_guard guard(mMapMutex);
+    mpMap = map;
+    mMapToWorld = mapToWorld;
+    ++mMapRevision;
 }
 
 void Plotter::setup() {
@@ -288,45 +302,101 @@ void Plotter::drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha) {
     if (aShowCam0 && mFrustumPose) {
         glColor3f(0.f, 1.f, 0.f);
         glLineWidth(3.f);
-        plotFrustum(mFrustum, mFrustumPose, aAlpha);
+        plotFrustum(mFrustum->mImage, mFrustum->mIntrinsics, mFrustumPose, *m3DImageTexture, aAlpha);
     }
     if (aShowPredicted && mPredictedFrustumPose) {
         glColor3f(0.f, 0.f, 1.f);
         glLineWidth(2.f);
-        plotFrustum(mFrustum, mPredictedFrustumPose, aAlpha);
+        plotFrustum(mFrustum->mImage, mFrustum->mIntrinsics, mPredictedFrustumPose, *m3DImageTexture, aAlpha);
     }
     glPopAttrib();
 }
 
-void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr<tft::RigidTransform3D> aTransform,
-                          double alpha) {
+void Plotter::drawKeyFrameFrustums(bool showFrameNames, double alpha) {
+    std::vector<KeyFrameSnapshot> keyFrames;
+    std::shared_ptr<tft::RigidTransform3D> mapToWorld;
+    std::uint64_t mapRevision;
+    {
+        std::lock_guard guard(mMapMutex);
+        if (mpMap) keyFrames = mpMap->getKeyFrameSnapshots();
+        mapToWorld = mMapToWorld;
+        mapRevision = mMapRevision;
+    }
+    if (mapRevision != mKeyFrameTextureMapRevision) {
+        mKeyFrameTextures.clear();
+        mKeyFrameTextureMapRevision = mapRevision;
+    }
+    if (!mapToWorld) return;
+
+    glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT | GL_TEXTURE_BIT | GL_LINE_BIT);
+    glDisable(GL_LIGHTING);
+    glLineWidth(1.5f);
+    for (const auto& keyFrame : keyFrames) {
+        const auto& image = keyFrame.imageData;
+        if (image.empty()) continue;
+        auto& texture = mKeyFrameTextures[keyFrame.id];
+        if (!texture) {
+            GLint internalFormat;
+            GLenum pixelFormat;
+            switch (image.channels()) {
+                case 1: internalFormat = GL_LUMINANCE8; pixelFormat = GL_LUMINANCE; break;
+                case 3: internalFormat = GL_RGB8; pixelFormat = GL_BGR; break;
+                case 4: internalFormat = GL_RGBA8; pixelFormat = GL_BGRA; break;
+                default: throw std::invalid_argument("Unsupported keyframe image channel count");
+            }
+            texture = std::make_unique<pangolin::GlTexture>(
+                image.cols, image.rows, internalFormat, true, 0, pixelFormat, GL_UNSIGNED_BYTE);
+            const cv::Mat pixels = image.isContinuous() ? image : image.clone();
+            glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            texture->Upload(pixels.data, pixelFormat, GL_UNSIGNED_BYTE);
+            glPopClientAttrib();
+        }
+        const auto cameraToWorld = mapToWorld * keyFrame.mapToCamera.inverse();
+
+        glDisable(GL_TEXTURE_2D);
+        glColor3f(1.f, 0.5f, 0.f);
+        plotFrustum(image, keyFrame.intrinsics, cameraToWorld, *texture, alpha);
+        if (showFrameNames) {
+            glColor3f(1.f, 0.5f, 0.f);
+            const auto& position = cameraToWorld->mTranslation;
+            pangolin::default_font().Text("kf " + std::to_string(keyFrame.id)).Draw(position.x(), position.y(), position.z());
+        }
+    }
+    glPopAttrib();
+}
+
+void Plotter::plotFrustum(const cv::Mat& image, const Eigen::Matrix3d& intrinsics,
+                         const std::shared_ptr<tft::RigidTransform3D>& transform,
+                         pangolin::GlTexture& texture, double alpha) {
     glPushMatrix();
 
     pangolin::OpenGlMatrix Twc = GetPangolinModelMatrix(
-        aTransform->mRotation, aTransform->mTranslation);
+        transform->mRotation, transform->mTranslation);
     glMultMatrixd(Twc.m);
 
-    auto kInv = aImageData->mIntrinsics.inverse().eval();
+    auto kInv = intrinsics.inverse().eval();
     double scale = 0.1f; // The depth at which to draw
-    pangolin::glDrawFrustum(kInv, aImageData->mImage.cols, aImageData->mImage.rows, scale);
+    pangolin::glDrawFrustum(kInv, image.cols, image.rows, scale);
 
     glDepthMask(GL_FALSE);
     glEnable(GL_TEXTURE_2D);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    m3DImageTexture->Bind();
+    texture.Bind();
 
     glColor4f(1.0f, 1.0f, 1.0f, alpha); // Reset color so texture isn't tinted
     glBegin(GL_QUADS);
 
     // Define the 4 corners in Camera Space using K-inverse
     glTexCoord2f(0, 1);
-    Eigen::Vector3d bl = kInv * Eigen::Vector3d(0, aImageData->mImage.rows, 1) * scale;
+    Eigen::Vector3d bl = kInv * Eigen::Vector3d(0, image.rows, 1) * scale;
     glVertex3d(bl[0], bl[1], bl[2]);
     glTexCoord2f(1, 1);
-    Eigen::Vector3d br = kInv * Eigen::Vector3d(aImageData->mImage.cols, aImageData->mImage.rows, 1) * scale;
+    Eigen::Vector3d br = kInv * Eigen::Vector3d(image.cols, image.rows, 1) * scale;
     glVertex3d(br[0], br[1], br[2]);
     glTexCoord2f(1, 0);
-    Eigen::Vector3d tr = kInv * Eigen::Vector3d(aImageData->mImage.cols, 0, 1) * scale;
+    Eigen::Vector3d tr = kInv * Eigen::Vector3d(image.cols, 0, 1) * scale;
     glVertex3d(tr[0], tr[1], tr[2]);
     glTexCoord2f(0, 0);
     Eigen::Vector3d tl = kInv * Eigen::Vector3d(0, 0, 1) * scale;
@@ -334,7 +404,7 @@ void Plotter::plotFrustum(std::shared_ptr<ImageData> aImageData, std::shared_ptr
 
     glEnd();
 
-    m3DImageTexture->Unbind();
+    texture.Unbind();
     glDisable(GL_TEXTURE_2D);
     glPopMatrix();
     glDepthMask(GL_TRUE);
@@ -498,6 +568,7 @@ void Plotter::run() {
     pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
     pangolin::Var<bool> menu_showCam0Frustum("menu.cam0 Frustum", true, true);
     pangolin::Var<bool> menu_showPredictedFrustum("menu.Predicted Frustum", true, true);
+    pangolin::Var<bool> menu_showKeyFrameFrustums("menu.Keyframe Frustums", true, true);
     pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
     pangolin::Var<bool> menu_showFeatures("menu.Show Features", true, true);
     pangolin::Var<bool> menu_showMatches("menu.Show Matches", true, true);
@@ -536,6 +607,7 @@ void Plotter::run() {
         drawCameraPaths(menu_showGroundTruthPath, menu_showPredictedPath);
 
         drawFrustums(menu_showCam0Frustum, menu_showPredictedFrustum, menu_3DImageAlpha);
+        if (menu_showKeyFrameFrustums) drawKeyFrameFrustums(menu_showFrameNames, menu_3DImageAlpha);
 
         if (menu_pause) {
             std::lock_guard guard(mPauseMutex);
@@ -565,4 +637,5 @@ void Plotter::run() {
 
         pangolin::FinishFrame();
     }
+    mKeyFrameTextures.clear();
 }

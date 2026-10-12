@@ -4,6 +4,7 @@
 
 #include "Matcher.h"
 
+#include <algorithm>
 #include <vector>
 #include <array>
 #include <cstdint>
@@ -16,6 +17,17 @@
 #include "tft/rigid_transform_3d.hpp"
 #include "tft/transformer.hpp"
 
+namespace {
+std::vector<MapPointId> sortedMapPointIds(const Map& map) {
+    std::vector<MapPointId> ids;
+    ids.reserve(map.mPoints.size());
+    for (const auto& [id, point] : map.mPoints) {
+        ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
+    return ids;
+}
+}
 
 inline int hamming256(const uint8_t *a, const uint8_t *b) {
     const uint64_t *a64 = reinterpret_cast<const uint64_t *>(a);
@@ -116,7 +128,7 @@ matchWindow(const std::shared_ptr<QuadTreeNode>& aTree1,
 }
 
 std::vector<MapPointMatch>
-matchMapPointsByProjection(const std::shared_ptr<Map>& map,
+matchMapPointsByProjection(const Map* map,
                           const std::shared_ptr<Frame>& frame,
                           const std::shared_ptr<tft::RigidTransform3D>& estimatedPose,
                           const std::shared_ptr<tft::Transformer>& aTransformer,
@@ -125,8 +137,8 @@ matchMapPointsByProjection(const std::shared_ptr<Map>& map,
     std::vector<MapPointMatch> matches;
     matches.reserve(map->mPoints.size());
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
-    for (std::size_t mapIndex = 0; mapIndex < map->mPoints.size(); ++mapIndex) {
-        const auto& mapPoint = map->mPoints[mapIndex];
+    for (const auto mapPointId : sortedMapPointIds(*map)) {
+        const auto& mapPoint = map->mPoints.at(mapPointId);
         const auto pointInCamera = mapToCamera->apply(mapPoint.mPosition);
         const auto projected = project(pointInCamera, frame->mIntrinsics);
         if (!projected.has_value()
@@ -160,14 +172,14 @@ matchMapPointsByProjection(const std::shared_ptr<Map>& map,
 
         auto projectedFeature = std::make_shared<KeyPoint>(
             projected->x(), projected->y(), 0, 0, 0, mapPoint.mDescriptor);
-        matches.push_back({mapIndex, feature, projectedFeature});
+        matches.push_back({mapPointId, feature, projectedFeature});
         matchedTargets.insert(feature);
     }
     return matches;
 }
 
 std::tuple<std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>, std::vector<bool>>
-matchByProjection(const std::shared_ptr<Map> map,
+matchByProjection(const Map* map,
                   std::shared_ptr<Frame> frame,
                   std::shared_ptr<tft::RigidTransform3D> estimatedPose,
                   std::shared_ptr<tft::Transformer> aTransformer,
@@ -175,11 +187,14 @@ matchByProjection(const std::shared_ptr<Map> map,
     const auto associations = matchMapPointsByProjection(
         map, frame, estimatedPose, aTransformer, aMaxDistance, aWindowSize);
     std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matches;
+    const auto pointIds = sortedMapPointIds(*map);
     std::vector<bool> matched(map->mPoints.size(), false);
     for (const auto& association : associations) {
         matches[0].push_back(association.projectedFeature);
         matches[1].push_back(association.feature);
-        matched[association.mapPointIndex] = true;
+        const auto index = std::lower_bound(pointIds.begin(), pointIds.end(), association.mapPointId)
+            - pointIds.begin();
+        matched[index] = true;
     }
     return {matches, matched};
 }

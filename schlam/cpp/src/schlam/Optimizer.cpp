@@ -77,7 +77,7 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
 
     g2o::SparseOptimizer optimizer;
     g2o::OptimizationAlgorithmProperty solverProp;
-    optimizer.setVerbose(true);
+    //optimizer.setVerbose(true);
     optimizer.setAlgorithm(
         g2o::OptimizationAlgorithmFactory::instance()->construct("lm_fix6_3",
                                                                  solverProp)
@@ -186,7 +186,7 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
     }
 
     g2o::SparseOptimizer optimizer;
-    optimizer.setVerbose(true);
+    //optimizer.setVerbose(true);
     g2o::OptimizationAlgorithmProperty solverProp;
     auto* algorithm = g2o::OptimizationAlgorithmFactory::instance()->construct("lm_dense6_3", solverProp);
 
