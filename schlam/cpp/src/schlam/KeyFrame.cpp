@@ -13,3 +13,14 @@ KeyFrame::KeyFrame(
       , mImageData(frame.mImage){
 
 }
+
+
+std::vector<std::shared_ptr<KeyPoint>> KeyFrame::getUnmatchedFeatures() {
+    std::vector<std::shared_ptr<KeyPoint>> result;
+    for (auto& point : mKeyPoints) {
+        if (!point->getMatched()) {
+            result.push_back(point);
+        }
+    }
+    return result;
+}

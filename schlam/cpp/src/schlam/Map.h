@@ -44,8 +44,8 @@ public:
     bool decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe);
 
     std::string mFrame;
-    std::unordered_map<MapPointId, MapPoint> mPoints;
-    std::unordered_map<KeyFrameId, KeyFrame> mKeyFrames;
+    std::map<MapPointId, MapPoint> mPoints;
+    std::map<KeyFrameId, KeyFrame> mKeyFrames;
 
     MapPointId nextMapPointId{0};
     KeyFrameId nextKeyFrameId{0};

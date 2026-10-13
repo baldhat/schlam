@@ -63,5 +63,16 @@ std::optional<std::size_t> KeyPoint::getIndex() const {
     return mIndex;
 }
 
+bool KeyPoint::getMatched() const {
+    return mMapPointId.has_value();
+}
+
+void KeyPoint::setKeyFrameId(KeyFrameId frameId) {
+    mKeyFrameId = frameId;
+}
+std::optional<KeyFrameId> KeyPoint::getKeyFrameId() const {
+    return mKeyFrameId;
+}
+
 
 

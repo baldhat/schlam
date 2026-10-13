@@ -79,5 +79,5 @@ void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPoi
 
 bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe) {
     // TODO instead of number of frames use % of tracked points of last key frame
-    return numInliers >= 50 && framesSinceLastKeyframe >= 15;
+    return numInliers >= 50 && framesSinceLastKeyframe >= 10;
 }

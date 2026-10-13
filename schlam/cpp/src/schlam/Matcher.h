@@ -19,6 +19,11 @@
 
 class Frame;
 
+
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::vector<std::shared_ptr<KeyPoint>>& keypoints1,
+                                                     const std::vector<std::shared_ptr<KeyPoint>>& keypoints2,
+                                                     const double aMaxDistance);
+
 std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>
 matchGlobally(const std::shared_ptr<QuadTreeNode>& aTree1,
                                                      const std::shared_ptr<QuadTreeNode>& aTree2,
@@ -63,5 +68,8 @@ matchByProjection(const Map* map, std::shared_ptr<Frame> frame,
                        std::shared_ptr<tft::RigidTransform3D> estimatedPose,
                        std::shared_ptr<tft::Transformer> aTransformer,
                        const double aMaxDistance, const double aWindowSize);
+
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(KeyFrame& frame1, KeyFrame& frame2, const double aMaxDistance);
+
 
 #endif //SCHLAM_MATCHER_H

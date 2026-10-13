@@ -44,6 +44,12 @@ std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::s
                                                      const double aMaxDistance) {
     auto keypoints1 = aTree1->getFeatures();
     auto keypoints2 = aTree2->getFeatures();
+    return matchGlobally(keypoints1, keypoints2, aMaxDistance);
+}
+
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::vector<std::shared_ptr<KeyPoint>>& keypoints1,
+                                                     const std::vector<std::shared_ptr<KeyPoint>>& keypoints2,
+                                                     const double aMaxDistance) {
     std::vector<std::array<std::uint32_t, 2> > matches;
     std::vector<bool> matchedIndices2(keypoints2.size(), false);
 
@@ -198,3 +204,11 @@ matchByProjection(const Map* map,
     }
     return {matches, matched};
 }
+
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(KeyFrame& frame1, KeyFrame& frame2, const double aMaxDistance) {
+    auto unmatched1 = frame1.getUnmatchedFeatures();
+    auto unmatched2 = frame2.getUnmatchedFeatures();
+    auto matches = matchGlobally(unmatched1, unmatched2, aMaxDistance);
+    return matches;
+}
+

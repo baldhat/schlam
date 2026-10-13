@@ -5,6 +5,7 @@
 #include "Ransac.h"
 #include "random.hpp"
 #include "utils.h"
+#include "tft/rigid_transform_3d.hpp"
 
 #include <opencv2/calib3d/calib3d.hpp>
 
@@ -15,6 +16,10 @@
 #include <random>
 #include <set>
 #include <opencv2/core/eigen.hpp>
+
+namespace {
+constexpr double kMaxTriangulationCosParallax = 0.99998;
+}
 
 std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool> > >
 reconstructInitial(
@@ -69,6 +74,51 @@ reconstructInitial(
         }
         return output;
     }
+}
+
+std::optional<std::tuple<std::vector<Eigen::Vector3d>, std::vector<bool>>>
+triangulate(
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
+    const Eigen::Matrix3d& aIntrinsics,
+    const std::shared_ptr<tft::RigidTransform3D>& aTransform) {
+    if (!aTransform || aKeypoints1.empty() || aKeypoints1.size() != aKeypoints2.size()) {
+        return std::nullopt;
+    }
+    const double baseline = aTransform->mTranslation.norm();
+    if (!std::isfinite(baseline) || baseline <= 0) return std::nullopt;
+
+    const Eigen::Matrix3d inverseIntrinsics = aIntrinsics.inverse();
+    const auto points1 = toNormalized(toEigen(aKeypoints1), inverseIntrinsics);
+    const auto points2 = toNormalized(toEigen(aKeypoints2), inverseIntrinsics);
+    const Eigen::Matrix4d transform = aTransform->matrix();
+
+    // E = [t]x R. Normalize t so the epipolar check is independent of baseline scale.
+    const Eigen::Vector3d translation = aTransform->mTranslation / baseline;
+    Eigen::Matrix3d crossTranslation;
+    crossTranslation << 0, -translation.z(), translation.y(),
+        translation.z(), 0, -translation.x(), -translation.y(), translation.x(), 0;
+    std::vector<bool> epipolarInliers;
+    checkEssential(crossTranslation * aTransform->mRotation, {points1, points2},
+                   epipolarInliers, 1.0 / aIntrinsics(0, 0));
+
+    std::vector<Eigen::Vector3d> points(points1.size(), Eigen::Vector3d::Zero());
+    std::vector<bool> inliers(points1.size(), false);
+    bool hasInlier = false;
+    for (std::size_t i = 0; i < points1.size(); ++i) {
+        if (!epipolarInliers[i]) continue;
+        const auto [point1, point2] = triangulate(points1[i], points2[i], transform);
+        const auto [valid, cosParallax] = isValid(
+            point1, point2, aTransform->mRotation, aTransform->mTranslation,
+            aIntrinsics, aKeypoints1[i], aKeypoints2[i]);
+        const bool inlier = valid && cosParallax < kMaxTriangulationCosParallax;
+        points[i] = point1;
+        inliers[i] = inlier;
+        hasInlier = hasInlier || inlier;
+    }
+
+    if (!hasInlier) return std::nullopt;
+    return std::make_tuple(std::move(points), std::move(inliers));
 }
 
 // ------------------------------------------------------------
@@ -496,7 +546,7 @@ recoverPoseFromEssential(
             if (aInliers[j] && valid) {
                 currentParallaxes.push_back(parallax);
                 numValid++;
-                currentTriangulated.push_back(parallax < 0.99998);
+                currentTriangulated.push_back(parallax < kMaxTriangulationCosParallax);
             } else {
                 currentTriangulated.push_back(false);
             }

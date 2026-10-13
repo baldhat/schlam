@@ -16,6 +16,8 @@ public:
       const KeyFrameId id,
       const Frame& frame);
 
+    std::vector<std::shared_ptr<KeyPoint>> getUnmatchedFeatures();
+
     const KeyFrameId mId;
     const utils::TTimestamp mTimestamp;
     const Eigen::Matrix3d mIntrinsics;

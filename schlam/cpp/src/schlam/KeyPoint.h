@@ -34,8 +34,11 @@ public:
     void setLevel(const double aLevel);
     void setDescriptor(const Descriptor& aDescriptor);
 
+    bool getMatched() const;
     void setObservation(MapPointId pointId);
     void setIndex(std::size_t index);
+    void setKeyFrameId(KeyFrameId frameId);
+    std::optional<KeyFrameId> getKeyFrameId() const;
 
 private:
     double mImgX{0};
@@ -46,6 +49,7 @@ private:
     Descriptor mDescriptor;
     std::optional<MapPointId> mMapPointId;
     std::optional<std::size_t> mIndex;
+    std::optional<KeyFrameId> mKeyFrameId;
 };
 
 

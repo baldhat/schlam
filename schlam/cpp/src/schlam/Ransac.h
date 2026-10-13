@@ -13,7 +13,12 @@
 
 #include <optional>
 #include <memory>
+#include <tuple>
 #include <vector>
+
+namespace tft {
+class RigidTransform3D;
+}
 
 // R and t map the reference camera into the current camera. Cloud points are in
 // the reference frame, and cloud/mask entries retain the input correspondence order.
@@ -23,6 +28,23 @@ reconstructInitial(
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
     const Eigen::Matrix3d &aIntrinsics);
+
+std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool> > >
+reconstruct(
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
+    const Eigen::Matrix3d &aIntrinsics);
+
+// The transform maps camera 1 into camera 2. Points are in camera 1 and retain
+// correspondence order, including outliers. Epipolar rejects are not triangulated
+// and have zero point entries. Returns nullopt if no point passes the initial
+// essential reconstruction's epipolar, validity and parallax checks.
+std::optional<std::tuple<std::vector<Eigen::Vector3d>, std::vector<bool>>>
+triangulate(
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
+    const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
+    const Eigen::Matrix3d& aIntrinsics,
+    const std::shared_ptr<tft::RigidTransform3D>& aTransform);
 
 // -----------------------------------------------------------------------
 // ------------------------ Essential Matrix -----------------------------

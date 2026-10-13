@@ -96,6 +96,69 @@ std::unique_ptr<Map> buildMap(std::string prevFrameName,
     return std::move(map);
 }
 
+void triangulateUnmatchedFeatures(Map* map) {
+    std::size_t lastNKeyframes = 5;
+    auto start = std::prev(map->mKeyFrames.end(), std::min(lastNKeyframes, map->mKeyFrames.size() - 1));
+    auto latest = std::prev(map->mKeyFrames.end());
+
+    for (auto it = start; it != latest; ++it) {
+        auto matches = matchUnmatchedFeatures(it->second, latest->second, 30);
+        auto transform = latest->second.mMapToCamera * it->second.mMapToCamera->inverse();
+        auto optionalResult = triangulate(matches[0], matches[1], latest->second.mIntrinsics, transform);
+        if (optionalResult.has_value()) {
+            // add new MapPoints and observations
+            auto [pts, inliers] = optionalResult.value();
+            std::size_t numInliers{0};
+            std::vector<MapPointId> newMapPointIds;
+            for (std::size_t i = 0; i < pts.size(); i++) {
+                if (inliers[i]) {
+                    numInliers++;
+                    const auto pointInMap = it->second.mMapToCamera->inverse()->apply(pts[i]);
+                    const auto pointId = map->addMapPoint(pointInMap, matches[0][i]);
+                    map->mPoints.at(pointId).addInlierObservation(matches[1][i]->getDescriptor());
+                    newMapPointIds.push_back(pointId);
+                    map->addObservation(it->second.mId, matches[0][i]->getIndex().value(), pointId);
+                    map->addObservation(latest->second.mId, matches[1][i]->getIndex().value(), pointId);
+                }
+            }
+            std::cout << "Triangulated " << numInliers << " new MapPoints!" << std::endl;
+
+            // look for matches in the other keyframes
+
+        }
+    }
+}
+
+void handleNewKeyframe(std::shared_ptr<Optimizer> optimizer,
+                       MotionModel &motionModel,
+                       Map* map,
+                       std::shared_ptr<Frame> frame,
+                       const std::vector<MapPointMatch> matches,
+                       const std::vector<bool> inliers) {
+    // add keyframe
+    const auto frameId = map->addKeyFrame(frame);
+    for (std::size_t j = 0; j < matches.size(); ++j) {
+        if (!inliers[j]) continue;
+
+        const auto featureIndex = matches[j].feature->getIndex().value();
+        map->addObservation(frameId, featureIndex, matches[j].mapPointId);
+    }
+
+    // add map points
+    triangulateUnmatchedFeatures(map);
+
+    // optimize map
+    if (optimizer->optimizeFullMap(map)) {
+        frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
+        // BA can adjust each pose differently. Start prediction from
+        // the corrected pose until another accepted frame gives us velocity.
+        motionModel = MotionModel{};
+    }
+}
+
+
+
+
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
 
@@ -267,22 +330,8 @@ int main() {
             const auto mapToWorld = pTransformer->findTransform(map->mFrame, "world");
 
             if (map->decideNewKeyframe(inlierCount, framesSinceLastKeyframe)) {
-                // add keyframe
                 framesSinceLastKeyframe = 0;
-                const auto frameId = map->addKeyFrame(frame);
-                for (std::size_t j = 0; j < matches.size(); ++j) {
-                    if (!inliers[j]) continue;
-
-                    const auto featureIndex = matches[j].feature->getIndex().value();
-                    map->addObservation(frameId, featureIndex, matches[j].mapPointId);
-                }
-                // optimize map
-                if (optimizer->optimizeFullMap(map.get())) {
-                    frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
-                    // BA can adjust each pose differently. Start prediction from
-                    // the corrected pose until another accepted frame gives us velocity.
-                    motionModel = MotionModel{};
-                }
+                handleNewKeyframe(optimizer, motionModel, map.get(), frame, matches, inliers);
             }
 
             const auto optimizedCameraToWorld = mapToWorld * frame->mMapToCamera->inverse();
