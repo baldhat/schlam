@@ -1,3 +1,5 @@
+![3D Path and Map Reconstruction](schlam/cpp/docs/img_1.png)
+
 # schlam
 
 A from-scratch visual(-inertial) SLAM playground. The core building blocks of a SLAM frontend — feature detection, matching, RANSAC-based pose estimation, and bundle adjustment — are implemented by hand rather than taken off the shelf, in two parallel implementations:
