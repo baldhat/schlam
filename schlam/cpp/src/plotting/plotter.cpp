@@ -336,10 +336,12 @@ void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alp
     glDisable(GL_TEXTURE_2D);
     glPushAttrib(GL_POINT_BIT);
     glPointSize(5.f);
-    glColor3f(1.f, 0.f, 0.f);
     glBegin(GL_POINTS);
     for (const auto& point : snapshot.points) {
         const Eigen::Vector3d worldPoint = mapToWorld->mRotation * point + mapToWorld->mTranslation;
+        float blue = std::clamp(worldPoint.z() / 2.0, 0.0, 1.0);
+        float red = std::clamp(1.f-blue, 0.0f, 1.0f);
+        glColor3f(red, 0.f, blue);
         glVertex3d(worldPoint.x(), worldPoint.y(), worldPoint.z());
     }
     glEnd();
