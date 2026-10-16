@@ -4,6 +4,9 @@
 
 #ifndef SCHLAM_KEYFRAME_H
 #define SCHLAM_KEYFRAME_H
+#include <cstdint>
+#include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include "Frame.h"
@@ -23,6 +26,9 @@ public:
     const Eigen::Matrix3d mIntrinsics;
     std::shared_ptr<QuadTreeNode> mKeypointTree;
     const std::vector<std::shared_ptr<KeyPoint>> mKeyPoints;
+    std::vector<MapPointId> mObservedPoints;
+    std::vector<std::optional<MapPointId>> mObservedPointByFeature;
+    std::unordered_map<KeyFrameId, std::uint32_t> mSharedPointCount;
     std::shared_ptr<tft::RigidTransform3D> mMapToCamera;
     cv::Mat mImageData;
 };

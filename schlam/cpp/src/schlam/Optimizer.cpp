@@ -4,9 +4,11 @@
 
 #include "Optimizer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <istream>
 #include <ostream>
+#include <set>
 #include <stdexcept>
 
 #include <g2o/core/base_unary_edge.h>
@@ -254,6 +256,16 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
     return {rotation, translation, inliers};
 }
 
+std::tuple<Eigen::Matrix3d, Eigen::Vector3d>
+Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& keyPoints,
+                        const Eigen::Matrix3d& rotation,
+                        const Eigen::Vector3d& translation,
+                        const std::vector<Eigen::Vector3d>& points,
+                        const Eigen::Matrix3d& intrinsics) {
+    auto result = optimizePoseWithInliers(keyPoints, rotation, translation, points, intrinsics);
+    return {result.rotation, result.translation};
+}
+
 bool Optimizer::optimizeFullMap(Map* map) {
     if (!map || map->mKeyFrames.size() < 2 || map->mPoints.empty()) return false;
 
@@ -366,4 +378,218 @@ bool Optimizer::optimizeFullMap(Map* map) {
         map->updateMapPointPosition(pointId, optimized_point);
     }
     return true;
+}
+
+
+bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::size_t maxNumVariable, std::size_t maxNumFixed) {
+    if (!map || maxNumVariable == 0 || maxNumFixed < 2 ||
+        !map->mKeyFrames.contains(keyframe.mId)) return false;
+
+    std::set<KeyFrameId> localFrames{keyframe.mId};
+    std::set<MapPointId> candidatePoints(keyframe.mObservedPoints.begin(), keyframe.mObservedPoints.end());
+
+    using Neighbor = std::pair<KeyFrameId, std::uint32_t>;
+    std::vector<Neighbor> neighbors;
+    for (const auto& [frameId, sharedObservedCount] : keyframe.mSharedPointCount) {
+        if (frameId == keyframe.mId || sharedObservedCount < 15)
+            continue;
+
+        neighbors.emplace_back(frameId, sharedObservedCount);
+    }
+
+    const std::size_t keep =
+      std::min(neighbors.size(), maxNumVariable - 1); // current keyframe uses one slot
+    std::partial_sort(
+      neighbors.begin(), neighbors.begin() + keep, neighbors.end(),
+      [](const Neighbor& a, const Neighbor& b) {
+          if (a.second != b.second) return a.second > b.second;
+          return a.first < b.first;
+      });
+    neighbors.resize(keep);
+
+    for (const auto& [neighborId, count] : neighbors) {
+        localFrames.insert(neighborId);
+        const auto& neighbor = map->mKeyFrames.at(neighborId);
+        candidatePoints.insert(neighbor.mObservedPoints.begin(), neighbor.mObservedPoints.end());
+    }
+
+    // A boundary frame's score is the number of candidate points it observes.
+    std::unordered_map<KeyFrameId, std::uint32_t> boundaryVotes;
+    for (const auto pointId : candidatePoints) {
+        for (const auto& [frameId, featureIndex] : map->mPoints.at(pointId).mObservations) {
+            if (!localFrames.contains(frameId)) ++boundaryVotes[frameId];
+        }
+    }
+    std::vector<Neighbor> boundaryCandidates(boundaryVotes.begin(), boundaryVotes.end());
+    const auto stronger = [](const Neighbor& a, const Neighbor& b) {
+        if (a.second != b.second) return a.second > b.second;
+        return a.first < b.first;
+    };
+    const auto fixedKeep = std::min(boundaryCandidates.size(), maxNumFixed);
+    std::partial_sort(boundaryCandidates.begin(), boundaryCandidates.begin() + fixedKeep,
+                      boundaryCandidates.end(), stronger);
+    boundaryCandidates.resize(fixedKeep);
+
+    std::set<KeyFrameId> boundaryFrames;
+    std::set<KeyFrameId> fixedFrames;
+    for (const auto& [frameId, votes] : boundaryCandidates) {
+        boundaryFrames.insert(frameId);
+        fixedFrames.insert(frameId);
+    }
+
+    const auto cameraCenter = [&](KeyFrameId id) {
+        const auto& pose = *map->mKeyFrames.at(id).mMapToCamera;
+        return (-pose.mRotation.transpose() * pose.mTranslation).eval();
+    };
+    const auto hasScaleAnchor = [&](const std::set<KeyFrameId>& frames) {
+        for (auto first = frames.begin(); first != frames.end(); ++first) {
+            for (auto second = std::next(first); second != frames.end(); ++second) {
+                if ((cameraCenter(*first) - cameraCenter(*second)).squaredNorm() > 1e-12)
+                    return true;
+            }
+        }
+        return false;
+    };
+    // Fix older local poses when the bounded boundary has too few anchors.
+    for (const auto frameId : localFrames) {
+        if (hasScaleAnchor(fixedFrames) || fixedFrames.size() >= maxNumFixed) break;
+        if (frameId != keyframe.mId) fixedFrames.insert(frameId);
+    }
+    if (!hasScaleAnchor(fixedFrames)) return false;
+
+    std::set<MapPointId> optimizedPoints;
+    std::set<KeyFrameId> activeFixedFrames;
+    for (const auto pointId : candidatePoints) {
+        const auto& point = map->mPoints.at(pointId);
+        std::size_t includedObservations = 0;
+        bool hasVariableObservation = false;
+        for (const auto& [frameId, featureIndex] : point.mObservations) {
+            if (localFrames.contains(frameId) || boundaryFrames.contains(frameId)) {
+                ++includedObservations;
+                if (localFrames.contains(frameId) && !fixedFrames.contains(frameId))
+                    hasVariableObservation = true;
+            }
+        }
+        if (includedObservations < 2 || !hasVariableObservation) continue;
+        optimizedPoints.insert(pointId);
+        for (const auto& [frameId, featureIndex] : point.mObservations) {
+            if (fixedFrames.contains(frameId)) activeFixedFrames.insert(frameId);
+        }
+    }
+    if (optimizedPoints.empty() || !hasScaleAnchor(activeFixedFrames)) return false;
+
+    g2o::SparseOptimizer optimizer;
+    g2o::OptimizationAlgorithmProperty solverProp;
+    optimizer.setAlgorithm(
+        g2o::OptimizationAlgorithmFactory::instance()->construct("lm_fix6_3",
+                                                                 solverProp)
+    );
+
+    int vertex_id{0};
+    // Create point vertices
+    std::unordered_map<MapPointId, int> pointToVertexId;
+    for (const auto &pointId: optimizedPoints) {
+        g2o::VertexPointXYZ *v_point = new g2o::VertexPointXYZ();
+        v_point->setId(vertex_id);
+        const auto& point = map->mPoints.at(pointId);
+        v_point->setEstimate(point.mPosition.cast<double>());
+        v_point->setMarginalized(true);
+        optimizer.addVertex(v_point);
+        pointToVertexId.insert({pointId, vertex_id});
+        vertex_id++;
+    }
+
+    std::unordered_map<KeyFrameId, int> frameToVertexId;
+    // Add local poses, including any poses fixed to anchor the local problem.
+    for (const auto &frameId: localFrames) {
+        auto& frame = map->mKeyFrames.at(frameId);
+        auto transform = frame.mMapToCamera;
+        auto R = transform->mRotation;
+        auto t = transform->mTranslation;
+        g2o::SE3Quat pose(R.cast<double>(), t.cast<double>());
+        g2o::VertexSE3Expmap *vertex = new g2o::VertexSE3Expmap();
+        vertex->setId(vertex_id);
+        vertex->setEstimate(pose);
+        vertex->setFixed(fixedFrames.contains(frameId));
+        optimizer.addVertex(vertex);
+        frameToVertexId.insert({frameId, vertex_id});
+        vertex_id++;
+    }
+    // add fixed frames
+    for (const auto &frameId: boundaryFrames) {
+        auto& frame = map->mKeyFrames.at(frameId);
+        auto transform = frame.mMapToCamera;
+        auto R = transform->mRotation;
+        auto t = transform->mTranslation;
+        g2o::SE3Quat pose(R.cast<double>(), t.cast<double>());
+        g2o::VertexSE3Expmap *vertex = new g2o::VertexSE3Expmap();
+        vertex->setId(vertex_id);
+        vertex->setEstimate(pose);
+        vertex->setFixed(true);
+        optimizer.addVertex(vertex);
+        frameToVertexId.insert({frameId, vertex_id});
+        vertex_id++;
+    }
+
+
+    // Create edges between poses and points
+    for (const auto& pointId : optimizedPoints) {
+        const auto& point = map->mPoints.at(pointId);
+        for (const auto& [frameId, _] : point.mObservations) {
+            if (boundaryFrames.contains(frameId) || localFrames.contains(frameId)) {
+                const auto& frame = map->mKeyFrames.at(frameId);
+                g2o::EdgeSE3ProjectXYZ *edge = new g2o::EdgeSE3ProjectXYZ();
+                edge->setVertex(0, optimizer.vertex(pointToVertexId.at(pointId)));
+                edge->setVertex(1, optimizer.vertex(frameToVertexId.at(frameId)));
+                edge->fx = frame.mIntrinsics(0, 0);
+                edge->fy = frame.mIntrinsics(1, 1);
+                edge->cx = frame.mIntrinsics(0, 2);
+                edge->cy = frame.mIntrinsics(1, 2);
+                auto keypoint = frame.mKeyPoints.at(point.mObservations.at(frameId));
+                edge->setMeasurement(Eigen::Vector2d(keypoint->getImgX(), keypoint->getImgY()));
+                edge->setInformation(Eigen::Matrix2d::Identity());
+                edge->setRobustKernel(new g2o::RobustKernelHuber);
+
+                optimizer.addEdge(edge);
+            }
+        }
+    }
+
+    std::cout << "Optimizing Covisibility graph with: " << optimizedPoints.size() << " points, "
+              << localFrames.size() - (fixedFrames.size() - boundaryFrames.size())
+              << " variable frames and " << fixedFrames.size() << " fixed frames" << std::endl;
+
+    // OPTIMIZE
+    if (!optimizer.initializeOptimization()) return false;
+    optimizer.setVerbose(false);
+    if (optimizer.optimize(50) <= 0) return false;
+
+    // Validate before publishing to the map
+    for (const auto& [frameId, vertexId] : frameToVertexId) {
+        const auto* pose = static_cast<const g2o::VertexSE3Expmap*>(optimizer.vertex(vertexId));
+        if (!pose->estimate().rotation().coeffs().allFinite() ||
+            !pose->estimate().translation().allFinite()) return false;
+    }
+    for (const auto& [pointId, vertexId] : pointToVertexId) {
+        const auto* point = static_cast<const g2o::VertexPointXYZ*>(optimizer.vertex(vertexId));
+        if (!point->estimate().allFinite()) return false;
+    }
+
+    for (const auto frameId : localFrames) {
+        if (fixedFrames.contains(frameId)) continue;
+        auto& frame = map->mKeyFrames.at(frameId);
+        g2o::VertexSE3Expmap* v_pose = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(frameToVertexId.at(frameId)));
+        g2o::SE3Quat optimized_pose = v_pose->estimate();
+        Eigen::Matrix3d R = optimized_pose.rotation().toRotationMatrix().cast<double>();
+        Eigen::Vector3d t = optimized_pose.translation().cast<double>();
+        map->updateKeyFramePose(frameId, tft::RigidTransform3D(frame.mMapToCamera->mSource, frame.mMapToCamera->mTarget, R, t));
+    }
+
+    for (auto& pointId : optimizedPoints) {
+        g2o::VertexPointXYZ* v_point = static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(pointToVertexId.at(pointId)));
+        Eigen::Vector3d optimized_point = v_point->estimate();
+        map->updateMapPointPosition(pointId, optimized_point);
+    }
+    return true;
+
 }

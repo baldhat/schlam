@@ -11,7 +11,7 @@ KeyFrame::KeyFrame(
       : mId(id), mIntrinsics(frame.mIntrinsics), mKeyPoints(frame.mKeypointTree->getFeatures())
       , mMapToCamera(frame.mMapToCamera), mTimestamp(frame.mTimestamp), mKeypointTree(frame.mKeypointTree)
       , mImageData(frame.mImage){
-
+    mObservedPointByFeature.resize(mKeyPoints.size());
 }
 
 

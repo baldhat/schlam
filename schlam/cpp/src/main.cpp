@@ -17,7 +17,7 @@
 #include "schlam/MotionModel.h"
 
 
-#define optimizePoints false
+#define optimizeFullMap false
 
 bool getNextData(std::shared_ptr<tft::Transformer> pTransformer,
                  std::shared_ptr<MAVDataloader> dataloader,
@@ -147,13 +147,18 @@ void handleNewKeyframe(std::shared_ptr<Optimizer> optimizer,
     // add map points
     triangulateUnmatchedFeatures(map);
 
-    // optimize map
+    // optimize
+#if optimizeFullMap
     if (optimizer->optimizeFullMap(map)) {
         frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
-        // BA can adjust each pose differently. Start prediction from
-        // the corrected pose until another accepted frame gives us velocity.
         motionModel = MotionModel{};
     }
+#else
+    if (optimizer->optimizeCovisibilityGraph(map, std::prev(map->mKeyFrames.end())->second)) {
+        frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
+        motionModel = MotionModel{};
+    }
+#endif
 }
 
 

@@ -14,6 +14,8 @@
 #include <g2o/core/sparse_optimizer.h>
 #include <g2o/core/optimization_algorithm_property.h>
 
+#include "KeyFrame.h"
+
 class Map;
 
 struct PoseOptimizationResult {
@@ -56,6 +58,10 @@ public:
     // Keeps initialization keyframe 0 fixed and preserves the baseline to keyframe 1.
     // Returns true when finite optimized poses and points were written to the map.
     bool optimizeFullMap(Map* map);
+
+    // Bounds the local poses and fixed anchors; skips problems without a monocular scale anchor.
+    bool optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe,
+                                  std::size_t maxNumVariable = 20, std::size_t maxNumFixed = 40);
 };
 
 

@@ -1,10 +1,13 @@
 #include "schlam/Optimizer.h"
+#include "schlam/Map.h"
 #include "tft/transformer.hpp"
 
 #include <gtest/gtest.h>
 #include <Eigen/Geometry>
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <limits>
 #include <stdexcept>
 
@@ -426,4 +429,98 @@ TEST_F(JointOptimizerScaleTest, NonFiniteBaselineIsRejected) {
         EXPECT_THROW(optimizer.optimizePoseAndPoints(observations, Eigen::Matrix3d::Identity(),
             Eigen::Vector3d(invalid, 0, 0), mapPoints, intrinsics), std::invalid_argument);
     }
+}
+
+class CovisibilityOptimizerTest : public ::testing::Test {
+protected:
+    Map map{"map"};
+    Optimizer optimizer;
+    std::array<KeyFrameId, 4> frameIds{};
+    std::vector<MapPointId> pointIds;
+    Eigen::Matrix3d intrinsics = (Eigen::Matrix3d() <<
+        500, 0, 320, 0, 500, 240, 0, 0, 1).finished();
+
+    void SetUp() override {
+        std::vector<Eigen::Vector3d> positions;
+        for (int i = 0; i < 20; ++i) {
+            positions.emplace_back(-0.6 + 0.3 * (i % 5), -0.4 + 0.25 * (i / 5), 4.0 + 0.1 * i);
+        }
+
+        for (int camera = 0; camera < 4; ++camera) {
+            cv::Mat image(480, 640, CV_8UC1, cv::Scalar(0));
+            auto imageData = std::make_shared<ImageData>(
+                utils::TTimestamp(std::chrono::milliseconds(camera)), image, intrinsics, "camera");
+            auto frame = std::make_shared<Frame>(imageData);
+            frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
+                "map", "camera", Eigen::Matrix3d::Identity(),
+                Eigen::Vector3d(-0.3 * camera, 0, 0));
+            std::vector<KeyPoint> features;
+            for (const auto& position : positions) {
+                const auto cameraPoint = frame->mMapToCamera->apply(position);
+                features.emplace_back(500 * cameraPoint.x() / cameraPoint.z() + 320,
+                                      500 * cameraPoint.y() / cameraPoint.z() + 240);
+            }
+            frame->mKeypointTree = std::make_shared<QuadTreeNode>(0, 640, 0, 480, features);
+            frameIds[camera] = map.addKeyFrame(frame);
+        }
+
+        const auto& features = map.mKeyFrames.at(frameIds[0]).mKeyPoints;
+        for (std::size_t i = 0; i < positions.size(); ++i) {
+            const auto pointId = map.addMapPoint(positions[i], features[i]);
+            pointIds.push_back(pointId);
+            for (const auto frameId : frameIds) map.addObservation(frameId, i, pointId);
+        }
+    }
+};
+
+TEST_F(CovisibilityOptimizerTest, SharedCountsAreSymmetricAndDuplicateObservationsAreIdempotent) {
+    for (const auto first : frameIds) {
+        const auto& frame = map.mKeyFrames.at(first);
+        EXPECT_FALSE(frame.mSharedPointCount.contains(first));
+        EXPECT_EQ(frame.mObservedPoints.size(), pointIds.size());
+        for (const auto second : frameIds) {
+            if (first != second) EXPECT_EQ(frame.mSharedPointCount.at(second), pointIds.size());
+        }
+    }
+
+    map.addObservation(frameIds[3], 0, pointIds[0]);
+    EXPECT_EQ(map.mKeyFrames.at(frameIds[3]).mObservedPoints.size(), pointIds.size());
+    EXPECT_EQ(map.mKeyFrames.at(frameIds[3]).mSharedPointCount.at(frameIds[0]), pointIds.size());
+
+    const auto otherPoint = map.addMapPoint(Eigen::Vector3d(0, 0, 5),
+                                            map.mKeyFrames.at(frameIds[3]).mKeyPoints[0]);
+    EXPECT_THROW(map.addObservation(frameIds[3], 0, otherPoint), std::invalid_argument);
+    EXPECT_TRUE(map.mPoints.at(otherPoint).mObservations.empty());
+}
+
+TEST_F(CovisibilityOptimizerTest, BoundedLocalAdjustmentRefinesCurrentPoseAndKeepsBoundaryFixed) {
+    auto& current = map.mKeyFrames.at(frameIds[3]);
+    map.updateKeyFramePose(frameIds[3], tft::RigidTransform3D(
+        "map", "camera", Eigen::Matrix3d::Identity(), Eigen::Vector3d(-1.0, 0.02, 0)));
+    const auto before = current.mMapToCamera->mTranslation;
+    const auto fixed0 = map.mKeyFrames.at(frameIds[0]).mMapToCamera->matrix();
+    const auto fixed1 = map.mKeyFrames.at(frameIds[1]).mMapToCamera->matrix();
+    const auto excluded = map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix();
+
+    ASSERT_TRUE(optimizer.optimizeCovisibilityGraph(&map, current, 1, 2));
+    const Eigen::Vector3d expected(-0.9, 0, 0);
+    EXPECT_LT((current.mMapToCamera->mTranslation - expected).norm(),
+              (before - expected).norm());
+    EXPECT_TRUE(map.mKeyFrames.at(frameIds[0]).mMapToCamera->matrix().isApprox(fixed0, 0));
+    EXPECT_TRUE(map.mKeyFrames.at(frameIds[1]).mMapToCamera->matrix().isApprox(fixed1, 0));
+    EXPECT_TRUE(map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix().isApprox(excluded, 0));
+}
+
+TEST_F(CovisibilityOptimizerTest, VariableLimitSelectsOnlyTheStrongestNeighbor) {
+    const auto& first = map.mKeyFrames.at(frameIds[0]);
+    map.updateKeyFramePose(frameIds[0], tft::RigidTransform3D(
+        "map", "camera", Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.12, 0.02, 0)));
+    const auto before = first.mMapToCamera->mTranslation.norm();
+    const auto fixed1 = map.mKeyFrames.at(frameIds[1]).mMapToCamera->matrix();
+    const auto fixed2 = map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix();
+
+    ASSERT_TRUE(optimizer.optimizeCovisibilityGraph(&map, map.mKeyFrames.at(frameIds[3]), 2, 2));
+    EXPECT_LT(first.mMapToCamera->mTranslation.norm(), before);
+    EXPECT_TRUE(map.mKeyFrames.at(frameIds[1]).mMapToCamera->matrix().isApprox(fixed1, 0));
+    EXPECT_TRUE(map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix().isApprox(fixed2, 0));
 }

@@ -70,9 +70,29 @@ void Map::updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D&
 
 void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId) {
     std::lock_guard guard(mMutex);
+    auto& keyframe = mKeyFrames.at(keyFrameId);
     auto& point = mPoints.at(pointId);
-    const auto& feature = mKeyFrames.at(keyFrameId).mKeyPoints.at(featureIndex);
-    point.mObservations.insert_or_assign(keyFrameId, featureIndex);
+    const auto& feature = keyframe.mKeyPoints.at(featureIndex);
+    const auto& existingPoint = keyframe.mObservedPointByFeature.at(featureIndex);
+    const auto existingObservation = point.mObservations.find(keyFrameId);
+    if (existingPoint && *existingPoint != pointId) {
+        throw std::invalid_argument("Feature is already assigned to another map point");
+    }
+    if (existingObservation != point.mObservations.end()) {
+        if (existingObservation->second != featureIndex) {
+            throw std::invalid_argument("Map point is already observed at another feature");
+        }
+        return;
+    }
+
+    for (const auto& [otherId, _] : point.mObservations) {
+        auto& other = mKeyFrames.at(otherId);
+        ++other.mSharedPointCount[keyFrameId];
+        ++keyframe.mSharedPointCount[otherId];
+    }
+    point.mObservations.emplace(keyFrameId, featureIndex);
+    keyframe.mObservedPoints.push_back(pointId);
+    keyframe.mObservedPointByFeature[featureIndex] = pointId;
     feature->setObservation(pointId);
 }
 
