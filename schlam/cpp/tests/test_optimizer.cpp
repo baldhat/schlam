@@ -1,0 +1,429 @@
+#include "schlam/Optimizer.h"
+#include "tft/transformer.hpp"
+
+#include <gtest/gtest.h>
+#include <Eigen/Geometry>
+
+#include <algorithm>
+#include <limits>
+#include <stdexcept>
+
+class PoseOptimizerTest : public ::testing::Test {
+protected:
+    Optimizer optimizer;
+    Eigen::Matrix3d intrinsics;
+    Eigen::Matrix3d rotation =
+        (Eigen::AngleAxisd(0.17, Eigen::Vector3d::UnitY()) *
+         Eigen::AngleAxisd(-0.08, Eigen::Vector3d::UnitX())).toRotationMatrix();
+    Eigen::Vector3d translation{0.3, -0.2, 0.4};
+    std::vector<Eigen::Vector3d> mapPoints;
+    std::vector<std::shared_ptr<KeyPoint>> observations;
+
+    void SetUp() override {
+        intrinsics << 520, 0, 320, 0, 410, 240, 0, 0, 1;
+        for (int y = 0; y < 4; ++y) {
+            for (int x = 0; x < 5; ++x) {
+                const uint32_t u = 120 + 75 * x;
+                const uint32_t v = 90 + 60 * y;
+                const double depth = 4.0 + 0.4 * (x + 2 * y);
+                const Eigen::Vector3d cameraPoint(
+                    (u - intrinsics(0, 2)) * depth / intrinsics(0, 0),
+                    (v - intrinsics(1, 2)) * depth / intrinsics(1, 1), depth);
+                mapPoints.push_back(rotation.transpose() * (cameraPoint - translation));
+                observations.push_back(std::make_shared<KeyPoint>(u, v));
+            }
+        }
+    }
+
+    Eigen::Matrix3d initialRotation() const {
+        return rotation * Eigen::AngleAxisd(0.06, Eigen::Vector3d::UnitY()).toRotationMatrix();
+    }
+
+    Eigen::Vector3d initialTranslation() const {
+        return translation + Eigen::Vector3d(-0.12, 0.1, 0.08);
+    }
+};
+
+TEST_F(PoseOptimizerTest, RecoversPoseWithDistinctFocalLengthsAndPreservesMapPoints) {
+    const auto originalPoints = mapPoints;
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        observations, initialRotation(), initialTranslation(), mapPoints, intrinsics);
+
+    EXPECT_TRUE(optimizedRotation.isApprox(rotation, 1e-7));
+    EXPECT_TRUE(optimizedTranslation.isApprox(translation, 1e-6));
+    ASSERT_EQ(mapPoints.size(), originalPoints.size());
+    for (std::size_t j = 0; j < mapPoints.size(); ++j) {
+        EXPECT_TRUE(mapPoints[j].isApprox(originalPoints[j], 0));
+    }
+}
+
+TEST_F(PoseOptimizerTest, MapToCameraResultConvertsBackToCameraToWorld) {
+    auto transformer = std::make_shared<tft::Transformer>();
+    const auto mapToWorld = std::make_shared<tft::RigidTransform3D>("map", "world",
+        Eigen::AngleAxisd(0.6, Eigen::Vector3d::UnitZ()).toRotationMatrix(),
+        Eigen::Vector3d(3, -2, 1));
+    const auto initialMapToCamera = std::make_shared<tft::RigidTransform3D>("map", "camera",
+        initialRotation(), initialTranslation());
+    const auto predictedCameraToWorld = mapToWorld * initialMapToCamera->inverse();
+    transformer->registerTransform(mapToWorld);
+    transformer->registerTransform(predictedCameraToWorld);
+
+    const auto mapToCamera = transformer->findTransform("map", "camera");
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        observations, mapToCamera->mRotation, mapToCamera->mTranslation, mapPoints, intrinsics);
+    const auto optimizedMapToCamera = std::make_shared<tft::RigidTransform3D>("map", "camera",
+        optimizedRotation, optimizedTranslation);
+    const auto optimizedCameraToWorld = mapToWorld * optimizedMapToCamera->inverse();
+    const auto trueMapToCamera = std::make_shared<tft::RigidTransform3D>("map", "camera",
+        rotation, translation);
+    const auto expectedCameraToWorld = mapToWorld * trueMapToCamera->inverse();
+
+    EXPECT_EQ(optimizedCameraToWorld->mSource, "camera");
+    EXPECT_EQ(optimizedCameraToWorld->mTarget, "world");
+    EXPECT_TRUE(optimizedCameraToWorld->matrix().isApprox(expectedCameraToWorld->matrix(), 1e-6));
+    transformer->registerTransform(optimizedCameraToWorld);
+    EXPECT_TRUE(transformer->findTransform("camera", "world")->matrix().isApprox(
+        expectedCameraToWorld->matrix(), 1e-6));
+}
+
+TEST_F(PoseOptimizerTest, ExactInitialPoseRemainsUnchanged) {
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        observations, rotation, translation, mapPoints, intrinsics);
+    EXPECT_TRUE(optimizedRotation.isApprox(rotation, 1e-10));
+    EXPECT_TRUE(optimizedTranslation.isApprox(translation, 1e-10));
+}
+
+TEST_F(PoseOptimizerTest, RejectsMismatchedObservationAndRefinesInliers) {
+    const auto& observation = observations.back();
+    observations.back() = std::make_shared<KeyPoint>(
+        observation->getImgX() + 80, observation->getImgY() - 40);
+
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        observations, initialRotation(), initialTranslation(), mapPoints, intrinsics);
+
+    EXPECT_TRUE(optimizedRotation.isApprox(rotation, 1e-7));
+    EXPECT_TRUE(optimizedTranslation.isApprox(translation, 1e-6));
+}
+
+TEST_F(PoseOptimizerTest, FineScaleObservationsDominateNoisyCoarseScaleObservations) {
+    const auto preciseCount = observations.size();
+    const Eigen::Vector3d biasedTranslation = translation + Eigen::Vector3d(0.008, 0, 0);
+    for (std::size_t j = 0; j < preciseCount; ++j) {
+        const auto& preciseObservation = observations[j];
+        const double depth = (rotation * mapPoints[j] + translation).z() + 0.2;
+        const Eigen::Vector3d cameraPoint(
+            (preciseObservation->getImgX() + 15 - intrinsics(0, 2)) * depth / intrinsics(0, 0),
+            (preciseObservation->getImgY() + 10 - intrinsics(1, 2)) * depth / intrinsics(1, 1), depth);
+        const Eigen::Vector3d point = rotation.transpose() * (cameraPoint - translation);
+        const Eigen::Vector3d biasedProjection = intrinsics * (rotation * point + biasedTranslation);
+        mapPoints.push_back(point);
+        observations.push_back(std::make_shared<KeyPoint>(
+            biasedProjection.x() / biasedProjection.z(), biasedProjection.y() / biasedProjection.z(), 7));
+    }
+
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        observations, initialRotation(), initialTranslation(), mapPoints, intrinsics);
+
+    // Coarse measurements have a systematic bias, but the precise measurements
+    // should still determine the pose to substantially better than a pixel.
+    double totalPreciseError = 0;
+    for (std::size_t j = 0; j < preciseCount; ++j) {
+        const Eigen::Vector3d projection = intrinsics * (optimizedRotation * mapPoints[j] + optimizedTranslation);
+        const Eigen::Vector2d measurement(observations[j]->getImgX(), observations[j]->getImgY());
+        totalPreciseError += (projection.head<2>() / projection.z() - measurement).norm();
+    }
+    EXPECT_LT(totalPreciseError / preciseCount, 0.15);
+}
+
+TEST_F(PoseOptimizerTest, RetainsNoisyCoarseObservationsWhileRejectingGrossMismatch) {
+    const auto originalPoints = mapPoints;
+    const auto originalObservations = observations;
+    mapPoints.clear();
+    observations.clear();
+    for (std::size_t j = 0; j < originalPoints.size(); ++j) {
+        // Symmetric independent measurements have their least-squares optimum
+        // at the true projection, despite each being three pixels away from it.
+        for (double offset : {-3.0, 3.0}) {
+            mapPoints.push_back(originalPoints[j]);
+            observations.push_back(std::make_shared<KeyPoint>(
+                originalObservations[j]->getImgX() + offset, originalObservations[j]->getImgY(), 4));
+        }
+    }
+    mapPoints.push_back(originalPoints.front());
+    observations.push_back(std::make_shared<KeyPoint>(
+        originalObservations.front()->getImgX() + 80, originalObservations.front()->getImgY() - 40, 4));
+
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        observations, initialRotation(), initialTranslation(), mapPoints, intrinsics);
+
+    EXPECT_TRUE(optimizedRotation.isApprox(rotation, 1e-7));
+    EXPECT_TRUE(optimizedTranslation.isApprox(translation, 1e-6));
+}
+
+TEST_F(PoseOptimizerTest, TooFewInliersSkipSecondPass) {
+    observations.resize(2);
+    mapPoints.resize(2);
+
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        observations, rotation, translation, mapPoints, intrinsics);
+
+    EXPECT_TRUE(optimizedRotation.isApprox(rotation, 1e-10));
+    EXPECT_TRUE(optimizedTranslation.isApprox(translation, 1e-10));
+}
+
+TEST_F(PoseOptimizerTest, AllPointsBehindCameraSkipSecondPass) {
+    for (auto& point : mapPoints) {
+        const Eigen::Vector3d cameraPoint = rotation * point + translation;
+        point = rotation.transpose() * (-cameraPoint - translation);
+    }
+
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        observations, rotation, translation, mapPoints, intrinsics);
+
+    EXPECT_TRUE(optimizedRotation.isApprox(rotation, 1e-10));
+    EXPECT_TRUE(optimizedTranslation.isApprox(translation, 1e-10));
+}
+
+TEST_F(PoseOptimizerTest, EmptyMatchesPreserveInitialPose) {
+    const auto [optimizedRotation, optimizedTranslation] = optimizer.optimizePose(
+        {}, initialRotation(), initialTranslation(), {}, intrinsics);
+    EXPECT_TRUE(optimizedRotation.isApprox(initialRotation(), 0));
+    EXPECT_TRUE(optimizedTranslation.isApprox(initialTranslation(), 0));
+}
+
+TEST_F(PoseOptimizerTest, MismatchedCorrespondenceCountsAreRejected) {
+    observations.pop_back();
+    EXPECT_THROW(optimizer.optimizePose(observations, rotation, translation, mapPoints, intrinsics),
+        std::invalid_argument);
+}
+
+TEST_F(PoseOptimizerTest, NullObservationIsRejected) {
+    observations[0].reset();
+    EXPECT_THROW(optimizer.optimizePose(observations, rotation, translation, mapPoints, intrinsics),
+        std::invalid_argument);
+}
+
+class JointOptimizerScaleTest : public ::testing::Test {
+protected:
+    Optimizer optimizer;
+    Eigen::Matrix3d intrinsics;
+    const Eigen::Vector3d trueTranslation{-2, 0, 0};
+    std::vector<Eigen::Vector3d> mapPoints;
+    std::vector<std::vector<std::shared_ptr<KeyPoint>>> observations{2};
+
+    void SetUp() override {
+        intrinsics << 400, 0, 320, 0, 400, 240, 0, 0, 1;
+        for (int y = 0; y < 4; ++y) {
+            for (int x = 0; x < 6; ++x) {
+                const uint32_t u = 180 + 55 * x;
+                const uint32_t v = 150 + 45 * y;
+                const uint32_t disparity = 40 + 5 * ((x * x + 3 * y) % 9);
+                const double depth = 800.0 / disparity;
+                mapPoints.emplace_back((u - 320.0) * depth / 400.0,
+                    (v - 240.0) * depth / 400.0, depth);
+                observations[0].push_back(std::make_shared<KeyPoint>(u, v));
+                observations[1].push_back(std::make_shared<KeyPoint>(u - disparity, v));
+            }
+        }
+    }
+};
+
+TEST_F(JointOptimizerScaleTest, PreservesInitialBaselineAcrossScalesWhileRefiningPoseAndPoints) {
+    const Eigen::Matrix3d initialRotation =
+        Eigen::AngleAxisd(0.025, Eigen::Vector3d::UnitY()).toRotationMatrix();
+    for (double inputScale : {0.5, 1.0, 3.0}) {
+        SCOPED_TRACE(inputScale);
+        const Eigen::Vector3d initialTranslation = inputScale * Eigen::Vector3d(-2, 0.12, 0.08);
+        auto initialPoints = mapPoints;
+        for (auto& point : initialPoints) {
+            point *= 1.3 * inputScale;
+        }
+        const auto [rotation, translation, points] = optimizer.optimizePoseAndPoints(
+            observations, initialRotation, initialTranslation, initialPoints, intrinsics);
+
+        EXPECT_NEAR(translation.norm(), initialTranslation.norm(), 1e-6 * inputScale);
+        EXPECT_TRUE(rotation.isApprox(Eigen::Matrix3d::Identity(), 1e-5));
+        EXPECT_TRUE(translation.normalized().isApprox(trueTranslation.normalized(), 1e-5));
+        ASSERT_EQ(points.size(), mapPoints.size());
+        const double expectedScale = initialTranslation.norm() / trueTranslation.norm();
+        for (std::size_t j = 0; j < points.size(); ++j) {
+            EXPECT_TRUE(points[j].isApprox(expectedScale * mapPoints[j], 1e-5)) << "Point " << j;
+        }
+    }
+}
+
+TEST_F(JointOptimizerScaleTest, RecoversPoseAndPointsWithDistinctFocalLengths) {
+    const Eigen::Matrix3d initialRotation =
+        Eigen::AngleAxisd(0.025, Eigen::Vector3d::UnitY()).toRotationMatrix();
+    const Eigen::Vector3d initialTranslation(-2, 0.12, 0.08);
+    const double expectedScale = initialTranslation.norm() / trueTranslation.norm();
+
+    for (double fy : {250.0, 650.0}) {
+        SCOPED_TRACE(fy);
+        intrinsics(1, 1) = fy;
+        auto expectedPoints = mapPoints;
+        auto initialPoints = mapPoints;
+        for (std::size_t j = 0; j < mapPoints.size(); ++j) {
+            // Keep the integer observations exact for the new vertical focal length.
+            expectedPoints[j].y() *= 400.0 / fy;
+            initialPoints[j] = 1.3 * expectedPoints[j];
+        }
+
+        const auto [rotation, translation, points] = optimizer.optimizePoseAndPoints(
+            observations, initialRotation, initialTranslation, initialPoints, intrinsics);
+
+        EXPECT_NEAR(translation.norm(), initialTranslation.norm(), 1e-6);
+        EXPECT_TRUE(rotation.isApprox(Eigen::Matrix3d::Identity(), 1e-5));
+        EXPECT_TRUE(translation.normalized().isApprox(trueTranslation.normalized(), 1e-5));
+        ASSERT_EQ(points.size(), expectedPoints.size());
+        for (std::size_t j = 0; j < points.size(); ++j) {
+            EXPECT_TRUE(points[j].isApprox(expectedScale * expectedPoints[j], 1e-5)) << "Point " << j;
+        }
+    }
+}
+
+TEST_F(JointOptimizerScaleTest, UsesEachFramesOctaveForNoisyObservations) {
+    const std::size_t noisyPoint = 7;
+    for (std::size_t noisyFrame : {0, 1}) {
+        SCOPED_TRACE(noisyFrame);
+        auto mixedObservations = observations;
+        const auto& observation = observations[noisyFrame][noisyPoint];
+        mixedObservations[noisyFrame][noisyPoint] = std::make_shared<KeyPoint>(
+            observation->getImgX(), observation->getImgY() + 3, 7);
+        const auto [rotation, translation, points] = optimizer.optimizePoseAndPoints(
+            mixedObservations, Eigen::Matrix3d::Identity(), trueTranslation, mapPoints, intrinsics);
+
+        EXPECT_NEAR(translation.norm(), trueTranslation.norm(), 1e-6);
+        for (std::size_t frame : {0, 1}) {
+            const Eigen::Vector3d cameraPoint = frame == 0
+                ? points[noisyPoint] : Eigen::Vector3d(rotation * points[noisyPoint] + translation);
+            const Eigen::Vector3d projection = intrinsics * cameraPoint;
+            const Eigen::Vector2d measurement(mixedObservations[frame][noisyPoint]->getImgX(),
+                mixedObservations[frame][noisyPoint]->getImgY());
+            const double error = (projection.head<2>() / projection.z() - measurement).norm();
+            if (frame == noisyFrame) {
+                EXPECT_GT(error, 1.5);
+            } else {
+                // The precise observation should dominate the reconstructed point.
+                EXPECT_LT(error, 0.5);
+            }
+        }
+    }
+}
+
+TEST_F(JointOptimizerScaleTest, RejectsWrongMatchFromEitherFrameAndRefinesInliers) {
+    const std::size_t badPoint = 7;
+    const Eigen::Matrix3d initialRotation =
+        Eigen::AngleAxisd(0.025, Eigen::Vector3d::UnitY()).toRotationMatrix();
+    const Eigen::Vector3d initialTranslation(-2, 0.12, 0.08);
+    const double expectedScale = initialTranslation.norm() / trueTranslation.norm();
+    auto initialPoints = mapPoints;
+    for (auto& point : initialPoints) point *= 1.3;
+
+    for (std::size_t badFrame : {0, 1}) {
+        SCOPED_TRACE(badFrame);
+        auto mismatchedObservations = observations;
+        const auto& observation = observations[badFrame][badPoint];
+        mismatchedObservations[badFrame][badPoint] = std::make_shared<KeyPoint>(
+            observation->getImgX(), observation->getImgY() + 60);
+        const auto [rotation, translation, points] = optimizer.optimizePoseAndPoints(
+            mismatchedObservations, initialRotation, initialTranslation, initialPoints, intrinsics);
+
+        ASSERT_EQ(points.size(), mapPoints.size());
+        EXPECT_NEAR(translation.norm(), initialTranslation.norm(), 1e-6);
+        EXPECT_TRUE(rotation.isApprox(Eigen::Matrix3d::Identity(), 1e-5));
+        EXPECT_TRUE(translation.normalized().isApprox(trueTranslation.normalized(), 1e-5));
+        for (std::size_t j = 0; j < points.size(); ++j) {
+            if (j == badPoint) {
+                EXPECT_TRUE(points[j].isApprox(initialPoints[j], 0));
+            } else {
+                EXPECT_TRUE(points[j].isApprox(expectedScale * mapPoints[j], 1e-5)) << "Point " << j;
+            }
+        }
+    }
+}
+
+TEST_F(JointOptimizerScaleTest, RejectsPointsBehindCamerasWithZeroReprojectionError) {
+    for (std::size_t j = 0; j < mapPoints.size(); ++j) {
+        mapPoints[j] *= -1;
+        for (std::size_t frame : {0, 1}) {
+            const Eigen::Vector3d cameraPoint = frame == 0
+                ? mapPoints[j] : Eigen::Vector3d(mapPoints[j] + trueTranslation);
+            const Eigen::Vector3d projection = intrinsics * cameraPoint;
+            observations[frame][j] = std::make_shared<KeyPoint>(
+                projection.x() / projection.z(), projection.y() / projection.z());
+        }
+    }
+    const auto [rotation, translation, points] = optimizer.optimizePoseAndPoints(
+        observations, Eigen::Matrix3d::Identity(), trueTranslation, mapPoints, intrinsics);
+
+    EXPECT_TRUE(rotation.isApprox(Eigen::Matrix3d::Identity(), 1e-10));
+    EXPECT_TRUE(translation.isApprox(trueTranslation, 1e-10));
+    ASSERT_EQ(points.size(), mapPoints.size());
+    for (std::size_t j = 0; j < points.size(); ++j) {
+        EXPECT_TRUE(points[j].isApprox(mapPoints[j], 0));
+    }
+}
+
+TEST_F(JointOptimizerScaleTest, TooFewInliersPreserveExactInputPose) {
+    mapPoints.resize(2);
+    for (auto& frameObservations : observations) frameObservations.resize(2);
+    const auto [rotation, translation, points] = optimizer.optimizePoseAndPoints(
+        observations, Eigen::Matrix3d::Identity(), trueTranslation, mapPoints, intrinsics);
+
+    EXPECT_TRUE(rotation.isApprox(Eigen::Matrix3d::Identity(), 1e-10));
+    EXPECT_TRUE(translation.isApprox(trueTranslation, 1e-10));
+    ASSERT_EQ(points.size(), mapPoints.size());
+    for (std::size_t j = 0; j < points.size(); ++j) {
+        EXPECT_TRUE(points[j].isApprox(mapPoints[j], 1e-10));
+    }
+}
+
+TEST_F(JointOptimizerScaleTest, EmptyMatchesPreservePoseAndClearInlierMask) {
+    const auto [rotation, translation, points] = optimizer.optimizePoseAndPoints(
+        {{}, {}}, Eigen::Matrix3d::Identity(), trueTranslation, {}, intrinsics);
+
+    EXPECT_TRUE(rotation.isApprox(Eigen::Matrix3d::Identity(), 0));
+    EXPECT_TRUE(translation.isApprox(trueTranslation, 0));
+    EXPECT_TRUE(points.empty());
+}
+
+TEST_F(JointOptimizerScaleTest, InvalidCorrespondenceCountsAreRejected) {
+    EXPECT_THROW(optimizer.optimizePoseAndPoints({}, Eigen::Matrix3d::Identity(),
+        trueTranslation, mapPoints, intrinsics), std::invalid_argument);
+    EXPECT_THROW(optimizer.optimizePoseAndPoints({observations[0]}, Eigen::Matrix3d::Identity(),
+        trueTranslation, mapPoints, intrinsics), std::invalid_argument);
+    observations[1].pop_back();
+    EXPECT_THROW(optimizer.optimizePoseAndPoints(observations, Eigen::Matrix3d::Identity(),
+        trueTranslation, mapPoints, intrinsics), std::invalid_argument);
+}
+
+TEST_F(JointOptimizerScaleTest, InvalidObservationDataIsRejected) {
+    auto invalidObservations = observations;
+    invalidObservations[0][0].reset();
+    EXPECT_THROW(optimizer.optimizePoseAndPoints(invalidObservations, Eigen::Matrix3d::Identity(),
+        trueTranslation, mapPoints, intrinsics), std::invalid_argument);
+
+    invalidObservations = observations;
+    invalidObservations[1][0] = std::make_shared<KeyPoint>(
+        std::numeric_limits<double>::quiet_NaN(), 200);
+    EXPECT_THROW(optimizer.optimizePoseAndPoints(invalidObservations, Eigen::Matrix3d::Identity(),
+        trueTranslation, mapPoints, intrinsics), std::invalid_argument);
+
+    mapPoints[0].z() = std::numeric_limits<double>::infinity();
+    EXPECT_THROW(optimizer.optimizePoseAndPoints(observations, Eigen::Matrix3d::Identity(),
+        trueTranslation, mapPoints, intrinsics), std::invalid_argument);
+}
+
+TEST_F(JointOptimizerScaleTest, ZeroBaselineIsRejected) {
+    EXPECT_THROW(optimizer.optimizePoseAndPoints(observations, Eigen::Matrix3d::Identity(),
+        Eigen::Vector3d::Zero(), mapPoints, intrinsics), std::invalid_argument);
+}
+
+TEST_F(JointOptimizerScaleTest, NonFiniteBaselineIsRejected) {
+    for (double invalid : {std::numeric_limits<double>::infinity(),
+                           std::numeric_limits<double>::quiet_NaN()}) {
+        EXPECT_THROW(optimizer.optimizePoseAndPoints(observations, Eigen::Matrix3d::Identity(),
+            Eigen::Vector3d(invalid, 0, 0), mapPoints, intrinsics), std::invalid_argument);
+    }
+}

@@ -95,7 +95,6 @@ Transformer::findTransform(const std::string &source,
     if (currentNode == target) {
       // If we found the transform to the world frame, store it
       if (target == mRootName && mRootedFrames.count(source) == 0) {
-        std::cout << "Add rooted frame: " << source << std::endl;
         mRootedFrames.emplace(std::make_pair(source, currentTransform->inverse()));
       }
       return currentTransform;

@@ -84,7 +84,6 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
         pending.insert(pending.end(), children.begin(), children.end());
     }
     auto treeFeatures = tree->getFeatures();
-    std::cout << "Returning " << treeFeatures.size() << " features" << std::endl;
     if (mpPlotter) {
         mpPlotter->plotFeatures(aPyramid[0], treeFeatures);
     }
