@@ -15,6 +15,8 @@
 
 // STL
 #include <vector>
+#include <chrono>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -43,6 +45,8 @@ public:
                        const std::shared_ptr<tft::RigidTransform3D> aPredictedPose = nullptr);
 
     void updateTimestamp(const utils::TTimestamp& aTimestamp);
+
+    void recordFrameTime(std::chrono::steady_clock::duration elapsed);
 
     // Camera positions are expressed in world coordinates.
     void resetCameraPaths(const Eigen::Vector3d& aReferencePosition);
@@ -85,6 +89,11 @@ private:
     std::string mTimestampText;
     std::optional<utils::TTimestamp> mSequenceStartTimestamp;
     std::mutex mTimestampMutex;
+    std::deque<double> mRecentFrameTimesMs;
+    double mRecentFrameTimeSumMs{0.0};
+    std::mutex mFrameTimeMutex;
+    std::size_t mDisplayedKeyframeCount{0};
+    std::size_t mDisplayedMapPointCount{0};
 
     std::vector<Eigen::Vector3d> mGroundTruthCameraPath;
     std::vector<Eigen::Vector3d> mPredictedCameraPath;
@@ -133,7 +142,7 @@ private:
 
     void showMatches();
 
-    void showTimestamp();
+    void showStatus();
 
     void drawCameraPaths(bool aShowGroundTruth, bool aShowPredicted);
 

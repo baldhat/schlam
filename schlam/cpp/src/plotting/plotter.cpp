@@ -3,6 +3,8 @@
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <GL/gl.h>
 #include <functional>
+#include <iomanip>
+#include <sstream>
 
 #include <pangolin/display/default_font.h>
 #include <pangolin/gl/gldraw.h>
@@ -86,6 +88,17 @@ void Plotter::updateTimestamp(const utils::TTimestamp& aTimestamp) {
     const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
         aTimestamp - *mSequenceStartTimestamp).count();
     mTimestampText = std::to_string(milliseconds) + " ms";
+}
+
+void Plotter::recordFrameTime(std::chrono::steady_clock::duration elapsed) {
+    const double milliseconds = std::chrono::duration<double, std::milli>(elapsed).count();
+    std::lock_guard guard(mFrameTimeMutex);
+    mRecentFrameTimesMs.push_back(milliseconds);
+    mRecentFrameTimeSumMs += milliseconds;
+    if (mRecentFrameTimesMs.size() > 20) {
+        mRecentFrameTimeSumMs -= mRecentFrameTimesMs.front();
+        mRecentFrameTimesMs.pop_front();
+    }
 }
 
 void Plotter::resetCameraPaths(const Eigen::Vector3d& aReferencePosition) {
@@ -325,6 +338,8 @@ void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alp
         mapToWorld = mMapToWorld;
         mapRevision = mMapRevision;
     }
+    mDisplayedKeyframeCount = snapshot.keyFrames.size();
+    mDisplayedMapPointCount = snapshot.points.size();
     if (mapRevision != mKeyFrameTextureMapRevision) {
         mKeyFrameTextures.clear();
         mKeyFrameTextureMapRevision = mapRevision;
@@ -504,18 +519,36 @@ void Plotter::showMatches() {
     mMatcherImageTexture->RenderToViewportFlipY();
 }
 
-void Plotter::showTimestamp() {
-    std::string text;
+void Plotter::showStatus() {
+    std::string timestamp;
     {
         std::lock_guard guard(mTimestampMutex);
-        text = mTimestampText;
+        timestamp = mTimestampText;
     }
-    if (text.empty()) return;
+    double averageMs = 0.0;
+    std::size_t frameCount = 0;
+    {
+        std::lock_guard guard(mFrameTimeMutex);
+        frameCount = mRecentFrameTimesMs.size();
+        if (frameCount != 0) averageMs = mRecentFrameTimeSumMs / frameCount;
+    }
+
+    std::ostringstream frameTimeText;
+    frameTimeText << "Avg frame time (last " << frameCount << "): ";
+    if (frameCount != 0) {
+        frameTimeText << std::fixed << std::setprecision(1) << averageMs << " ms";
+    } else {
+        frameTimeText << "-- ms";
+    }
+    const std::string mapText = "Keyframes: " + std::to_string(mDisplayedKeyframeCount)
+        + "  Map points: " + std::to_string(mDisplayedMapPointCount);
 
     glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT);
     glDisable(GL_DEPTH_TEST);
     glColor3f(0.f, 0.f, 0.f);
-    pangolin::default_font().Text(text).DrawWindow(10, 10);
+    if (!timestamp.empty()) pangolin::default_font().Text(timestamp).DrawWindow(10, 10);
+    pangolin::default_font().Text(frameTimeText.str()).DrawWindow(10, 32);
+    pangolin::default_font().Text(mapText).DrawWindow(10, 54);
     glPopAttrib();
 }
 
@@ -596,12 +629,12 @@ void Plotter::run() {
     pangolin::Var<bool> menu_showGroundTruthPath("menu.Ground Truth Path", true, true);
     pangolin::Var<bool> menu_showPredictedPath("menu.Predicted Path", true, true);
 
-    auto& timestampView = pangolin::CreateDisplay();
-    timestampView.zorder = 1;
-    timestampView.SetBounds(0.0, pangolin::Attach::Pix(35), 0.0, 1.0)
+    auto& statusView = pangolin::CreateDisplay();
+    statusView.zorder = 1;
+    statusView.SetBounds(0.0, pangolin::Attach::Pix(80), 0.0, 1.0)
         .SetDrawFunction([this](pangolin::View& view) {
             view.Activate();
-            showTimestamp();
+            showStatus();
         });
     pangolin::DisplayBase().ResizeChildren();
 

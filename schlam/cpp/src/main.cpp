@@ -157,6 +157,33 @@ void handleNewKeyframe(std::shared_ptr<Optimizer> optimizer,
 
 
 
+class FrameTimer {
+public:
+    FrameTimer(Plotter& plotter, std::chrono::steady_clock::time_point start)
+        : mPlotter(plotter), mStart(start) {}
+
+    ~FrameTimer() { finish(); }
+
+    double finish() {
+        if (!mFinished) {
+            const auto elapsed = std::chrono::steady_clock::now() - mStart;
+            mElapsedMs = std::chrono::duration<double, std::milli>(elapsed).count();
+            mPlotter.recordFrameTime(elapsed);
+            mFinished = true;
+        }
+        return mElapsedMs;
+    }
+
+    FrameTimer(const FrameTimer&) = delete;
+    FrameTimer& operator=(const FrameTimer&) = delete;
+
+private:
+    Plotter& mPlotter;
+    std::chrono::steady_clock::time_point mStart;
+    double mElapsedMs{0.0};
+    bool mFinished{false};
+};
+
 int main() {
     auto pTransformer = std::make_shared<tft::Transformer>();
 
@@ -196,13 +223,13 @@ int main() {
 
     // initialization
     while (!dataloader->empty()) {
-        auto now = std::chrono::system_clock::now();
-
+        const auto frameStart = std::chrono::steady_clock::now();
         std::shared_ptr<ImageData> imageData;
         std::shared_ptr<tft::RigidTransform3D> cameraToWorld;
         bool continues;
         if (getNextData(pTransformer, dataloader, plotter, cameraToIMU, imuAndGT, imageData, cameraToWorld, continues)) break;
         if (continues) continue;
+        FrameTimer frameTimer(*plotter, frameStart);
 
         plotter->updateFrustum(imageData);
 
@@ -263,10 +290,7 @@ int main() {
             break; // Finished initialization
         }
 
-        auto end = std::chrono::system_clock::now();
-        std::cout << "Frame handling took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count()
-                <<
-                " ms" << std::endl;
+        std::cout << "Frame handling took " << frameTimer.finish() << " ms" << std::endl;
         while (plotter->shouldPause()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
@@ -277,12 +301,13 @@ int main() {
     // tracking
     std::uint32_t framesSinceLastKeyframe = 0;
     while (!dataloader->empty()) {
-        auto now = std::chrono::system_clock::now();
+        const auto frameStart = std::chrono::steady_clock::now();
         std::shared_ptr<ImageData> imageData;
         std::shared_ptr<tft::RigidTransform3D> cameraToWorld;
         bool continues;
         if (getNextData(pTransformer, dataloader, plotter, cameraToIMU, imuAndGT, imageData, cameraToWorld, continues)) break;
         if (continues) continue;
+        FrameTimer frameTimer(*plotter, frameStart);
 
         plotter->addGroundTruthCameraPosition(cameraToWorld->mTranslation);
 
@@ -343,10 +368,7 @@ int main() {
 
         framesSinceLastKeyframe++;
 
-        auto end = std::chrono::system_clock::now();
-        std::cout << "Frame handling took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count()
-                <<
-                " ms" << std::endl;
+        std::cout << "Frame handling took " << frameTimer.finish() << " ms" << std::endl;
         while (plotter->shouldPause() || matchedMapPoints.size() < 30) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
