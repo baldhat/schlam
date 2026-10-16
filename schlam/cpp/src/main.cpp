@@ -17,8 +17,6 @@
 #include "schlam/MotionModel.h"
 
 
-#define optimizeFullMap false
-
 bool getNextData(std::shared_ptr<tft::Transformer> pTransformer,
                  std::shared_ptr<MAVDataloader> dataloader,
                  std::shared_ptr<Plotter> plotter,
@@ -84,9 +82,9 @@ std::unique_ptr<Map> buildMap(std::string prevFrameName,
               std::vector<std::shared_ptr<KeyPoint>> pts2D_1,
               std::vector<std::shared_ptr<KeyPoint>> pts2D_2, std::vector<Eigen::Vector3d> pts_opt) {
     auto map = std::make_unique<Map>(prevFrameName);
-    const auto pointIds = map->addMapPoints(pts_opt, pts2D_2);
     const auto referenceKeyFrameId = map->addKeyFrame(referenceFrame);
     const auto initialKeyFrameId = map->addKeyFrame(frame);
+    const auto pointIds = map->addMapPoints(pts_opt, pts2D_2, initialKeyFrameId);
     for (std::size_t pointIndex = 0; pointIndex < pointIds.size(); ++pointIndex) {
         const auto referenceFeatureIndex = pts2D_1[pointIndex]->getIndex().value();
         const auto initialFeatureIndex = pts2D_2[pointIndex]->getIndex().value();
@@ -114,7 +112,7 @@ void triangulateUnmatchedFeatures(Map* map) {
                 if (inliers[i]) {
                     numInliers++;
                     const auto pointInMap = it->second.mMapToCamera->inverse()->apply(pts[i]);
-                    const auto pointId = map->addMapPoint(pointInMap, matches[0][i]);
+                    const auto pointId = map->addMapPoint(pointInMap, matches[0][i], latest->second.mId);
                     map->mPoints.at(pointId).addInlierObservation(matches[1][i]->getDescriptor());
                     newMapPointIds.push_back(pointId);
                     map->addObservation(it->second.mId, matches[0][i]->getIndex().value(), pointId);
@@ -144,21 +142,16 @@ void handleNewKeyframe(std::shared_ptr<Optimizer> optimizer,
         map->addObservation(frameId, featureIndex, matches[j].mapPointId);
     }
 
+    map->cullMapPoints();
+
     // add map points
     triangulateUnmatchedFeatures(map);
 
     // optimize
-#if optimizeFullMap
-    if (optimizer->optimizeFullMap(map)) {
-        frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
-        motionModel = MotionModel{};
-    }
-#else
     if (optimizer->optimizeCovisibilityGraph(map, std::prev(map->mKeyFrames.end())->second)) {
         frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
         motionModel = MotionModel{};
     }
-#endif
 }
 
 
@@ -284,6 +277,7 @@ int main() {
     // tracking
     std::uint32_t framesSinceLastKeyframe = 0;
     while (!dataloader->empty()) {
+        auto now = std::chrono::system_clock::now();
         std::shared_ptr<ImageData> imageData;
         std::shared_ptr<tft::RigidTransform3D> cameraToWorld;
         bool continues;
@@ -304,7 +298,7 @@ int main() {
         // TODO:
         // - match only with features in predicted scale
         // - match only if viewing angle difference to mean viewing angle of point is not too large
-        const auto matches = matchMapPointsByProjection(map.get(), frame, estimatedPose, pTransformer, 50, 20);
+        const auto matches = matchMapPointsByProjection(map.get(), frame, estimatedPose, pTransformer, 50, 50);
         std::cout << "Matched " << matches.size() << " out of " << map->mPoints.size() << " map points" << std::endl;
         std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchedFeatures;
         std::vector<Eigen::Vector3d> matchedMapPoints;
@@ -348,10 +342,17 @@ int main() {
         }
 
         framesSinceLastKeyframe++;
+
+        auto end = std::chrono::system_clock::now();
+        std::cout << "Frame handling took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count()
+                <<
+                " ms" << std::endl;
         while (plotter->shouldPause() || matchedMapPoints.size() < 30) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
+
+    optimizer->optimizeFullMap(map.get());
 
     render_loop.join();
     return 0;

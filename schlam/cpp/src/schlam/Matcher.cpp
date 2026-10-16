@@ -134,7 +134,7 @@ matchWindow(const std::shared_ptr<QuadTreeNode>& aTree1,
 }
 
 std::vector<MapPointMatch>
-matchMapPointsByProjection(const Map* map,
+matchMapPointsByProjection(Map* map,
                           const std::shared_ptr<Frame>& frame,
                           const std::shared_ptr<tft::RigidTransform3D>& estimatedPose,
                           const std::shared_ptr<tft::Transformer>& aTransformer,
@@ -144,7 +144,7 @@ matchMapPointsByProjection(const Map* map,
     matches.reserve(map->mPoints.size());
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
     for (const auto mapPointId : sortedMapPointIds(*map)) {
-        const auto& mapPoint = map->mPoints.at(mapPointId);
+        auto& mapPoint = map->mPoints.at(mapPointId);
         const auto pointInCamera = mapToCamera->apply(mapPoint.mPosition);
         const auto projected = project(pointInCamera, frame->mIntrinsics);
         if (!projected.has_value()
@@ -152,6 +152,8 @@ matchMapPointsByProjection(const Map* map,
             || projected->y() < 0 || projected->y() >= frame->mImage.rows) {
             continue;
         }
+
+        mapPoint.mVisibleInTracking++;
 
         const auto candidates = frame->mKeypointTree->getFeatures(
             projected->x() - aWindowSize, projected->x() + aWindowSize,
@@ -185,7 +187,7 @@ matchMapPointsByProjection(const Map* map,
 }
 
 std::tuple<std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>, std::vector<bool>>
-matchByProjection(const Map* map,
+matchByProjection(Map* map,
                   std::shared_ptr<Frame> frame,
                   std::shared_ptr<tft::RigidTransform3D> estimatedPose,
                   std::shared_ptr<tft::Transformer> aTransformer,

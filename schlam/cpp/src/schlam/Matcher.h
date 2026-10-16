@@ -55,7 +55,7 @@ struct MapPointMatch {
 
 
 std::vector<MapPointMatch>
-matchMapPointsByProjection(const Map* map,
+matchMapPointsByProjection(Map* map,
                           const std::shared_ptr<Frame>& frame,
                           const std::shared_ptr<tft::RigidTransform3D>& estimatedPose,
                           const std::shared_ptr<tft::Transformer>& aTransformer,
@@ -64,7 +64,7 @@ matchMapPointsByProjection(const Map* map,
 
 // The returned mask follows ascending MapPointId order.
 std::tuple<std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>, std::vector<bool>>
-matchByProjection(const Map* map, std::shared_ptr<Frame> frame,
+matchByProjection(Map* map, std::shared_ptr<Frame> frame,
                        std::shared_ptr<tft::RigidTransform3D> estimatedPose,
                        std::shared_ptr<tft::Transformer> aTransformer,
                        const double aMaxDistance, const double aWindowSize);

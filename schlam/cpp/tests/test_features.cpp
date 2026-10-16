@@ -208,12 +208,12 @@ TEST(MatcherTest, ProjectionMatchesOwnProjectedAndDetectedFeatures) {
 
     auto map = std::make_shared<Map>("world");
     const auto descriptorSource = std::make_shared<KeyPoint>(0, 0, 0, 0, 0, descriptor);
-    map->addMapPoint(Eigen::Vector3d(0, 0, -5), descriptorSource);
-    map->addMapPoint(Eigen::Vector3d(0, 0, 5), descriptorSource);
-    map->addMapPoint(Eigen::Vector3d(10, 0, 5), descriptorSource);
+    map->addMapPoint(Eigen::Vector3d(0, 0, -5), descriptorSource, 0);
+    map->addMapPoint(Eigen::Vector3d(0, 0, 5), descriptorSource, 0);
+    map->addMapPoint(Eigen::Vector3d(10, 0, 5), descriptorSource, 0);
     // Both visible projections compete for the same observation.
-    map->addMapPoint(Eigen::Vector3d(0.05, 0, 5), descriptorSource);
-    map->addMapPoint(Eigen::Vector3d(1, 1, 5), descriptorSource);
+    map->addMapPoint(Eigen::Vector3d(0.05, 0, 5), descriptorSource, 0);
+    map->addMapPoint(Eigen::Vector3d(1, 1, 5), descriptorSource, 0);
     auto pose = std::make_shared<tft::RigidTransform3D>("current", "world",
         Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
     auto transformer = std::make_shared<tft::Transformer>();
@@ -265,10 +265,10 @@ TEST(MatcherTest, ProjectionMaskPreservesMapPointAndObservationOrder) {
     std::array<uint8_t, 32> descriptor{};
     auto map = std::make_shared<Map>("world");
     const auto descriptorSource = std::make_shared<KeyPoint>(0, 0, 0, 0, 0, descriptor);
-    map->addMapPoint(Eigen::Vector3d(10, 0, 5), descriptorSource);
-    map->addMapPoint(Eigen::Vector3d(1, 1, 5), descriptorSource);
-    map->addMapPoint(Eigen::Vector3d(0, 0, -5), descriptorSource);
-    map->addMapPoint(Eigen::Vector3d(-1, -1, 5), descriptorSource);
+    map->addMapPoint(Eigen::Vector3d(10, 0, 5), descriptorSource, 0);
+    map->addMapPoint(Eigen::Vector3d(1, 1, 5), descriptorSource, 0);
+    map->addMapPoint(Eigen::Vector3d(0, 0, -5), descriptorSource, 0);
+    map->addMapPoint(Eigen::Vector3d(-1, -1, 5), descriptorSource, 0);
     auto pose = std::make_shared<tft::RigidTransform3D>("current", "world",
         Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
     auto transformer = std::make_shared<tft::Transformer>();

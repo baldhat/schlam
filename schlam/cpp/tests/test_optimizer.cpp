@@ -466,7 +466,7 @@ protected:
 
         const auto& features = map.mKeyFrames.at(frameIds[0]).mKeyPoints;
         for (std::size_t i = 0; i < positions.size(); ++i) {
-            const auto pointId = map.addMapPoint(positions[i], features[i]);
+            const auto pointId = map.addMapPoint(positions[i], features[i], frameIds[0]);
             pointIds.push_back(pointId);
             for (const auto frameId : frameIds) map.addObservation(frameId, i, pointId);
         }
@@ -488,9 +488,55 @@ TEST_F(CovisibilityOptimizerTest, SharedCountsAreSymmetricAndDuplicateObservatio
     EXPECT_EQ(map.mKeyFrames.at(frameIds[3]).mSharedPointCount.at(frameIds[0]), pointIds.size());
 
     const auto otherPoint = map.addMapPoint(Eigen::Vector3d(0, 0, 5),
-                                            map.mKeyFrames.at(frameIds[3]).mKeyPoints[0]);
+                                            map.mKeyFrames.at(frameIds[3]).mKeyPoints[0], frameIds[3]);
     EXPECT_THROW(map.addObservation(frameIds[3], 0, otherPoint), std::invalid_argument);
     EXPECT_TRUE(map.mPoints.at(otherPoint).mObservations.empty());
+}
+
+TEST_F(CovisibilityOptimizerTest, RemovingPointClearsFeaturesAndSharedCounts) {
+    const auto removedId = pointIds.front();
+    ASSERT_TRUE(map.removePoint(removedId));
+    EXPECT_FALSE(map.mPoints.contains(removedId));
+    EXPECT_FALSE(map.removePoint(removedId));
+
+    for (const auto frameId : frameIds) {
+        const auto& frame = map.mKeyFrames.at(frameId);
+        EXPECT_FALSE(frame.mKeyPoints[0]->getMatched());
+        EXPECT_FALSE(frame.mObservedPointByFeature[0].has_value());
+        EXPECT_EQ(std::count(frame.mObservedPoints.begin(), frame.mObservedPoints.end(), removedId), 0);
+        for (const auto otherId : frameIds) {
+            if (frameId != otherId) EXPECT_EQ(frame.mSharedPointCount.at(otherId), pointIds.size() - 1);
+        }
+    }
+
+    const auto replacementId = map.addMapPoint(Eigen::Vector3d(0, 0, 5),
+                                                map.mKeyFrames.at(frameIds[0]).mKeyPoints[0], frameIds[3]);
+    for (const auto frameId : frameIds) map.addObservation(frameId, 0, replacementId);
+    for (const auto frameId : frameIds) {
+        const auto& frame = map.mKeyFrames.at(frameId);
+        EXPECT_TRUE(frame.mKeyPoints[0]->getMatched());
+        EXPECT_EQ(frame.mObservedPointByFeature[0], replacementId);
+        EXPECT_EQ(frame.mObservedPoints.size(), pointIds.size());
+    }
+}
+
+TEST_F(CovisibilityOptimizerTest, CullingUsesPointRemovalWithoutInvalidatingIteration) {
+    map.mPoints.at(pointIds[0]).mVisibleInTracking = 8;
+    map.cullMapPoints();
+    EXPECT_FALSE(map.mPoints.contains(pointIds[0]));
+    EXPECT_EQ(map.mPoints.size(), pointIds.size() - 1);
+    EXPECT_EQ(map.mKeyFrames.at(frameIds[0]).mSharedPointCount.at(frameIds[1]), pointIds.size() - 1);
+}
+
+TEST_F(CovisibilityOptimizerTest, RemovingLastSharedPointErasesCovisibilityEdges) {
+    for (const auto pointId : pointIds) EXPECT_TRUE(map.removePoint(pointId));
+    EXPECT_TRUE(map.mPoints.empty());
+    for (const auto frameId : frameIds) {
+        const auto& frame = map.mKeyFrames.at(frameId);
+        EXPECT_TRUE(frame.mSharedPointCount.empty());
+        EXPECT_TRUE(frame.mObservedPoints.empty());
+        for (const auto& feature : frame.mKeyPoints) EXPECT_FALSE(feature->getMatched());
+    }
 }
 
 TEST_F(CovisibilityOptimizerTest, BoundedLocalAdjustmentRefinesCurrentPoseAndKeepsBoundaryFixed) {

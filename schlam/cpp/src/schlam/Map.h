@@ -32,16 +32,18 @@ class Map {
 public:
     Map(const std::string& frameName);
     std::vector<MapPointId> addMapPoints(const std::vector<Eigen::Vector3d>& points3d,
-        const std::vector<std::shared_ptr<KeyPoint>>& keyPoints);
-    MapPointId addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint);
+        const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId);
+    MapPointId addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId);
 
     KeyFrameId addKeyFrame(const std::shared_ptr<Frame>& frame);
     MapSnapshot getSnapshot() const;
     void updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position);
     void updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D& mapToCamera);
     void addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId);
+    bool removePoint(MapPointId pointId);
 
     bool decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe);
+    void cullMapPoints();
 
     std::string mFrame;
     std::map<MapPointId, MapPoint> mPoints;

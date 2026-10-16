@@ -36,6 +36,7 @@ public:
 
     bool getMatched() const;
     void setObservation(MapPointId pointId);
+    void clearObservation();
     void setIndex(std::size_t index);
     void setKeyFrameId(KeyFrameId frameId);
     std::optional<KeyFrameId> getKeyFrameId() const;

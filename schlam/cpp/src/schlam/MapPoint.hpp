@@ -19,7 +19,7 @@ class MapPoint {
 public:
     using Descriptor = std::array<std::uint8_t, 32>;
 
-    MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id);
+    MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId);
 
     void addInlierObservation(const Descriptor& descriptor);
 
@@ -29,6 +29,9 @@ public:
     Descriptor mLastInlierDescriptor;
     MapPointId mId;
     std::unordered_map<KeyFrameId, std::size_t> mObservations;
+    KeyFrameId mCreatorId;
+    std::uint64_t mVisibleInTracking{0};
+    std::uint64_t mNumInlierObservations{0};
 
 private:
     static constexpr std::size_t descriptorHistorySize = 10;

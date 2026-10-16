@@ -55,6 +55,10 @@ void KeyPoint::setObservation(MapPointId pointId) {
     mMapPointId = pointId;
 }
 
+void KeyPoint::clearObservation() {
+    mMapPointId.reset();
+}
+
 void KeyPoint::setIndex(std::size_t index) {
     mIndex = index;
 }

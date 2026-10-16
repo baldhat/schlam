@@ -19,12 +19,13 @@ int hammingDistance(const MapPoint::Descriptor& first, const MapPoint::Descripto
 }
 }
 
-MapPoint::MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id)
+MapPoint::MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId)
     : mPosition(position), mDescriptor(descriptor), mLastInlierDescriptor(descriptor),
-      mDescriptorHistory{descriptor}, mId(id) {
+      mDescriptorHistory{descriptor}, mId(id), mCreatorId(creatorId){
 }
 
 void MapPoint::addInlierObservation(const Descriptor& descriptor) {
+    mNumInlierObservations++;
     mLastInlierDescriptor = descriptor;
     mDescriptorHistory.push_back(descriptor);
     if (mDescriptorHistory.size() > descriptorHistorySize) {

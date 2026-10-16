@@ -6,28 +6,30 @@
 
 #include "KeyPoint.h"
 
+#include <algorithm>
+#include <iterator>
 #include <stdexcept>
 
 
 Map::Map(const std::string& frameName) : mFrame(frameName) {}
 
 std::vector<MapPointId> Map::addMapPoints(const std::vector<Eigen::Vector3d>& points3d,
-        const std::vector<std::shared_ptr<KeyPoint>>& keyPoints) {
+        const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId) {
     if (points3d.size() != keyPoints.size() ) {
         throw std::runtime_error("[Map::addMapPoints] 3D points and Keypoints need to be the same number!");
     }
     std::vector<MapPointId> pointIds;
     pointIds.reserve(points3d.size());
     for (std::size_t i = 0; i < points3d.size(); ++i) {
-        pointIds.push_back(addMapPoint(points3d[i], keyPoints[i]));
+        pointIds.push_back(addMapPoint(points3d[i], keyPoints[i], creatorId));
     }
     return pointIds;
 }
-MapPointId Map::addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint) {
+MapPointId Map::addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId) {
     auto descriptor = keyPoint->getDescriptor();
     std::lock_guard guard(mMutex);
     const auto pointId = nextMapPointId;
-    mPoints.insert({pointId, MapPoint(point, descriptor, pointId)});
+    mPoints.insert({pointId, MapPoint(point, descriptor, pointId, creatorId)});
     nextMapPointId++;
     return pointId;
 }
@@ -96,8 +98,58 @@ void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPoi
     feature->setObservation(pointId);
 }
 
+bool Map::removePoint(MapPointId pointId) {
+    std::lock_guard guard(mMutex);
+    const auto pointIt = mPoints.find(pointId);
+    if (pointIt == mPoints.end()) return false;
+
+    const auto& observations = pointIt->second.mObservations;
+    const auto decrement = [](auto& counts, KeyFrameId otherId) {
+        const auto it = counts.find(otherId);
+        if (it == counts.end()) return;
+        if (it->second <= 1) counts.erase(it);
+        else --it->second;
+    };
+    for (auto first = observations.begin(); first != observations.end(); ++first) {
+        for (auto second = std::next(first); second != observations.end(); ++second) {
+            auto& firstCounts = mKeyFrames.at(first->first).mSharedPointCount;
+            auto& secondCounts = mKeyFrames.at(second->first).mSharedPointCount;
+            decrement(firstCounts, second->first);
+            decrement(secondCounts, first->first);
+        }
+    }
+
+    for (const auto& [frameId, featureIndex] : observations) {
+        auto& frame = mKeyFrames.at(frameId);
+        auto& observedPoint = frame.mObservedPointByFeature.at(featureIndex);
+        if (observedPoint && *observedPoint == pointId) {
+            observedPoint.reset();
+            frame.mKeyPoints.at(featureIndex)->clearObservation();
+        }
+        auto& pointIds = frame.mObservedPoints;
+        pointIds.erase(std::remove(pointIds.begin(), pointIds.end(), pointId), pointIds.end());
+    }
+
+    mPoints.erase(pointIt);
+    return true;
+}
+
 
 bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe) {
     // TODO instead of number of frames use % of tracked points of last key frame
     return numInliers >= 50 && framesSinceLastKeyframe >= 10;
+}
+
+void Map::cullMapPoints() {
+    std::vector<MapPointId> toRemove;
+    {
+        std::lock_guard guard(mMutex);
+        for (const auto& [id, point] : mPoints) {
+            if (point.mCreatorId + 4 >= nextKeyFrameId &&
+                point.mVisibleInTracking * 0.25 > point.mNumInlierObservations) {
+                toRemove.push_back(id);
+            }
+        }
+    }
+    for (const auto pointId : toRemove) removePoint(pointId);
 }
