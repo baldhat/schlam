@@ -54,7 +54,7 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
     std::vector<std::vector<std::shared_ptr<KeyPoint>>> featuresByLevel(mNumLevels);
     std::for_each(std::execution::par, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
-        auto levelFeatures = calculateFastFeatures(aPyramid[level]);
+        auto levelFeatures = mFastFeatureDetector.calculateFastFeatures(aPyramid[level]);
         // Rotating the 31-pixel pattern can place samples up to 18 pixels from the center.
         levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 19);
         computeHarrisResponse(aPyramid[level], levelFeatures, 7);
@@ -225,86 +225,6 @@ void ORBFeatureDetector::retainTopN(QuadTreeNode *aTree, std::uint32_t aTopN) {
     }
 }
 
-
-std::vector<KeyPoint>
-ORBFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) {
-    std::vector<KeyPoint> keypoints;
-    keypoints.reserve(aImage.rows * aImage.cols / 10);
-
-    const int rows = aImage.rows;
-    const int cols = aImage.cols;
-    const int step = aImage.step;
-
-    const uint8_t *imgData = aImage.data;
-
-    std::array<int, 16> offsets;
-    for (int k = 0; k < 16; ++k)
-        offsets[k] = mFastIndices[k][0] * step + mFastIndices[k][1];
-
-    for (int i = 3; i < rows - 3; ++i) {
-        const uint8_t *rowPtr = imgData + i * step;
-
-        for (int j = 3; j < cols - 3; ++j) {
-            const uint8_t *centerPtr = rowPtr + j;
-            const int center = *centerPtr;
-
-            const int t_high = center + mFastThreshold;
-            const int t_low = center - mFastThreshold;
-
-            int brighter = 0, darker = 0;
-
-            const int idx0 = 0;
-            const int idx4 = 4;
-            const int idx8 = 8;
-            const int idx12 = 12;
-
-            int p;
-
-            p = *(centerPtr + offsets[idx0]);
-            brighter += (p > t_high);
-            darker += (p < t_low);
-
-            p = *(centerPtr + offsets[idx4]);
-            brighter += (p > t_high);
-            darker += (p < t_low);
-
-            p = *(centerPtr + offsets[idx8]);
-            brighter += (p > t_high);
-            darker += (p < t_low);
-
-            p = *(centerPtr + offsets[idx12]);
-            brighter += (p > t_high);
-            darker += (p < t_low);
-
-            if (brighter < 2 && darker < 2)
-                continue;
-
-            int pos_count = 0;
-            int neg_count = 0;
-
-            // Loop 16 + (nContinuous - 1) for wrap-around
-            for (int k = 0; k < 16 + nContinuous - 1; ++k) {
-                const int idx = k < 16 ? k : k - 16;
-
-                p = *(centerPtr + offsets[idx]);
-
-                const bool isBright = (p > t_high);
-                const bool isDark = (p < t_low);
-
-                pos_count = isBright ? pos_count + 1 : 0;
-                neg_count = isDark ? neg_count + 1 : 0;
-
-                if (pos_count >= nContinuous || neg_count >= nContinuous) {
-                    keypoints.emplace_back(static_cast<uint32_t>(j),
-                                           static_cast<uint32_t>(i));
-                    break;
-                }
-            }
-        }
-    }
-
-    return keypoints;
-}
 
 void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vector<KeyPoint> &aFeatures,
                                                const std::uint8_t blockSize, const double aHarrisK) {

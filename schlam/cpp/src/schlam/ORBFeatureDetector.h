@@ -6,6 +6,7 @@
 #define SCHLAM_ORBFEATUREDETECTOR_H
 #include <opencv2/core/mat.hpp>
 
+#include "FastFeatureDetector.h"
 #include "KeyPoint.h"
 #include "utils.h"
 #include "QuadTreeNode.h"
@@ -33,26 +34,7 @@ private:
     std::vector<Point> mOrientationIndices;
     std::shared_ptr<Plotter> mpPlotter;
 
-    std::array<std::array<std::int8_t, 2>, 16> mFastIndices = {
-        std::array<std::int8_t, 2>{-3, 0},
-        {-3, 1},
-        {-2, 2},
-        {-1, 3},
-        {0, 3},
-        {1, 3},
-        {2, 2},
-        {3, 1},
-        {3, 0},
-        {3, -1},
-        {2, -2},
-        {1, -3},
-        {0, -3},
-        {-1, -3},
-        {-2, -2},
-        {-3, -1}
-    };
-    double mFastThreshold = 7;
-    std::uint8_t nContinuous = 9;
+    schlam::FastFeatureDetector mFastFeatureDetector;
     std::vector<std::uint32_t> mNumFeaturesPerLevel;
     std::vector<std::uint8_t> mLevels;
 
@@ -70,8 +52,6 @@ private:
     std::unique_ptr<QuadTreeNode> calcFeatures(const std::vector<cv::Mat> &aPyramid);
 
     void addDescriptors(const std::vector<cv::Mat>& aPyramid, QuadTreeNode* aTree);
-
-    std::vector<KeyPoint> calculateFastFeatures(const cv::Mat &aImage);
 
     void addOrientation(const std::vector<cv::Mat> &aPyramid,
                         QuadTreeNode* aTree);

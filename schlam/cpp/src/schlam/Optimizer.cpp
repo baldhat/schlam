@@ -241,8 +241,7 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
         optimizer.optimize(50);
     }
 
-    // Residuals change during refinement; only final, previously accepted
-    // observations may update the map's descriptors.
+
     for (std::size_t j = 0; j < projectionEdges.size(); ++j) {
         inliers[j] = inliers[j] && isInlier(projectionEdges[j]);
     }
@@ -258,8 +257,6 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
 bool Optimizer::optimizeFullMap(Map* map) {
     if (!map || map->mKeyFrames.size() < 2 || map->mPoints.empty()) return false;
 
-    // buildMap inserts the identity reference pose first and the second
-    // initialization pose next. Their IDs do not depend on hash-table order.
     constexpr KeyFrameId referenceKeyFrameId = 0;
     constexpr KeyFrameId initialKeyFrameId = 1;
     const auto& referencePose = *map->mKeyFrames.at(referenceKeyFrameId).mMapToCamera;
@@ -344,7 +341,7 @@ bool Optimizer::optimizeFullMap(Map* map) {
     optimizer.setVerbose(true);
     if (optimizer.optimize(50) <= 0) return false;
 
-    // Validate the entire result before publishing any changes to the map.
+    // Validate before publishing to the map
     for (const auto& [frameId, vertexId] : frameToVertexId) {
         const auto* pose = static_cast<const g2o::VertexSE3Expmap*>(optimizer.vertex(vertexId));
         if (!pose->estimate().rotation().coeffs().allFinite() ||

@@ -123,7 +123,7 @@ void triangulateUnmatchedFeatures(Map* map) {
             }
             std::cout << "Triangulated " << numInliers << " new MapPoints!" << std::endl;
 
-            // look for matches in the other keyframes
+            // TODO look for matches in the other keyframes
 
         }
     }
