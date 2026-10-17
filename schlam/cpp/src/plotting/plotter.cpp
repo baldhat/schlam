@@ -3,6 +3,7 @@
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <GL/gl.h>
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iomanip>
 #include <sstream>
@@ -75,7 +76,8 @@ void drawOutlinedWorldText(const std::string& text, const Eigen::Vector3d& posit
 class Sidebar : public pangolin::Handler {
 public:
     enum Toggle { Pause, Frames, FrameNames, Cam0Frustum, PredictedFrustum,
-                  KeyframeFrustums, Features, Matches, GroundTruthPath, PredictedPath, ToggleCount };
+                  KeyframeFrustums, Features, Matches, GroundTruthPath, PredictedPath,
+                  OrbitCamera, ToggleCount };
     struct Entry { const char* label; bool enabled; };
 
     explicit Sidebar(const Plotter::Theme& theme) : mTheme(theme) {}
@@ -84,9 +86,10 @@ public:
         {"Pause", false}, {"Show frames", true}, {"Frame names", true},
         {"cam0 frustum", true}, {"Predicted frustum", true}, {"Keyframe frustums", true},
         {"Feature image", true}, {"Match image", true},
-        {"Ground truth path", true}, {"Predicted path", true}
+        {"Ground truth path", true}, {"Predicted path", true}, {"Orbit camera", false}
     }};
     double imageAlpha{1.0};
+    double orbitDistance{3.0};
     std::function<void()> viewCam0;
     std::function<void()> viewPredicted;
 
@@ -139,6 +142,19 @@ public:
         drawWindowText(std::to_string(static_cast<int>(imageAlpha * 100)) + "%", left + 16,
                        sliderY - 15, mTheme.sidebarText);
 
+        const float orbitSliderY = top - kOrbitSliderOffset + mScroll;
+        drawWindowText("ORBIT DISTANCE", left + 16, orbitSliderY + 39, mTheme.sidebarMutedText);
+        drawRect(left + 16, orbitSliderY + 10, width - 32, 8, mTheme.sidebarSurface);
+        const double orbitFraction = (orbitDistance - kMinOrbitDistance) /
+                                     (kMaxOrbitDistance - kMinOrbitDistance);
+        drawRect(left + 16, orbitSliderY + 10, static_cast<float>((width - 32) * orbitFraction), 8,
+                 mTheme.sidebarAccent);
+        drawRect(left + 12 + static_cast<float>((width - 32) * orbitFraction), orbitSliderY + 6,
+                 8, 16, mTheme.sidebarText);
+        std::ostringstream orbitLabel;
+        orbitLabel << std::fixed << std::setprecision(1) << orbitDistance;
+        drawWindowText(orbitLabel.str(), left + 16, orbitSliderY - 15, mTheme.sidebarText);
+
         glMatrixMode(GL_PROJECTION);
         glPopMatrix();
         glMatrixMode(GL_MODELVIEW);
@@ -156,6 +172,7 @@ public:
         if (button != pangolin::MouseButtonLeft) return;
         if (!pressed) {
             mDraggingSlider = false;
+            mDraggingOrbitDistance = false;
             return;
         }
         if (y > view.v.t() || y < view.v.b) return;
@@ -164,6 +181,7 @@ public:
         for (int i = 0; i < 2; ++i) {
             const int bottom = top - kFirstButtonOffset - i * 42;
             if (y >= bottom && y <= bottom + 34) {
+                toggles[OrbitCamera].enabled = false;
                 if (i == 0 && viewCam0) viewCam0();
                 if (i == 1 && viewPredicted) viewPredicted();
                 return;
@@ -179,26 +197,39 @@ public:
         if (y >= top - kSliderOffset && y <= top - kSliderOffset + 26) {
             mDraggingSlider = true;
             setAlpha(view, x);
+        } else if (y >= top - kOrbitSliderOffset && y <= top - kOrbitSliderOffset + 26) {
+            mDraggingOrbitDistance = true;
+            setOrbitDistance(view, x);
         }
     }
 
     void MouseMotion(pangolin::View& view, int x, int, int) override {
         if (mDraggingSlider) setAlpha(view, x);
+        if (mDraggingOrbitDistance) setOrbitDistance(view, x);
     }
 
 private:
     static constexpr int kFirstButtonOffset = 48;
     static constexpr int kFirstToggleOffset = 146;
-    static constexpr int kSliderOffset = 536;
-    static constexpr int kContentHeight = 584;
+    static constexpr int kSliderOffset = 572;
+    static constexpr int kOrbitSliderOffset = 642;
+    static constexpr int kContentHeight = 690;
+    static constexpr double kMinOrbitDistance = 0.5;
+    static constexpr double kMaxOrbitDistance = 30.0;
 
     void setAlpha(const pangolin::View& view, int x) {
         imageAlpha = std::clamp((x - view.v.l - 16.0) / (view.v.w - 32.0), 0.0, 1.0);
     }
 
+    void setOrbitDistance(const pangolin::View& view, int x) {
+        const double fraction = std::clamp((x - view.v.l - 16.0) / (view.v.w - 32.0), 0.0, 1.0);
+        orbitDistance = kMinOrbitDistance + fraction * (kMaxOrbitDistance - kMinOrbitDistance);
+    }
+
     const Plotter::Theme& mTheme;
     int mScroll{0};
     bool mDraggingSlider{false};
+    bool mDraggingOrbitDistance{false};
 };
 } // namespace
 
@@ -833,7 +864,24 @@ void Plotter::run() {
     pangolin::DisplayBase().ResizeChildren();
 
     // 3. Main loop
+    double orbitAngle = 0.0;
+    auto previousFrameTime = std::chrono::steady_clock::now();
     while (!pangolin::ShouldQuit()) {
+        const auto frameTime = std::chrono::steady_clock::now();
+        const double elapsedSeconds = std::chrono::duration<double>(frameTime - previousFrameTime).count();
+        previousFrameTime = frameTime;
+        if (sidebar.enabled(Sidebar::OrbitCamera)) {
+            constexpr double kOrbitRadiansPerSecond = 0.15;
+            constexpr double kSqrtHalf = 0.7071067811865476;
+            orbitAngle = std::remainder(orbitAngle + kOrbitRadiansPerSecond * elapsedSeconds,
+                                        2.0 * 3.14159265358979323846);
+            const double horizontalRadius = sidebar.orbitDistance * kSqrtHalf;
+            s_cam.SetModelViewMatrix(pangolin::ModelViewLookAt(
+                horizontalRadius * std::cos(orbitAngle),
+                horizontalRadius * std::sin(orbitAngle),
+                sidebar.orbitDistance * kSqrtHalf,
+                0.0, 0.0, 0.0, pangolin::AxisZ));
+        }
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         d_cam.Activate(s_cam);
 
