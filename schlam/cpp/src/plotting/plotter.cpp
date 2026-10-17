@@ -111,18 +111,15 @@ public:
         drawRect(left, view.v.b, width, view.v.h, mTheme.sidebarBackground);
         drawRect(left + width - 1, view.v.b, 1, view.v.h, mTheme.sidebarBorder);
 
-        // Keep the title fixed while controls scroll in shorter windows.
-        glScissor(view.v.l, view.v.b, view.v.w, std::max(0, view.v.h - 66));
         for (int i = 0; i < 2; ++i) {
-            const float y = top - 114 - i * 42 + mScroll;
+            const float y = top - kFirstButtonOffset - i * 42 + mScroll;
             drawRect(left + 14, y, width - 28, 34, mTheme.sidebarSurface);
             drawRect(left + 14, y, 3, 34, mTheme.sidebarAccent);
             drawWindowText(i == 0 ? "View cam0" : "View predicted", left + 28, y + 10,
                            mTheme.sidebarText);
         }
-        drawWindowText("DISPLAY", left + 16, top - 190 + mScroll, mTheme.sidebarMutedText);
         for (int i = 0; i < ToggleCount; ++i) {
-            const float y = top - 242 - i * 36 + mScroll;
+            const float y = top - kFirstToggleOffset - i * 36 + mScroll;
             const bool on = toggles[i].enabled;
             drawRect(left + 14, y + 6, 18, 18, on ? mTheme.sidebarAccent : mTheme.sidebarSurface);
             if (!on) {
@@ -132,7 +129,7 @@ public:
             }
             drawWindowText(toggles[i].label, left + 42, y + 8, mTheme.sidebarText);
         }
-        const float sliderY = top - 632 + mScroll;
+        const float sliderY = top - kSliderOffset + mScroll;
         drawWindowText("IMAGE OPACITY", left + 16, sliderY + 39, mTheme.sidebarMutedText);
         drawRect(left + 16, sliderY + 10, width - 32, 8, mTheme.sidebarSurface);
         drawRect(left + 16, sliderY + 10, static_cast<float>((width - 32) * imageAlpha), 8,
@@ -141,12 +138,6 @@ public:
                  8, 16, mTheme.sidebarText);
         drawWindowText(std::to_string(static_cast<int>(imageAlpha * 100)) + "%", left + 16,
                        sliderY - 15, mTheme.sidebarText);
-
-        glScissor(view.v.l, view.v.b, view.v.w, view.v.h);
-        drawRect(left, top - 66, width - 1, 66, mTheme.sidebarBackground);
-        drawWindowText("SCHLAM", left + 16, top - 31, mTheme.sidebarText);
-        drawWindowText("Visualization", left + 16, top - 53, mTheme.sidebarMutedText);
-        drawRect(left + 14, top - 67, width - 28, 1, mTheme.sidebarBorder);
 
         glMatrixMode(GL_PROJECTION);
         glPopMatrix();
@@ -158,7 +149,7 @@ public:
     void Mouse(pangolin::View& view, pangolin::MouseButton button, int x, int y,
                bool pressed, int) override {
         if (pressed && (button == pangolin::MouseWheelUp || button == pangolin::MouseWheelDown)) {
-            const int limit = std::max(0, 680 - view.v.h);
+            const int limit = std::max(0, kContentHeight - view.v.h);
             mScroll = std::clamp(mScroll + (button == pangolin::MouseWheelDown ? 40 : -40), 0, limit);
             return;
         }
@@ -167,11 +158,11 @@ public:
             mDraggingSlider = false;
             return;
         }
-        if (y > view.v.t() - 66 || y < view.v.b) return;
+        if (y > view.v.t() || y < view.v.b) return;
 
         const int top = view.v.t() + mScroll;
         for (int i = 0; i < 2; ++i) {
-            const int bottom = top - 114 - i * 42;
+            const int bottom = top - kFirstButtonOffset - i * 42;
             if (y >= bottom && y <= bottom + 34) {
                 if (i == 0 && viewCam0) viewCam0();
                 if (i == 1 && viewPredicted) viewPredicted();
@@ -179,13 +170,13 @@ public:
             }
         }
         for (int i = 0; i < ToggleCount; ++i) {
-            const int bottom = top - 242 - i * 36;
+            const int bottom = top - kFirstToggleOffset - i * 36;
             if (y >= bottom && y <= bottom + 32) {
                 toggles[i].enabled = !toggles[i].enabled;
                 return;
             }
         }
-        if (y >= top - 632 && y <= top - 606) {
+        if (y >= top - kSliderOffset && y <= top - kSliderOffset + 26) {
             mDraggingSlider = true;
             setAlpha(view, x);
         }
@@ -196,6 +187,11 @@ public:
     }
 
 private:
+    static constexpr int kFirstButtonOffset = 48;
+    static constexpr int kFirstToggleOffset = 146;
+    static constexpr int kSliderOffset = 536;
+    static constexpr int kContentHeight = 584;
+
     void setAlpha(const pangolin::View& view, int x) {
         imageAlpha = std::clamp((x - view.v.l - 16.0) / (view.v.w - 32.0), 0.0, 1.0);
     }

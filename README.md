@@ -1,4 +1,4 @@
-![3D Path and Map Reconstruction](schlam/cpp/docs/img_1.png)
+![3D Path and Map Reconstruction](doc/screenshot2.png)
 
 # schlam
 

@@ -42,7 +42,6 @@ void ORBFeatureDetector::distributeFeaturesToLevels() {
     for (std::uint8_t level = 0; level < mNumLevels - 1; level++) {
         mLevels.push_back(level);
         const auto levelBudget = static_cast<std::uint32_t>(std::round(featuresPerScale * mLevelFactors[level]));
-        // Rounding individual quotas must not overshoot small total budgets.
         mNumFeaturesPerLevel.push_back(std::min(levelBudget, mNumFeatures - numFeatures));
         numFeatures += mNumFeaturesPerLevel[level];
     }
@@ -73,8 +72,8 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
     });
     auto tree = std::make_unique<QuadTreeNode>(0, aPyramid[0].cols, 0, aPyramid[0].rows,
         features, nullptr);
-    // Index the selected features without pruning another level's quota.
-    // Different levels can contribute features at the same full-resolution position.
+    // Index the selected features without pruning another levels quota
+    // Different levels can contribute features at the same full-resolution position
     std::vector<QuadTreeNode*> pending{tree.get()};
     while (!pending.empty()) {
         auto* node = pending.back();
@@ -112,7 +111,6 @@ void ORBFeatureDetector::addDescriptors(
         const uint8_t *imgData = img.data;
         const int step = img.step;
 
-        // Faster than std::round
         const int centerX = int(feature->getImgX() * factor + 0.5);
         const int centerY = int(feature->getImgY() * factor + 0.5);
 
