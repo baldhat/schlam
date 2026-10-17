@@ -21,8 +21,10 @@ public:
 
     MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId);
 
-    void addInlierObservation(const Descriptor& descriptor);
+    void addInlierObservation(const Descriptor& descriptor, const Eigen::Vector3d& cameraCenter);
     void addTriangulationObservation(const Descriptor& descriptor);
+    void addViewingObservation(const Eigen::Vector3d& cameraCenter);
+    bool isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const;
 
     Eigen::Vector3d mPosition;
     // descriptor with the lowest median Hamming distance to the history
@@ -37,6 +39,7 @@ public:
 
 private:
     void updateDescriptor(const Descriptor& descriptor);
+    Eigen::Vector3d mViewingDirectionSum = Eigen::Vector3d::Zero();
     static constexpr std::size_t descriptorHistorySize = 10;
     std::deque<Descriptor> mDescriptorHistory;
 };

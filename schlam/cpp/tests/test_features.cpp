@@ -240,6 +240,52 @@ TEST(MatcherTest, ProjectionMatchesOwnProjectedAndDetectedFeatures) {
     EXPECT_TRUE(observation.expired());
 }
 
+TEST(MapPointTest, ViewingAngleUsesSixtyDegreeLimit) {
+    MapPoint point(Eigen::Vector3d::Zero(), MapPoint::Descriptor{}, 0, 0);
+    point.addInlierObservation(MapPoint::Descriptor{}, Eigen::Vector3d::UnitZ());
+    EXPECT_EQ(point.mNumInlierObservations, 1);
+    const double radians = std::numbers::pi / 180.0;
+    EXPECT_TRUE(point.isViewDirectionCompatible(Eigen::Vector3d(
+        std::sin(59.0 * radians), 0, std::cos(59.0 * radians))));
+    EXPECT_FALSE(point.isViewDirectionCompatible(Eigen::Vector3d(
+        std::sin(61.0 * radians), 0, std::cos(61.0 * radians))));
+}
+
+TEST(MatcherTest, ViewingAngleGatesMatchesAndAcceptedVisibility) {
+    cv::Mat image(100, 100, CV_8UC1, cv::Scalar(0));
+    Eigen::Matrix3d intrinsics;
+    intrinsics << 100, 0, 50, 0, 100, 50, 0, 0, 1;
+    auto imageData = std::make_shared<ImageData>(utils::TTimestamp{}, image, intrinsics, "current");
+    auto frame = std::make_shared<Frame>(imageData);
+    frame->mKeypointTree = std::make_shared<QuadTreeNode>(
+        0, 100, 0, 100, std::vector<KeyPoint>{KeyPoint(50, 50)});
+
+    Map map("world");
+    auto source = std::make_shared<KeyPoint>(50, 50);
+    const auto pointId = map.addMapPoint(Eigen::Vector3d(0, 0, 5), source, 0);
+    auto& point = map.mPoints.at(pointId);
+    point.addViewingObservation(Eigen::Vector3d::Zero());
+
+    auto frontPose = std::make_shared<tft::RigidTransform3D>(
+        "current", "world", Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
+    auto frontTransformer = std::make_shared<tft::Transformer>();
+    frontTransformer->registerTransform(frontPose);
+    EXPECT_EQ(matchMapPointsByProjection(&map, frame, frontPose, frontTransformer, 20, 2).size(), 1);
+    EXPECT_EQ(point.mVisibleInTracking, 0);
+    recordMapPointVisibility(&map, *frame, *frontTransformer->findTransform("world", "current"));
+    EXPECT_EQ(point.mVisibleInTracking, 1);
+
+    const Eigen::Matrix3d oppositeRotation =
+        (Eigen::Matrix3d() << -1, 0, 0, 0, 1, 0, 0, 0, -1).finished();
+    auto backPose = std::make_shared<tft::RigidTransform3D>(
+        "current", "world", oppositeRotation, Eigen::Vector3d(0, 0, 10));
+    auto backTransformer = std::make_shared<tft::Transformer>();
+    backTransformer->registerTransform(backPose);
+    EXPECT_TRUE(matchMapPointsByProjection(&map, frame, backPose, backTransformer, 20, 2).empty());
+    recordMapPointVisibility(&map, *frame, *backTransformer->findTransform("world", "current"));
+    EXPECT_EQ(point.mVisibleInTracking, 1);
+}
+
 TEST(MatcherTest, WindowMaskIncludesUnmatchedSourcesAtTheirOriginalIndices) {
     std::vector<std::shared_ptr<KeyPoint>> source{
         std::make_shared<KeyPoint>(80, 80),

@@ -331,7 +331,6 @@ int main() {
 
         // TODO:
         // - match only with features in predicted scale
-        // - match only if viewing angle difference to mean viewing angle of point is not too large
         const auto matches = matchMapPointsByProjection(map.get(), frame, estimatedPose, pTransformer, 50, 50);
         std::cout << "Matched " << matches.size() << " out of " << map->mPoints.size() << " map points" << std::endl;
         std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchedFeatures;
@@ -347,19 +346,26 @@ int main() {
         plotter->plotMatches(frame->mImage, frame->mImage, matchedFeatures);
 
         const auto mapToCamera = pTransformer->findTransform(map->mFrame, estimatedPose->mSource);
-        const auto [rotation, translation, inliers] = optimizer->optimizePoseWithInliers(matchedFeatures[1],
+        auto [rotation, translation, inliers] = optimizer->optimizePoseWithInliers(matchedFeatures[1],
             mapToCamera->mRotation, mapToCamera->mTranslation,
             matchedMapPoints, imageData->mIntrinsics);
+        const Eigen::Vector3d acceptedCameraCenter = -rotation.transpose() * translation;
+        for (std::size_t j = 0; j < matches.size(); ++j) {
+            if (inliers[j] && !map->mPoints.at(matches[j].mapPointId).isViewDirectionCompatible(acceptedCameraCenter))
+                inliers[j] = false;
+        }
         const auto inlierCount = std::count(inliers.begin(), inliers.end(), true);
         std::cout << "Retained " << inlierCount << " pose inliers" << std::endl;
         if (inlierCount >= 50) {
-            for (std::size_t j = 0; j < matches.size(); ++j) {
-                if (inliers[j]) {
-                    map->mPoints.at(matches[j].mapPointId).addInlierObservation(matches[j].feature->getDescriptor());
-                }
-            }
             frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
                 map->mFrame, estimatedPose->mSource, rotation, translation);
+            recordMapPointVisibility(map.get(), *frame, *frame->mMapToCamera);
+            for (std::size_t j = 0; j < matches.size(); ++j) {
+                if (inliers[j]) {
+                    map->mPoints.at(matches[j].mapPointId).addInlierObservation(
+                        matches[j].feature->getDescriptor(), acceptedCameraCenter);
+                }
+            }
             const auto mapToWorld = pTransformer->findTransform(map->mFrame, "world");
 
             if (map->decideNewKeyframe(inlierCount, framesSinceLastKeyframe)) {

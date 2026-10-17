@@ -493,6 +493,13 @@ TEST_F(CovisibilityOptimizerTest, SharedCountsAreSymmetricAndDuplicateObservatio
     EXPECT_TRUE(map.mPoints.at(otherPoint).mObservations.empty());
 }
 
+TEST_F(CovisibilityOptimizerTest, InitialObservationsSeedViewingDirection) {
+    const auto& point = map.mPoints.at(pointIds[0]);
+    const Eigen::Vector3d firstCameraCenter = Eigen::Vector3d::Zero();
+    EXPECT_TRUE(point.isViewDirectionCompatible(firstCameraCenter));
+    EXPECT_FALSE(point.isViewDirectionCompatible(2.0 * point.mPosition - firstCameraCenter));
+}
+
 TEST_F(CovisibilityOptimizerTest, RemovingPointClearsFeaturesAndSharedCounts) {
     const auto removedId = pointIds.front();
     ASSERT_TRUE(map.removePoint(removedId));
@@ -558,8 +565,8 @@ TEST_F(CovisibilityOptimizerTest, CullingWaitsForOpportunitiesAndKeepsSuccessful
     map.cullMapPoints();
     ASSERT_TRUE(map.mPoints.contains(pointIds[0]));
 
-    point.addInlierObservation(point.mDescriptor);
-    point.addInlierObservation(point.mDescriptor);
+    point.addInlierObservation(point.mDescriptor, Eigen::Vector3d::Zero());
+    point.addInlierObservation(point.mDescriptor, Eigen::Vector3d::Zero());
     point.mVisibleInTracking = 8;
     map.cullMapPoints();
     ASSERT_TRUE(map.mPoints.contains(pointIds[0]));

@@ -93,6 +93,13 @@ void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPoi
         ++keyframe.mSharedPointCount[otherId];
     }
     point.mObservations.emplace(keyFrameId, featureIndex);
+    // The two keyframes that establish a point seed its viewing direction.
+    // Accepted tracking matches update it afterward.
+    if (point.mObservations.size() <= 2) {
+        const auto& pose = *keyframe.mMapToCamera;
+        const Eigen::Vector3d cameraCenter = -pose.mRotation.transpose() * pose.mTranslation;
+        point.addViewingObservation(cameraCenter);
+    }
     keyframe.mObservedPoints.push_back(pointId);
     keyframe.mObservedPointByFeature[featureIndex] = pointId;
     feature->setObservation(pointId);
@@ -142,7 +149,7 @@ bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t 
 
 void Map::cullMapPoints() {
     constexpr std::uint64_t minVisibilityCount = 8;
-    constexpr std::uint64_t minSuccessRateDenominator = 4;
+    constexpr std::uint64_t minSuccessRateDenominator = 6;
     std::vector<MapPointId> toRemove;
     {
         std::lock_guard guard(mMutex);

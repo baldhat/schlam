@@ -53,6 +53,10 @@ struct MapPointMatch {
     std::shared_ptr<KeyPoint> projectedFeature;
 };
 
+// Count projected points only after the frame pose has been accepted.
+void recordMapPointVisibility(Map* map, const Frame& frame,
+                              const tft::RigidTransform3D& mapToCamera);
+
 
 std::vector<MapPointMatch>
 matchMapPointsByProjection(Map* map,

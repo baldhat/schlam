@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -24,13 +25,33 @@ MapPoint::MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor
       mDescriptorHistory{descriptor}, mId(id), mCreatorId(creatorId){
 }
 
-void MapPoint::addInlierObservation(const Descriptor& descriptor) {
+void MapPoint::addInlierObservation(const Descriptor& descriptor, const Eigen::Vector3d& cameraCenter) {
     mNumInlierObservations++;
+    addViewingObservation(cameraCenter);
     updateDescriptor(descriptor);
 }
 
 void MapPoint::addTriangulationObservation(const Descriptor& descriptor) {
     updateDescriptor(descriptor);
+}
+
+void MapPoint::addViewingObservation(const Eigen::Vector3d& cameraCenter) {
+    const Eigen::Vector3d direction = cameraCenter - mPosition;
+    const double length = direction.norm();
+    if (std::isfinite(length) && length > 1e-9)
+        mViewingDirectionSum += direction / length;
+}
+
+bool MapPoint::isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const {
+    const double meanLength = mViewingDirectionSum.norm();
+    if (!std::isfinite(meanLength) || meanLength <= 1e-9) return true;
+
+    const Eigen::Vector3d direction = cameraCenter - mPosition;
+    const double length = direction.norm();
+    if (!std::isfinite(length) || length <= 1e-9) return false;
+    constexpr double cosMaxViewingAngle = 0.5; // 60 degrees
+    return direction.dot(mViewingDirectionSum) >=
+           cosMaxViewingAngle * length * meanLength;
 }
 
 void MapPoint::updateDescriptor(const Descriptor& descriptor) {
