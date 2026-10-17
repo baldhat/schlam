@@ -22,6 +22,7 @@ public:
     MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId);
 
     void addInlierObservation(const Descriptor& descriptor);
+    void addTriangulationObservation(const Descriptor& descriptor);
 
     Eigen::Vector3d mPosition;
     // descriptor with the lowest median Hamming distance to the history
@@ -31,9 +32,11 @@ public:
     std::unordered_map<KeyFrameId, std::size_t> mObservations;
     KeyFrameId mCreatorId;
     std::uint64_t mVisibleInTracking{0};
+    // Accepted tracking observations after creation; triangulation is excluded.
     std::uint64_t mNumInlierObservations{0};
 
 private:
+    void updateDescriptor(const Descriptor& descriptor);
     static constexpr std::size_t descriptorHistorySize = 10;
     std::deque<Descriptor> mDescriptorHistory;
 };

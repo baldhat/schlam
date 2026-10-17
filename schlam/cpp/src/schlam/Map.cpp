@@ -141,12 +141,14 @@ bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t 
 }
 
 void Map::cullMapPoints() {
+    constexpr std::uint64_t minVisibilityCount = 8;
+    constexpr std::uint64_t minSuccessRateDenominator = 4;
     std::vector<MapPointId> toRemove;
     {
         std::lock_guard guard(mMutex);
         for (const auto& [id, point] : mPoints) {
-            if (point.mCreatorId + 4 >= nextKeyFrameId &&
-                point.mVisibleInTracking * 0.25 > point.mNumInlierObservations) {
+            if (point.mVisibleInTracking >= minVisibilityCount &&
+                point.mNumInlierObservations * minSuccessRateDenominator < point.mVisibleInTracking) {
                 toRemove.push_back(id);
             }
         }

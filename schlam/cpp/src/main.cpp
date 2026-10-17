@@ -113,7 +113,7 @@ void triangulateUnmatchedFeatures(Map* map) {
                     numInliers++;
                     const auto pointInMap = it->second.mMapToCamera->inverse()->apply(pts[i]);
                     const auto pointId = map->addMapPoint(pointInMap, matches[0][i], latest->second.mId);
-                    map->mPoints.at(pointId).addInlierObservation(matches[1][i]->getDescriptor());
+                    map->mPoints.at(pointId).addTriangulationObservation(matches[1][i]->getDescriptor());
                     newMapPointIds.push_back(pointId);
                     map->addObservation(it->second.mId, matches[0][i]->getIndex().value(), pointId);
                     map->addObservation(latest->second.mId, matches[1][i]->getIndex().value(), pointId);
@@ -384,6 +384,7 @@ int main() {
     }
 
     std::cout << "Finished sequence, doing full map optimization pass..." << std::endl;
+    map->cullMapPoints();
     optimizer->optimizeFullMap(map.get(), true);
     std::cout << "Finished!" << std::endl;
 

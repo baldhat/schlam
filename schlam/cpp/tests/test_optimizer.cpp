@@ -528,6 +528,47 @@ TEST_F(CovisibilityOptimizerTest, CullingUsesPointRemovalWithoutInvalidatingIter
     EXPECT_EQ(map.mKeyFrames.at(frameIds[0]).mSharedPointCount.at(frameIds[1]), pointIds.size() - 1);
 }
 
+TEST_F(CovisibilityOptimizerTest, CullsOldPointWithoutLaterTrackingInliers) {
+    for (int camera = 4; camera < 6; ++camera) {
+        cv::Mat image(480, 640, CV_8UC1, cv::Scalar(0));
+        auto imageData = std::make_shared<ImageData>(
+            utils::TTimestamp(std::chrono::milliseconds(camera)), image, intrinsics, "camera");
+        auto frame = std::make_shared<Frame>(imageData);
+        frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
+            "map", "camera", Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.3 * camera, 0, 0));
+        frame->mKeypointTree = std::make_shared<QuadTreeNode>(
+            0, 640, 0, 480, std::vector<KeyPoint>{});
+        map.addKeyFrame(frame);
+    }
+
+    auto& stalePoint = map.mPoints.at(pointIds[0]);
+    stalePoint.addTriangulationObservation(stalePoint.mDescriptor);
+    EXPECT_EQ(stalePoint.mNumInlierObservations, 0);
+    stalePoint.mVisibleInTracking = 8;
+    ASSERT_GT(map.nextKeyFrameId, stalePoint.mCreatorId + 4);
+
+    map.cullMapPoints();
+    EXPECT_FALSE(map.mPoints.contains(pointIds[0]));
+    EXPECT_EQ(map.mKeyFrames.at(frameIds[0]).mSharedPointCount.at(frameIds[1]), pointIds.size() - 1);
+}
+
+TEST_F(CovisibilityOptimizerTest, CullingWaitsForOpportunitiesAndKeepsSuccessfulPoints) {
+    auto& point = map.mPoints.at(pointIds[0]);
+    point.mVisibleInTracking = 7;
+    map.cullMapPoints();
+    ASSERT_TRUE(map.mPoints.contains(pointIds[0]));
+
+    point.addInlierObservation(point.mDescriptor);
+    point.addInlierObservation(point.mDescriptor);
+    point.mVisibleInTracking = 8;
+    map.cullMapPoints();
+    ASSERT_TRUE(map.mPoints.contains(pointIds[0]));
+
+    point.mVisibleInTracking = 9;
+    map.cullMapPoints();
+    EXPECT_FALSE(map.mPoints.contains(pointIds[0]));
+}
+
 TEST_F(CovisibilityOptimizerTest, RemovingLastSharedPointErasesCovisibilityEdges) {
     for (const auto pointId : pointIds) EXPECT_TRUE(map.removePoint(pointId));
     EXPECT_TRUE(map.mPoints.empty());

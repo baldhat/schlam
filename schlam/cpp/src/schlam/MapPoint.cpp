@@ -26,6 +26,14 @@ MapPoint::MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor
 
 void MapPoint::addInlierObservation(const Descriptor& descriptor) {
     mNumInlierObservations++;
+    updateDescriptor(descriptor);
+}
+
+void MapPoint::addTriangulationObservation(const Descriptor& descriptor) {
+    updateDescriptor(descriptor);
+}
+
+void MapPoint::updateDescriptor(const Descriptor& descriptor) {
     mLastInlierDescriptor = descriptor;
     mDescriptorHistory.push_back(descriptor);
     if (mDescriptorHistory.size() > descriptorHistorySize) {
