@@ -570,3 +570,44 @@ TEST_F(CovisibilityOptimizerTest, SelectedReferenceNeighborRemainsFixed) {
     EXPECT_TRUE(map.mKeyFrames.at(frameIds[1]).mMapToCamera->matrix().isApprox(fixed1, 0));
     EXPECT_TRUE(map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix().isApprox(fixed2, 0));
 }
+
+TEST_F(CovisibilityOptimizerTest, FinalFullMapPassRemovesOutlierPointsAndTheirObservations) {
+    cv::Mat image(480, 640, CV_8UC1, cv::Scalar(0));
+    auto imageData = std::make_shared<ImageData>(
+        utils::TTimestamp(std::chrono::milliseconds(4)), image, intrinsics, "camera");
+    auto fifthFrame = std::make_shared<Frame>(imageData);
+    fifthFrame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
+        "map", "camera", Eigen::Matrix3d::Identity(), Eigen::Vector3d(-1.2, 0, 0));
+    std::vector<KeyPoint> fifthFeatures;
+    for (int i = 0; i < 20; ++i) {
+        const Eigen::Vector3d position(-0.6 + 0.3 * (i % 5), -0.4 + 0.25 * (i / 5), 4.0 + 0.1 * i);
+        const auto cameraPoint = fifthFrame->mMapToCamera->apply(position);
+        fifthFeatures.emplace_back(500 * cameraPoint.x() / cameraPoint.z() + 320,
+                                   500 * cameraPoint.y() / cameraPoint.z() + 240);
+    }
+    fifthFrame->mKeypointTree = std::make_shared<QuadTreeNode>(0, 640, 0, 480, fifthFeatures);
+    const auto fifthFrameId = map.addKeyFrame(fifthFrame);
+    for (std::size_t i = 0; i < pointIds.size(); ++i)
+        map.addObservation(fifthFrameId, i, pointIds[i]);
+
+    map.mKeyFrames.at(frameIds[1]).mKeyPoints.at(0)->scaleBy(1.3, 1.0);
+    map.mKeyFrames.at(frameIds[2]).mKeyPoints.at(0)->scaleBy(1.5, 1.0);
+    map.mKeyFrames.at(frameIds[3]).mKeyPoints.at(0)->scaleBy(1.7, 1.0);
+    map.mKeyFrames.at(frameIds[3]).mKeyPoints.at(1)->scaleBy(1.5, 1.0);
+
+    ASSERT_TRUE(optimizer.optimizeFullMap(&map, true));
+    EXPECT_FALSE(map.mPoints.contains(pointIds[0]));
+    EXPECT_TRUE(map.mPoints.contains(pointIds[1]));
+    EXPECT_TRUE(map.mPoints.contains(pointIds[2]));
+    EXPECT_EQ(map.mPoints.size(), pointIds.size() - 1);
+    for (const auto frameId : {frameIds[0], frameIds[1], frameIds[2], frameIds[3], fifthFrameId}) {
+        const auto& frame = map.mKeyFrames.at(frameId);
+        EXPECT_FALSE(frame.mObservedPointByFeature.at(0).has_value());
+        EXPECT_FALSE(frame.mKeyPoints.at(0)->getMatched());
+        EXPECT_EQ(frame.mObservedPointByFeature.at(1), pointIds[1]);
+        for (const auto otherId : {frameIds[0], frameIds[1], frameIds[2], frameIds[3], fifthFrameId}) {
+            if (otherId != frameId)
+                EXPECT_EQ(frame.mSharedPointCount.at(otherId), pointIds.size() - 1);
+        }
+    }
+}

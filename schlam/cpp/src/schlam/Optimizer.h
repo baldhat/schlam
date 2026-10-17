@@ -57,7 +57,9 @@ public:
 
     // Keeps initialization keyframe 0 fixed and preserves the baseline to keyframe 1.
     // Returns true when finite optimized poses and points were written to the map.
-    bool optimizeFullMap(Map* map);
+    // The final pass can also remove points with fewer than two inlier observations
+    // or less than 80% inlier observations.
+    bool optimizeFullMap(Map* map, bool removeOutlierPoints = false);
 
     // Bounds the local poses and fixed anchors; skips problems without a monocular scale anchor.
     bool optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe,

@@ -266,7 +266,7 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& keyPoints,
     return {result.rotation, result.translation};
 }
 
-bool Optimizer::optimizeFullMap(Map* map) {
+bool Optimizer::optimizeFullMap(Map* map, bool removeOutlierPoints) {
     if (!map || map->mKeyFrames.size() < 2 || map->mPoints.empty()) return false;
 
     constexpr KeyFrameId referenceKeyFrameId = 0;
@@ -327,6 +327,13 @@ bool Optimizer::optimizeFullMap(Map* map) {
         vertex_id++;
     }
 
+    struct ProjectionObservation {
+        MapPointId pointId;
+        g2o::EdgeSE3ProjectXYZ* edge;
+        double inverseVariance;
+    };
+    std::vector<ProjectionObservation> projectionObservations;
+
     // Create edges between poses and points
     for (const auto& [frameId, frame] : map->mKeyFrames) {
         for (const auto& [pointId, point] : map->mPoints) {
@@ -345,6 +352,11 @@ bool Optimizer::optimizeFullMap(Map* map) {
             edge->setRobustKernel(new g2o::RobustKernelHuber);
 
             optimizer.addEdge(edge);
+            if (removeOutlierPoints) {
+                constexpr double pyramidScaleFactor = 1.2;
+                const double inverseVariance = std::pow(pyramidScaleFactor, -2.0 * keypoint->getLevel());
+                projectionObservations.push_back({pointId, edge, inverseVariance});
+            }
         }
     }
 
@@ -376,6 +388,26 @@ bool Optimizer::optimizeFullMap(Map* map) {
         g2o::VertexPointXYZ* v_point = static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(pointToVertexId.at(pointId)));
         Eigen::Vector3d optimized_point = v_point->estimate();
         map->updateMapPointPosition(pointId, optimized_point);
+    }
+
+    if (removeOutlierPoints) {
+        constexpr double monocularChi2Threshold = 5.991;
+        std::set<MapPointId> outlierPointIds;
+        std::unordered_map<MapPointId, std::size_t> inlierObservationCounts;
+        for (const auto& observation : projectionObservations) {
+            observation.edge->computeError();
+            const double normalizedChi2 = observation.edge->chi2() * observation.inverseVariance;
+            if (observation.edge->isDepthPositive() && std::isfinite(normalizedChi2) &&
+                normalizedChi2 <= monocularChi2Threshold)
+                ++inlierObservationCounts[observation.pointId];
+        }
+        for (const auto& [pointId, point] : map->mPoints) {
+            const auto inlierCount = inlierObservationCounts[pointId];
+            if (inlierCount < 2 || inlierCount * 5 < point.mObservations.size() * 4)
+                outlierPointIds.insert(pointId);
+        }
+        for (const auto pointId : outlierPointIds) map->removePoint(pointId);
+        std::cout << "Removed " << outlierPointIds.size() << " outlier map points" << std::endl;
     }
     return true;
 }
