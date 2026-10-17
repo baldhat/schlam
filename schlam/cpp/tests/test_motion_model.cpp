@@ -77,6 +77,26 @@ TEST(MotionModelTest, PredictionUsesLatestMotionAndActualSampleInterval) {
         Eigen::Vector3d(4, 0, 0), 1e-12));
 }
 
+TEST(MotionModelTest, LimitsExtrapolationAfterTrackingGap) {
+    MotionModel model;
+    const auto rotate = [](double radians) {
+        return Eigen::AngleAxisd(radians, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+    };
+    model.addPose(pose({0, 0, 0}, rotate(0.0)), at(0ns));
+    model.addPose(pose({1, 0, 0}, rotate(0.2)), at(50ms));
+
+    // A long gap must not send the next search window many frames ahead.
+    const auto predicted = model.estimateLinearAt(at(500ms));
+    EXPECT_TRUE(predicted->mTranslation.isApprox(Eigen::Vector3d(3, 0, 0), 1e-12));
+    EXPECT_TRUE(predicted->mRotation.isApprox(rotate(0.6), 1e-12));
+
+    MotionModel cautious(0.5);
+    cautious.addPose(pose({0, 0, 0}), at(0ns));
+    cautious.addPose(pose({1, 0, 0}), at(50ms));
+    EXPECT_TRUE(cautious.estimateLinearAt(at(500ms))->mTranslation.isApprox(
+        Eigen::Vector3d(1.5, 0, 0), 1e-12));
+}
+
 TEST(MotionModelTest, RotationTakesShortestPathAcrossAngleWraparound) {
     MotionModel model;
     const auto rotate = [](double degrees) {

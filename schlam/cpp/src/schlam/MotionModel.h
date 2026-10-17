@@ -15,13 +15,17 @@
 
 class MotionModel {
 public:
+    // Limit predictions to this many intervals between the last two accepted poses.
+    explicit MotionModel(double maxExtrapolationIntervals = 2.0);
+
     // Add chronological poses expressed in a common target coordinate frame.
     void addPose(const std::shared_ptr<tft::RigidTransform3D> transform, const utils::TTimestamp& timestamp);
-    // Extrapolate the latest two poses; with one pose, assume no motion.
-    std::shared_ptr<tft::RigidTransform3D>  estimateLinearAt(const utils::TTimestamp& timestamp);
+    // Extrapolate the latest two poses within the configured horizon; with one pose, assume no motion.
+    std::shared_ptr<tft::RigidTransform3D> estimateLinearAt(const utils::TTimestamp& timestamp) const;
 
 private:
-    std::vector<std::tuple<std::shared_ptr<tft::RigidTransform3D>, utils::TTimestamp> > mPoses;
+    double mMaxExtrapolationIntervals;
+    std::vector<std::tuple<std::shared_ptr<tft::RigidTransform3D>, utils::TTimestamp>> mPoses;
 };
 
 

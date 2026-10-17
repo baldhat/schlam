@@ -15,6 +15,7 @@
 
 // STL
 #include <vector>
+#include <array>
 #include <chrono>
 #include <deque>
 #include <memory>
@@ -29,7 +30,49 @@ class Map;
 
 class Plotter {
 public:
+    // RGB values are 8-bit in the header; OpenGL and OpenCV conversions stay in plotter.cpp.
+    struct Color {
+        unsigned char red;
+        unsigned char green;
+        unsigned char blue;
+    };
+
+    struct Theme {
+        Color background{15, 23, 42};       // slate
+        Color grid{51, 65, 85};
+        Color text{226, 232, 240};
+        Color textOutline{15, 23, 42};
+        Color keyframeText{255, 237, 178};
+        Color sidebarBackground{17, 28, 46};
+        Color sidebarSurface{30, 41, 59};
+        Color sidebarBorder{71, 85, 105};
+        Color sidebarText{241, 245, 249};
+        Color sidebarMutedText{148, 163, 184};
+        Color sidebarAccent{45, 212, 191};
+        Color sidebarAccentText{15, 23, 42};
+        Color statusBackground{17, 28, 46};
+        Color statusText{241, 245, 249};
+        Color textureTint{255, 255, 255}; // keeps camera and image textures true to color
+        Color axisX{251, 113, 133};
+        Color axisY{52, 211, 153};
+        Color axisZ{96, 165, 250};
+        Color groundTruth{163, 230, 53};
+        Color predicted{251, 113, 133};
+        Color keyframe{251, 191, 36};
+        Color mapPointNear{45, 212, 191};
+        Color mapPointFar{167, 139, 250};
+        Color featureMarker{251, 113, 133};
+        Color matchMarker{45, 212, 191};
+        std::array<Color, 6> matchLines{{
+            {96, 165, 250}, {251, 191, 36}, {167, 139, 250},
+            {45, 212, 191}, {251, 113, 133}, {52, 211, 153}
+        }};
+    };
+
     Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics);
+    // Supply a theme before visualization starts to customize every plotter color.
+    Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
+            const Theme& aTheme);
 
     ~Plotter() = default;
 
@@ -66,6 +109,7 @@ public:
     void setup();
 
 private:
+    const Theme mTheme;
     std::atomic_bool mPause{false};
     std::mutex mPauseMutex;
 

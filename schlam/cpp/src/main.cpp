@@ -148,10 +148,19 @@ void handleNewKeyframe(std::shared_ptr<Optimizer> optimizer,
     triangulateUnmatchedFeatures(map);
 
     // optimize
-    if (optimizer->optimizeCovisibilityGraph(map, std::prev(map->mKeyFrames.end())->second)) {
-        frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
-        motionModel = MotionModel{};
+    if (map->mKeyFrames.size() < 30) {
+        if (optimizer->optimizeFullMap(map)) {
+            frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
+            motionModel = MotionModel{};
+        }
+    } else {
+        if (optimizer->optimizeCovisibilityGraph(map, std::prev(map->mKeyFrames.end())->second)) {
+            frame->mMapToCamera = map->mKeyFrames.at(frameId).mMapToCamera;
+            motionModel = MotionModel{};
+        }
     }
+
+
 }
 
 

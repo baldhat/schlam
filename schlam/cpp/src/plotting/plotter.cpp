@@ -2,25 +2,215 @@
 
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <GL/gl.h>
+#include <algorithm>
 #include <functional>
 #include <iomanip>
 #include <sstream>
 
 #include <pangolin/display/default_font.h>
 #include <pangolin/gl/gldraw.h>
+#include <pangolin/gl/glpangoglu.h>
 #include <pangolin/handler/handler.h>
 
 #include "schlam/KeyPoint.h"
 #include "schlam/Map.h"
-#include "random.hpp"
 
 #include <stdexcept>
+
+namespace {
+constexpr int kSidebarWidth = 248;
+
+void setColor(const Plotter::Color& color) {
+    glColor3ub(color.red, color.green, color.blue);
+}
+
+cv::Scalar toBgr(const Plotter::Color& color) {
+    return cv::Scalar(color.blue, color.green, color.red);
+}
+
+Plotter::Color blend(const Plotter::Color& near, const Plotter::Color& far, float amount) {
+    const auto channel = [amount](unsigned char start, unsigned char end) {
+        return static_cast<unsigned char>(start + (end - start) * amount);
+    };
+    return {channel(near.red, far.red), channel(near.green, far.green), channel(near.blue, far.blue)};
+}
+
+void drawRect(float left, float bottom, float width, float height, const Plotter::Color& color) {
+    setColor(color);
+    glBegin(GL_QUADS);
+    glVertex2f(left, bottom);
+    glVertex2f(left + width, bottom);
+    glVertex2f(left + width, bottom + height);
+    glVertex2f(left, bottom + height);
+    glEnd();
+}
+
+void drawWindowText(const std::string& text, float x, float y, const Plotter::Color& color) {
+    setColor(color);
+    pangolin::default_font().Text(text).DrawWindow(x, y);
+}
+
+void drawOutlinedWorldText(const std::string& text, const Eigen::Vector3d& position,
+                           const Plotter::Color& color, const Plotter::Color& outline) {
+    GLdouble projection[16], modelview[16], screenX, screenY, screenZ;
+    GLint viewport[4];
+    glGetDoublev(GL_PROJECTION_MATRIX, projection);
+    glGetDoublev(GL_MODELVIEW_MATRIX, modelview);
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    if (!pangolin::glProject(position.x(), position.y(), position.z(), modelview, projection,
+                             viewport, &screenX, &screenY, &screenZ) || screenZ < 0 || screenZ > 1) return;
+
+    glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT);
+    glDisable(GL_DEPTH_TEST);
+    const auto label = pangolin::default_font().Text(text);
+    setColor(outline);
+    for (const auto [dx, dy] : std::array<std::pair<int, int>, 4>{{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}}) {
+        label.DrawWindow(screenX + dx, screenY + dy);
+    }
+    setColor(color);
+    label.DrawWindow(screenX, screenY);
+    glPopAttrib();
+}
+
+class Sidebar : public pangolin::Handler {
+public:
+    enum Toggle { Pause, Frames, FrameNames, Cam0Frustum, PredictedFrustum,
+                  KeyframeFrustums, Features, Matches, GroundTruthPath, PredictedPath, ToggleCount };
+    struct Entry { const char* label; bool enabled; };
+
+    explicit Sidebar(const Plotter::Theme& theme) : mTheme(theme) {}
+
+    std::array<Entry, ToggleCount> toggles{{
+        {"Pause", false}, {"Show frames", true}, {"Frame names", true},
+        {"cam0 frustum", true}, {"Predicted frustum", true}, {"Keyframe frustums", true},
+        {"Feature image", true}, {"Match image", true},
+        {"Ground truth path", true}, {"Predicted path", true}
+    }};
+    double imageAlpha{1.0};
+    std::function<void()> viewCam0;
+    std::function<void()> viewPredicted;
+
+    bool enabled(Toggle toggle) const { return toggles[toggle].enabled; }
+
+    void Render(pangolin::View& view) const {
+        glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT |
+                     GL_SCISSOR_BIT | GL_VIEWPORT_BIT);
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        view.ActivateAndScissor();
+        pangolin::DisplayBase().ActivatePixelOrthographic();
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_LIGHTING);
+        glDisable(GL_TEXTURE_2D);
+
+        const float left = static_cast<float>(view.v.l);
+        const float top = static_cast<float>(view.v.t());
+        const float width = static_cast<float>(view.v.w);
+        drawRect(left, view.v.b, width, view.v.h, mTheme.sidebarBackground);
+        drawRect(left + width - 1, view.v.b, 1, view.v.h, mTheme.sidebarBorder);
+
+        // Keep the title fixed while controls scroll in shorter windows.
+        glScissor(view.v.l, view.v.b, view.v.w, std::max(0, view.v.h - 66));
+        for (int i = 0; i < 2; ++i) {
+            const float y = top - 114 - i * 42 + mScroll;
+            drawRect(left + 14, y, width - 28, 34, mTheme.sidebarSurface);
+            drawRect(left + 14, y, 3, 34, mTheme.sidebarAccent);
+            drawWindowText(i == 0 ? "View cam0" : "View predicted", left + 28, y + 10,
+                           mTheme.sidebarText);
+        }
+        drawWindowText("DISPLAY", left + 16, top - 190 + mScroll, mTheme.sidebarMutedText);
+        for (int i = 0; i < ToggleCount; ++i) {
+            const float y = top - 242 - i * 36 + mScroll;
+            const bool on = toggles[i].enabled;
+            drawRect(left + 14, y + 6, 18, 18, on ? mTheme.sidebarAccent : mTheme.sidebarSurface);
+            if (!on) {
+                drawRect(left + 16, y + 8, 14, 14, mTheme.sidebarBorder);
+            } else {
+                drawRect(left + 20, y + 12, 6, 6, mTheme.sidebarAccentText);
+            }
+            drawWindowText(toggles[i].label, left + 42, y + 8, mTheme.sidebarText);
+        }
+        const float sliderY = top - 632 + mScroll;
+        drawWindowText("IMAGE OPACITY", left + 16, sliderY + 39, mTheme.sidebarMutedText);
+        drawRect(left + 16, sliderY + 10, width - 32, 8, mTheme.sidebarSurface);
+        drawRect(left + 16, sliderY + 10, static_cast<float>((width - 32) * imageAlpha), 8,
+                 mTheme.sidebarAccent);
+        drawRect(left + 12 + static_cast<float>((width - 32) * imageAlpha), sliderY + 6,
+                 8, 16, mTheme.sidebarText);
+        drawWindowText(std::to_string(static_cast<int>(imageAlpha * 100)) + "%", left + 16,
+                       sliderY - 15, mTheme.sidebarText);
+
+        glScissor(view.v.l, view.v.b, view.v.w, view.v.h);
+        drawRect(left, top - 66, width - 1, 66, mTheme.sidebarBackground);
+        drawWindowText("SCHLAM", left + 16, top - 31, mTheme.sidebarText);
+        drawWindowText("Visualization", left + 16, top - 53, mTheme.sidebarMutedText);
+        drawRect(left + 14, top - 67, width - 28, 1, mTheme.sidebarBorder);
+
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix();
+        glMatrixMode(GL_MODELVIEW);
+        glPopMatrix();
+        glPopAttrib();
+    }
+
+    void Mouse(pangolin::View& view, pangolin::MouseButton button, int x, int y,
+               bool pressed, int) override {
+        if (pressed && (button == pangolin::MouseWheelUp || button == pangolin::MouseWheelDown)) {
+            const int limit = std::max(0, 680 - view.v.h);
+            mScroll = std::clamp(mScroll + (button == pangolin::MouseWheelDown ? 40 : -40), 0, limit);
+            return;
+        }
+        if (button != pangolin::MouseButtonLeft) return;
+        if (!pressed) {
+            mDraggingSlider = false;
+            return;
+        }
+        if (y > view.v.t() - 66 || y < view.v.b) return;
+
+        const int top = view.v.t() + mScroll;
+        for (int i = 0; i < 2; ++i) {
+            const int bottom = top - 114 - i * 42;
+            if (y >= bottom && y <= bottom + 34) {
+                if (i == 0 && viewCam0) viewCam0();
+                if (i == 1 && viewPredicted) viewPredicted();
+                return;
+            }
+        }
+        for (int i = 0; i < ToggleCount; ++i) {
+            const int bottom = top - 242 - i * 36;
+            if (y >= bottom && y <= bottom + 32) {
+                toggles[i].enabled = !toggles[i].enabled;
+                return;
+            }
+        }
+        if (y >= top - 632 && y <= top - 606) {
+            mDraggingSlider = true;
+            setAlpha(view, x);
+        }
+    }
+
+    void MouseMotion(pangolin::View& view, int x, int, int) override {
+        if (mDraggingSlider) setAlpha(view, x);
+    }
+
+private:
+    void setAlpha(const pangolin::View& view, int x) {
+        imageAlpha = std::clamp((x - view.v.l - 16.0) / (view.v.w - 32.0), 0.0, 1.0);
+    }
+
+    const Plotter::Theme& mTheme;
+    int mScroll{0};
+    bool mDraggingSlider{false};
+};
+} // namespace
 
 // -----------------------------
 // Helper drawing functions
 // -----------------------------
 void Plotter::DrawGrid(int size, double step) {
-    glColor3f(0.f, 0.f, 0.f);
+    setColor(mTheme.grid);
     glBegin(GL_LINES);
     for (int i = -size; i <= size; ++i) {
         glVertex3f(i * step, -size * step, 0.f);
@@ -36,8 +226,13 @@ void Plotter::DrawGrid(int size, double step) {
 // Plotter methods
 // -----------------------------
 Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics)
-    : mpTransformer(apTransformer)
-    , mCameraIntrinsics(aCameraIntrinsics) {
+    : Plotter(apTransformer, aCameraIntrinsics, Theme{}) {}
+
+Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
+                 const Theme& aTheme)
+    : mTheme(aTheme)
+    , mCameraIntrinsics(aCameraIntrinsics)
+    , mpTransformer(apTransformer) {
     setup();
 }
 
@@ -123,10 +318,10 @@ void Plotter::drawCameraPaths(bool aShowGroundTruth, bool aShowPredicted) {
     glDisable(GL_TEXTURE_2D);
 
     const auto drawPath = [](const std::vector<Eigen::Vector3d>& path,
-                             float red, float green, float blue, float width,
+                             const Color& color, float width,
                              const std::shared_ptr<tft::RigidTransform3D>& currentPose = nullptr) {
         if (path.empty() || (path.size() < 2 && !currentPose)) return;
-        glColor3f(red, green, blue);
+        setColor(color);
         glLineWidth(width);
         glBegin(GL_LINE_STRIP);
         for (const auto& position : path) {
@@ -141,8 +336,8 @@ void Plotter::drawCameraPaths(bool aShowGroundTruth, bool aShowPredicted) {
         glEnd();
     };
 
-    if (aShowGroundTruth) drawPath(mGroundTruthCameraPath, 0.f, 1.f, 0.f, 3.f);
-    if (aShowPredicted) drawPath(mPredictedCameraPath, 0.f, 0.f, 1.f, 2.f, mPredictedFrustumPose);
+    if (aShowGroundTruth) drawPath(mGroundTruthCameraPath, mTheme.groundTruth, 3.f);
+    if (aShowPredicted) drawPath(mPredictedCameraPath, mTheme.predicted, 2.f, mPredictedFrustumPose);
     glPopAttrib();
 }
 
@@ -178,10 +373,9 @@ void Plotter::plotTransform(
         transformInWorld->mRotation, transformInWorld->mTranslation);
     glMultMatrixd(Twc.m);
     drawAxes(radius, length);
-    glColor3f(1.0, 1.0, 1.0); // Set text color
-
     if (showFrameName) {
-        pangolin::default_font().Text(transform->mTarget).Draw(0, 0, 0);
+        drawOutlinedWorldText(transform->mTarget, Eigen::Vector3d::Zero(),
+                              mTheme.text, mTheme.textOutline);
     }
     glPopMatrix();
 }
@@ -189,22 +383,22 @@ void Plotter::plotTransform(
 void Plotter::drawAxes(const double radius, const double length) {
     glPushMatrix();
 
-    // X axis (red)
-    glColor3f(1.f, 0.f, 0.f);
+    // X axis
+    setColor(mTheme.axisX);
     glPushMatrix();
     glRotatef(90.f, 0.f, 1.f, 0.f); // Z → X
     drawCylinder(radius, length);
     glPopMatrix();
 
-    // Y axis (green)
-    glColor3f(0.f, 1.f, 0.f);
+    // Y axis
+    setColor(mTheme.axisY);
     glPushMatrix();
     glRotatef(-90.f, 1.f, 0.f, 0.f); // Z → Y
     drawCylinder(radius, length);
     glPopMatrix();
 
-    // Z axis (blue)
-    glColor3f(0.f, 0.f, 1.f);
+    // Z axis
+    setColor(mTheme.axisZ);
     drawCylinder(radius, length);
 
     glPopMatrix();
@@ -232,17 +426,12 @@ void Plotter::plotMatches(const cv::Mat &oldFrame, const cv::Mat &newFrame,
     const auto &features2 = aMatches[1];
 
     const int halfSize = 4;
-    const cv::Scalar green{0, 255, 0};
-    auto& engine = utils::randomEngine();
-    std::uniform_int_distribution<int> colorChannel(64, 255);
+    const cv::Scalar markerColor = toBgr(mTheme.matchMarker);
 
     for (size_t i = 0; i < std::min(features1.size(), features2.size()); ++i) {
         cv::Point2d pt1{static_cast<double>(features1[i]->getImgX()), static_cast<double>(features1[i]->getImgY()+ halfSize) };
         cv::Point2d pt2{static_cast<double>(features2[i]->getImgX()), static_cast<double>(features2[i]->getImgY() + offset - halfSize)};
-        const int blue = colorChannel(engine);
-        const int greenValue = colorChannel(engine);
-        const int red = colorChannel(engine);
-        const cv::Scalar lineColor(blue, greenValue, red);
+        const cv::Scalar lineColor = toBgr(mTheme.matchLines[i % mTheme.matchLines.size()]);
         cv::line(colorResult, pt1, pt2, lineColor, 1, cv::LINE_AA);
     }
 
@@ -251,7 +440,7 @@ void Plotter::plotMatches(const cv::Mat &oldFrame, const cv::Mat &newFrame,
         cv::rectangle(colorResult,
                       {pt.x - halfSize, pt.y - halfSize},
                       {pt.x + halfSize, pt.y + halfSize},
-                      green, 1);
+                      markerColor, 1);
     }
 
     for (const auto &kp : features2) {
@@ -259,7 +448,7 @@ void Plotter::plotMatches(const cv::Mat &oldFrame, const cv::Mat &newFrame,
         cv::rectangle(colorResult,
                       {pt.x - halfSize, pt.y - halfSize},
                       {pt.x + halfSize, pt.y + halfSize},
-                      green, 1);
+                      markerColor, 1);
     }
 
     setMatcherTexture(colorResult);
@@ -316,12 +505,12 @@ void Plotter::drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha) {
     }
 
     if (aShowCam0 && mFrustumPose) {
-        glColor3f(0.f, 1.f, 0.f);
+        setColor(mTheme.groundTruth);
         glLineWidth(3.f);
         plotFrustum(mFrustum->mImage, mFrustum->mIntrinsics, mFrustumPose, *m3DImageTexture, aAlpha);
     }
     if (aShowPredicted && mPredictedFrustumPose) {
-        glColor3f(0.f, 0.f, 1.f);
+        setColor(mTheme.predicted);
         glLineWidth(2.f);
         plotFrustum(mFrustum->mImage, mFrustum->mIntrinsics, mPredictedFrustumPose, *m3DImageTexture, aAlpha);
     }
@@ -354,9 +543,8 @@ void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alp
     glBegin(GL_POINTS);
     for (const auto& point : snapshot.points) {
         const Eigen::Vector3d worldPoint = mapToWorld->mRotation * point + mapToWorld->mTranslation;
-        float blue = std::clamp(worldPoint.z() / 2.0, 0.0, 1.0);
-        float red = std::clamp(1.f-blue, 0.0f, 1.0f);
-        glColor3f(red, 0.f, blue);
+        const float depth = static_cast<float>(std::clamp(worldPoint.z() / 2.0, 0.0, 1.0));
+        setColor(blend(mTheme.mapPointNear, mTheme.mapPointFar, depth));
         glVertex3d(worldPoint.x(), worldPoint.y(), worldPoint.z());
     }
     glEnd();
@@ -366,7 +554,7 @@ void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alp
         glPopAttrib();
         return;
     }
-    glLineWidth(1.5f);
+    glLineWidth(2.5f);
     for (const auto& keyFrame : snapshot.keyFrames) {
         const auto& image = keyFrame.imageData;
         if (image.empty()) continue;
@@ -392,12 +580,12 @@ void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alp
         const auto cameraToWorld = mapToWorld * keyFrame.mapToCamera.inverse();
 
         glDisable(GL_TEXTURE_2D);
-        glColor3f(1.f, 0.5f, 0.f);
+        setColor(mTheme.keyframe);
         plotFrustum(image, keyFrame.intrinsics, cameraToWorld, *texture, alpha);
         if (showFrameNames) {
-            glColor3f(1.f, 0.5f, 0.f);
             const auto& position = cameraToWorld->mTranslation;
-            pangolin::default_font().Text("kf " + std::to_string(keyFrame.id)).Draw(position.x(), position.y(), position.z());
+            drawOutlinedWorldText("kf " + std::to_string(keyFrame.id), position,
+                                  mTheme.keyframeText, mTheme.textOutline);
         }
     }
     glPopAttrib();
@@ -414,14 +602,15 @@ void Plotter::plotFrustum(const cv::Mat& image, const Eigen::Matrix3d& intrinsic
 
     auto kInv = intrinsics.inverse().eval();
     double scale = 0.1f; // The depth at which to draw
-    pangolin::glDrawFrustum(kInv, image.cols, image.rows, scale);
 
     glDepthMask(GL_FALSE);
     glEnable(GL_TEXTURE_2D);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     texture.Bind();
 
-    glColor4f(1.0f, 1.0f, 1.0f, alpha); // Reset color so texture isn't tinted
+    glPushAttrib(GL_CURRENT_BIT);
+    glColor4f(mTheme.textureTint.red / 255.f, mTheme.textureTint.green / 255.f,
+              mTheme.textureTint.blue / 255.f, static_cast<float>(alpha));
     glBegin(GL_QUADS);
 
     // Define the 4 corners in Camera Space using K-inverse
@@ -442,8 +631,11 @@ void Plotter::plotFrustum(const cv::Mat& image, const Eigen::Matrix3d& intrinsic
 
     texture.Unbind();
     glDisable(GL_TEXTURE_2D);
-    glPopMatrix();
+    glPopAttrib();
     glDepthMask(GL_TRUE);
+    // The wireframe is drawn after the image so the keyframe accent stays visible.
+    pangolin::glDrawFrustum(kInv, image.cols, image.rows, scale);
+    glPopMatrix();
 }
 
 void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) {
@@ -464,7 +656,7 @@ void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_
 
         if (targetX >= 0 && targetX < colorResult.cols &&
             targetY >= 0 && targetY < colorResult.rows) {
-            cv::circle(colorResult, cv::Point(targetX, targetY), 0, cv::Scalar(0, 0, 255), -1);
+            cv::circle(colorResult, cv::Point(targetX, targetY), 0, toBgr(mTheme.featureMarker), -1);
         }
     }
 
@@ -496,7 +688,7 @@ void Plotter::showFeatures() {
         mFeatureImageChanged = false;
     }
 
-    glColor3f(1.0, 1.0, 1.0);
+    setColor(mTheme.textureTint);
     mFeatureImageTexture->RenderToViewportFlipY();
 }
 
@@ -515,7 +707,7 @@ void Plotter::showMatches() {
         mMatcherImageChanged = false;
     }
 
-    glColor3f(1.0, 1.0, 1.0);
+    setColor(mTheme.textureTint);
     mMatcherImageTexture->RenderToViewportFlipY();
 }
 
@@ -543,12 +735,24 @@ void Plotter::showStatus() {
     const std::string mapText = "Keyframes: " + std::to_string(mDisplayedKeyframeCount)
         + "  Map points: " + std::to_string(mDisplayedMapPointCount);
 
-    glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT);
+    glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_VIEWPORT_BIT);
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    pangolin::DisplayBase().ActivatePixelOrthographic();
     glDisable(GL_DEPTH_TEST);
-    glColor3f(0.f, 0.f, 0.f);
-    if (!timestamp.empty()) pangolin::default_font().Text(timestamp).DrawWindow(10, 10);
-    pangolin::default_font().Text(frameTimeText.str()).DrawWindow(10, 32);
-    pangolin::default_font().Text(mapText).DrawWindow(10, 54);
+    glDisable(GL_TEXTURE_2D);
+    drawRect(kSidebarWidth, 0, pangolin::DisplayBase().v.w - kSidebarWidth, 80,
+             mTheme.statusBackground);
+    setColor(mTheme.statusText);
+    if (!timestamp.empty()) pangolin::default_font().Text(timestamp).DrawWindow(kSidebarWidth + 10, 10);
+    pangolin::default_font().Text(frameTimeText.str()).DrawWindow(kSidebarWidth + 10, 32);
+    pangolin::default_font().Text(mapText).DrawWindow(kSidebarWidth + 10, 54);
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
     glPopAttrib();
 }
 
@@ -586,11 +790,10 @@ void Plotter::run() {
             .SetBounds(0.0, 0.6, 0.6, 1.0, 1920.f / (1080 * 2))
             .SetLock(pangolin::LockRight, pangolin::LockBottom);
 
-    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+    glClearColor(mTheme.background.red / 255.f, mTheme.background.green / 255.f,
+                 mTheme.background.blue / 255.f, 1.0f);
 
-    pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0,
-                                            pangolin::Attach::Pix(200));
-    pangolin::Var<bool> menu_pause("menu.Pause", false, true);
+    Sidebar sidebar(mTheme);
     const auto viewCamera = [this, &s_cam](const std::shared_ptr<tft::RigidTransform3D>& cameraPose) {
         if (!cameraPose) return;
         const auto worldToCamera = cameraPose->inverse();
@@ -600,7 +803,7 @@ void Plotter::run() {
             cameraToOpenGL * worldToCamera->mRotation,
             cameraToOpenGL * worldToCamera->mTranslation));
     };
-    pangolin::Var<std::function<void()>> menu_viewCam0("menu.View cam0", [this, viewCamera] {
+    sidebar.viewCam0 = [this, viewCamera] {
         std::shared_ptr<tft::RigidTransform3D> cam0Pose;
         {
             std::lock_guard guard(mCameraVisualizationMutex);
@@ -609,29 +812,24 @@ void Plotter::run() {
             }
         }
         viewCamera(cam0Pose);
-    });
-    pangolin::Var<std::function<void()>> menu_viewPredicted("menu.View predicted", [this, viewCamera] {
+    };
+    sidebar.viewPredicted = [this, viewCamera] {
         std::shared_ptr<tft::RigidTransform3D> predictedPose;
         {
             std::lock_guard guard(mCameraVisualizationMutex);
             predictedPose = mPredictedFrustumPose;
         }
         viewCamera(predictedPose);
-    });
-    pangolin::Var<bool> menu_showFrames("menu.Show Frames", true, true);
-    pangolin::Var<bool> menu_showFrameNames("menu.Show Frame Names", true, true);
-    pangolin::Var<bool> menu_showCam0Frustum("menu.cam0 Frustum", true, true);
-    pangolin::Var<bool> menu_showPredictedFrustum("menu.Predicted Frustum", true, true);
-    pangolin::Var<bool> menu_showKeyFrameFrustums("menu.Keyframe Frustums", true, true);
-    pangolin::Var<double> menu_3DImageAlpha("menu.3D Image Alpha", true, 0, 1);
-    pangolin::Var<bool> menu_showFeatures("menu.Show Features", true, true);
-    pangolin::Var<bool> menu_showMatches("menu.Show Matches", true, true);
-    pangolin::Var<bool> menu_showGroundTruthPath("menu.Ground Truth Path", true, true);
-    pangolin::Var<bool> menu_showPredictedPath("menu.Predicted Path", true, true);
+    };
+    auto& sidebarView = pangolin::CreateDisplay();
+    sidebarView.zorder = 1;
+    sidebarView.SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Pix(kSidebarWidth))
+        .SetHandler(&sidebar)
+        .SetDrawFunction([&sidebar](pangolin::View& view) { sidebar.Render(view); });
 
     auto& statusView = pangolin::CreateDisplay();
-    statusView.zorder = 1;
-    statusView.SetBounds(0.0, pangolin::Attach::Pix(80), 0.0, 1.0)
+    statusView.zorder = 2;
+    statusView.SetBounds(0.0, pangolin::Attach::Pix(80), pangolin::Attach::Pix(kSidebarWidth), 1.0)
         .SetDrawFunction([this](pangolin::View& view) {
             view.Activate();
             showStatus();
@@ -647,33 +845,32 @@ void Plotter::run() {
         glLineWidth(1.0f);
         DrawGrid(10, 1.0f);
 
-        drawMap(menu_showKeyFrameFrustums, menu_showFrameNames, menu_3DImageAlpha);
+        drawMap(sidebar.enabled(Sidebar::KeyframeFrustums), sidebar.enabled(Sidebar::FrameNames),
+                sidebar.imageAlpha);
 
-        drawCameras(menu_showGroundTruthPath, menu_showPredictedPath,
-                    menu_showCam0Frustum, menu_showPredictedFrustum, menu_3DImageAlpha);
+        drawCameras(sidebar.enabled(Sidebar::GroundTruthPath), sidebar.enabled(Sidebar::PredictedPath),
+                    sidebar.enabled(Sidebar::Cam0Frustum), sidebar.enabled(Sidebar::PredictedFrustum),
+                    sidebar.imageAlpha);
 
-        if (menu_pause) {
+        {
             std::lock_guard guard(mPauseMutex);
-            mPause = true;
-        } else {
-            std::lock_guard guard(mPauseMutex);
-            mPause = false;
+            mPause = sidebar.enabled(Sidebar::Pause);
         }
 
         // Draw all transforms
-        if (menu_showFrames) {
+        if (sidebar.enabled(Sidebar::Frames)) {
             for (auto &transform: mpTransformer->getRootedTransforms()) {
-                plotTransform(transform, 0.005, 0.1, menu_showFrameNames);
+                plotTransform(transform, 0.005, 0.1, sidebar.enabled(Sidebar::FrameNames));
             }
         }
 
         featureView.Activate();
-        if (menu_showFeatures) {
+        if (sidebar.enabled(Sidebar::Features)) {
             showFeatures();
         }
 
         matcherView.Activate();
-        if (menu_showMatches) {
+        if (sidebar.enabled(Sidebar::Matches)) {
             showMatches();
         }
 
