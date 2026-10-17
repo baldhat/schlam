@@ -557,16 +557,16 @@ TEST_F(CovisibilityOptimizerTest, BoundedLocalAdjustmentRefinesCurrentPoseAndKee
     EXPECT_TRUE(map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix().isApprox(excluded, 0));
 }
 
-TEST_F(CovisibilityOptimizerTest, VariableLimitSelectsOnlyTheStrongestNeighbor) {
+TEST_F(CovisibilityOptimizerTest, SelectedReferenceNeighborRemainsFixed) {
     const auto& first = map.mKeyFrames.at(frameIds[0]);
     map.updateKeyFramePose(frameIds[0], tft::RigidTransform3D(
         "map", "camera", Eigen::Matrix3d::Identity(), Eigen::Vector3d(-0.12, 0.02, 0)));
-    const auto before = first.mMapToCamera->mTranslation.norm();
+    const auto before = first.mMapToCamera->matrix();
     const auto fixed1 = map.mKeyFrames.at(frameIds[1]).mMapToCamera->matrix();
     const auto fixed2 = map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix();
 
     ASSERT_TRUE(optimizer.optimizeCovisibilityGraph(&map, map.mKeyFrames.at(frameIds[3]), 2, 2));
-    EXPECT_LT(first.mMapToCamera->mTranslation.norm(), before);
+    EXPECT_TRUE(first.mMapToCamera->matrix().isApprox(before, 0));
     EXPECT_TRUE(map.mKeyFrames.at(frameIds[1]).mMapToCamera->matrix().isApprox(fixed1, 0));
     EXPECT_TRUE(map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix().isApprox(fixed2, 0));
 }

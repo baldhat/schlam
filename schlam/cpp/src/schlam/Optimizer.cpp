@@ -437,6 +437,11 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
         fixedFrames.insert(frameId);
     }
 
+    // The map coordinate system is defined by keyframe 0. Keep it fixed even
+    // when it is selected as a local neighbor rather than a boundary frame.
+    constexpr KeyFrameId referenceKeyFrameId = 0;
+    if (localFrames.contains(referenceKeyFrameId)) fixedFrames.insert(referenceKeyFrameId);
+
     const auto cameraCenter = [&](KeyFrameId id) {
         const auto& pose = *map->mKeyFrames.at(id).mMapToCamera;
         return (-pose.mRotation.transpose() * pose.mTranslation).eval();

@@ -383,7 +383,9 @@ int main() {
         }
     }
 
+    std::cout << "Finished sequence, doing full map optimization pass..." << std::endl;
     optimizer->optimizeFullMap(map.get());
+    std::cout << "Finished!" << std::endl;
 
     render_loop.join();
     return 0;
