@@ -1,9 +1,9 @@
 
 #pragma once
-#include "image_data.hpp"
-#include "imu_data.hpp"
+#include "../image_data.hpp"
+#include "../imu_data.hpp"
 #include "tft/transformer.hpp"
-#include "gt_data.hpp"
+#include "../gt_data.hpp"
 
 #include <boost/thread/concurrent_queues/sync_bounded_queue.hpp>
 
@@ -12,19 +12,21 @@
 #include <filesystem>
 #include <thread>
 
-class MAVDataloader {
+#include "../DatasetInterface.h"
+
+class MAVDataloader : public DatasetInterface {
 
 public:
   MAVDataloader(std::shared_ptr<tft::Transformer> aTransformer);
 
   ~MAVDataloader();
 
-  std::shared_ptr<ImageData> getNextImageData();
-  std::shared_ptr<std::pair<IMUData, GTData>> getNextIMUData();
+  std::shared_ptr<ImageData> getNextImageData() override;
+  std::shared_ptr<std::pair<IMUData, GTData>> getNextIMUData() override;
 
-  bool empty();
+  bool empty() override;
 
-  Eigen::Matrix3d getCameraIntrinsics();
+  Eigen::Matrix3d getCameraIntrinsics() override;
 
 private:
   void loadImageData();

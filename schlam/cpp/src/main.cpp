@@ -1,4 +1,4 @@
-#include "data/mav_dataloader.hpp"
+#include "data/datasets/mav_dataloader.hpp"
 #include "plotting/plotter.hpp"
 #include "schlam/Ransac.h"
 #include "tft/rigid_transform_3d.hpp"
@@ -201,8 +201,8 @@ int main() {
     auto plotter = std::make_shared<Plotter>(pTransformer, dataloader->getCameraIntrinsics());
     auto render_loop = std::thread([plotter] { plotter->run(); });
 
-    auto initFeatureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 8);
-    auto featureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 8);
+    auto initFeatureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 6);
+    auto featureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 6);
 
     auto optimizer = std::make_shared<Optimizer>();
 
@@ -258,7 +258,7 @@ int main() {
                                      frame->mKeypointTree, 20, 100);
         plotter->plotMatches(oldFrame->mImage, frame->mImage, matches);
 
-        if (matches[0].size() < 100) {
+        if (matches[0].size() < 50) {
             selectReference(frame, cameraToWorld);
             std::cout << "Selecting new reference" << std::endl;
             continue;
@@ -356,7 +356,7 @@ int main() {
         }
         const auto inlierCount = std::count(inliers.begin(), inliers.end(), true);
         std::cout << "Retained " << inlierCount << " pose inliers" << std::endl;
-        if (inlierCount >= 50) {
+        if (inlierCount >= 12) {
             frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
                 map->mFrame, estimatedPose->mSource, rotation, translation);
             recordMapPointVisibility(map.get(), *frame, *frame->mMapToCamera);
@@ -384,7 +384,7 @@ int main() {
         framesSinceLastKeyframe++;
 
         std::cout << "Frame handling took " << frameTimer.finish() << " ms" << std::endl;
-        while (plotter->shouldPause() || matchedMapPoints.size() < 30) {
+        while (plotter->shouldPause() || matchedMapPoints.size() < 12) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }

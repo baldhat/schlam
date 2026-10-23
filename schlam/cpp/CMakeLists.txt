@@ -27,7 +27,7 @@ find_package(TBB REQUIRED)
 find_package(spdlog REQUIRED)
 
 # 2. Find System Pangolin
-# set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
+set(Pangolin_DIR "/home/jonathan_michel/dev/cpp/Pangolin/build")
 find_package(Pangolin REQUIRED CONFIG)
 include_directories(${Pangolin_INCLUDE_DIRS})
 
@@ -49,7 +49,7 @@ add_library(${PROJECT_NAME} SHARED
     src/tft/transformer.cpp
     src/data/image_data.cpp
     src/data/imu_data.cpp
-    src/data/mav_dataloader.cpp
+        src/data/datasets/mav_dataloader.cpp
     src/data/gt_data.cpp
 
     src/plotting/plotter.hpp
@@ -58,7 +58,7 @@ add_library(${PROJECT_NAME} SHARED
     src/tft/transformer.hpp
     src/data/image_data.hpp
     src/data/imu_data.hpp
-    src/data/mav_dataloader.hpp
+        src/data/datasets/mav_dataloader.hpp
     src/data/gt_data.hpp
     src/schlam/FastFeatureDetector.cpp
     src/schlam/FastFeatureDetector.h
@@ -88,6 +88,7 @@ add_library(${PROJECT_NAME} SHARED
         src/schlam/MotionModel.h
         src/schlam/KeyFrame.cpp
         src/schlam/KeyFrame.h
+        src/data/DatasetInterface.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -103,7 +104,7 @@ target_link_libraries(${PROJECT_NAME}
     Boost::boost Boost::thread
     fast-cpp-csv-parser::fast-cpp-csv-parser
     TBB::tbb
-    g2o::core g2o::solver_csparse g2o::solver_dense g2o::solver_eigen g2o::types_sim3 g2o::types_slam3d
+    g2o::core g2o::solver_dense g2o::solver_eigen g2o::types_sim3 g2o::types_slam3d
 )
 
 

@@ -144,7 +144,7 @@ bool Map::removePoint(MapPointId pointId) {
 
 bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe) {
     // TODO instead of number of frames use % of tracked points of last key frame
-    return numInliers >= 30 && framesSinceLastKeyframe >= 9;
+    return numInliers >= 12 && framesSinceLastKeyframe >= 5;
 }
 
 void Map::cullMapPoints() {
