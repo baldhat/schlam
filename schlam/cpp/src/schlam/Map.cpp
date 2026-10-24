@@ -143,13 +143,18 @@ bool Map::removePoint(MapPointId pointId) {
 
 
 bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe) {
-    // TODO instead of number of frames use % of tracked points of last key frame
-    return numInliers >= 12 && framesSinceLastKeyframe >= 5;
+    static constexpr std::size_t minNumInliers = 50;
+    static constexpr std::size_t minFramesSinceLastKeyframe = 5;
+
+    bool hasMinimumInliers = numInliers >= minNumInliers;
+    bool hasMinimumVisibleChange = numInliers < 0.9 * mKeyFrames.at(nextKeyFrameId-1).mObservedPoints.size();
+    hasMinimumVisibleChange &= framesSinceLastKeyframe >= minFramesSinceLastKeyframe;
+    return hasMinimumInliers && hasMinimumVisibleChange;
 }
 
 void Map::cullMapPoints() {
     constexpr std::uint64_t minVisibilityCount = 8;
-    constexpr std::uint64_t minSuccessRateDenominator = 6;
+    constexpr std::uint64_t minSuccessRateDenominator = 4;
     std::vector<MapPointId> toRemove;
     {
         std::lock_guard guard(mMutex);

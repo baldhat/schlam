@@ -329,6 +329,7 @@ int main() {
 
         plotter->addGroundTruthCameraPosition(data.cameraToWorld->mTranslation);
 
+        // Try if polynomic estimator works better
         auto estimatedPose = motionModel.estimateLinearAt(data.imageData->mTimestamp);
         plotter->updateFrustum(data.imageData, estimatedPose);
 
