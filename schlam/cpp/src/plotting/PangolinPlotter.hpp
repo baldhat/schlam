@@ -74,7 +74,7 @@ public:
     PangolinPlotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics);
     // Supply a theme before visualization starts to customize every plotter color.
     PangolinPlotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
-            const Theme& aTheme, const double aRatio);
+            const Theme& aTheme, const double aRatio, const bool ZUP);
 
     ~PangolinPlotter() = default;
 

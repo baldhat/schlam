@@ -261,14 +261,15 @@ void PangolinPlotter::DrawGrid(int size, double step) {
 // Plotter methods
 // -----------------------------
 PangolinPlotter::PangolinPlotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics)
-    : PangolinPlotter(apTransformer, aCameraIntrinsics, Theme{}, 1920 / 1080.0) {}
+    : PangolinPlotter(apTransformer, aCameraIntrinsics, Theme{}, 1920 / 1080.0, true) {}
 
 PangolinPlotter::PangolinPlotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
-                 const Theme& aTheme, const double aRatio)
+                 const Theme& aTheme, const double aRatio, const bool zUP)
     : mTheme(aTheme)
     , mCameraIntrinsics(aCameraIntrinsics)
     , mpTransformer(apTransformer)
-    , mImageAspectRatio(aRatio){
+    , mImageAspectRatio(aRatio)
+    , mZUP(zUP) {
 
     pangolin::CreateWindowAndBind("3D Visualizer", 1920, 1080);
     glEnable(GL_MULTISAMPLE);

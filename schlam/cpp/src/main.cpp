@@ -213,7 +213,8 @@ int main() {
 
     std::shared_ptr<IPlotter> plotter = std::make_shared<PangolinPlotter>(
         pTransformer, dataloader->getCameraIntrinsics(),
-        PangolinPlotter::Theme{}, dataloader->getImageAspectRatio());
+        PangolinPlotter::Theme{}, dataloader->getImageAspectRatio(),
+        true);
     //std::shared_ptr<IPlotter> plotter = std::make_shared<DummyPlotter>();
     auto render_loop = std::thread([plotter] { plotter->run(); });
 
