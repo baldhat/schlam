@@ -799,7 +799,6 @@ void PangolinPlotter::run() {
 
     GLint samples = 0;
     glGetIntegerv(GL_SAMPLES, &samples);
-    std::cout << "MSAA samples: " << samples << std::endl;
 
     // 1. Camera setup
     pangolin::OpenGlRenderState s_cam(
@@ -808,7 +807,7 @@ void PangolinPlotter::run() {
         pangolin::ModelViewLookAt(0, -150, -100, 0, 0, 50, mZUP ? pangolin::AxisZ : pangolin::AxisNegY));
 
     // 2. 3D viewport
-    pangolin::Handler3D handler(s_cam, pangolin::AxisZ);
+    pangolin::Handler3D handler(s_cam, mZUP ? pangolin::AxisZ : pangolin::AxisNegY);
     pangolin::View &d_cam = pangolin::CreateDisplay()
             .SetBounds(0.0, 1.0, 0.0, 1.0, 1920.0f / 1080.0f)
             .SetHandler(&handler);
