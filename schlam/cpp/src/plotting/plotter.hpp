@@ -72,7 +72,7 @@ public:
     Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics);
     // Supply a theme before visualization starts to customize every plotter color.
     Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
-            const Theme& aTheme);
+            const Theme& aTheme, const double aRatio);
 
     ~Plotter() = default;
 
@@ -110,6 +110,7 @@ public:
 
 private:
     const Theme mTheme;
+    const bool mZUP{false};
     std::atomic_bool mPause{false};
     std::mutex mPauseMutex;
 
@@ -138,6 +139,8 @@ private:
     std::mutex mFrameTimeMutex;
     std::size_t mDisplayedKeyframeCount{0};
     std::size_t mDisplayedMapPointCount{0};
+
+    double mImageAspectRatio {1920.0/1080.0};
 
     std::vector<Eigen::Vector3d> mGroundTruthCameraPath;
     std::vector<Eigen::Vector3d> mPredictedCameraPath;

@@ -8,7 +8,7 @@
 #include <fstream>
 #include <optional>
 
-class MAVDataloaderTest : public ::testing::Test {
+class MAVDatasetTest : public ::testing::Test {
 protected:
     std::filesystem::path dataset;
     std::optional<std::string> originalDatasetPath;
@@ -65,11 +65,11 @@ protected:
     }
 };
 
-TEST_F(MAVDataloaderTest, RadTanCorrectionUsesCalibratedRaysAndPreservesMetadata) {
+TEST_F(MAVDatasetTest, RadTanCorrectionUsesCalibratedRaysAndPreservesMetadata) {
     calibration("distortion_model: rad-tan\ndistortion_coefficients: [-0.25, 0.05, 0.01, -0.015]\n");
     image("1000000000");
     image("2000000000");
-    MAVDataloader loader(std::make_shared<tft::Transformer>());
+    MAVDataset loader(std::make_shared<tft::Transformer>());
     for (int frameIndex = 0; frameIndex < 2; ++frameIndex) {
         const auto frame = loader.getNextImageData();
         ASSERT_EQ(frame->mImage.size(), cv::Size(64, 64));
@@ -88,45 +88,45 @@ TEST_F(MAVDataloaderTest, RadTanCorrectionUsesCalibratedRaysAndPreservesMetadata
     }
 }
 
-TEST_F(MAVDataloaderTest, ZeroRadTanDistortionPreservesImage) {
+TEST_F(MAVDatasetTest, ZeroRadTanDistortionPreservesImage) {
     calibration("distortion_model: rad-tan\ndistortion_coefficients: [0, 0, 0, 0]\n");
     const auto original = image("1000000000");
-    MAVDataloader loader(std::make_shared<tft::Transformer>());
+    MAVDataset loader(std::make_shared<tft::Transformer>());
     const auto frame = loader.getNextImageData();
     EXPECT_EQ(cv::norm(original, frame->mImage, cv::NORM_INF), 0);
     expectIntrinsics(*frame);
 }
 
-TEST_F(MAVDataloaderTest, EuRoCDistortionModelNameIsSupported) {
+TEST_F(MAVDatasetTest, EuRoCDistortionModelNameIsSupported) {
     calibration("distortion_model: radial-tangential\ndistortion_coefficients: [-0.25, 0.05, 0.01, -0.015]\n");
     image("1000000000");
-    MAVDataloader loader(std::make_shared<tft::Transformer>());
+    MAVDataset loader(std::make_shared<tft::Transformer>());
     const auto frame = loader.getNextImageData();
     EXPECT_NE(frame->mImage.at<uint8_t>(16, 10), 30);
     expectIntrinsics(*frame);
 }
 
-TEST_F(MAVDataloaderTest, CalibrationWithoutDistortionPreservesImage) {
+TEST_F(MAVDatasetTest, CalibrationWithoutDistortionPreservesImage) {
     calibration("");
     const auto original = image("1000000000");
-    MAVDataloader loader(std::make_shared<tft::Transformer>());
+    MAVDataset loader(std::make_shared<tft::Transformer>());
     EXPECT_EQ(cv::norm(original, loader.getNextImageData()->mImage, cv::NORM_INF), 0);
 }
 
-TEST_F(MAVDataloaderTest, CorrectionMapsFollowImageResolution) {
+TEST_F(MAVDatasetTest, CorrectionMapsFollowImageResolution) {
     calibration("distortion_model: rad-tan\ndistortion_coefficients: [-0.25, 0.05, 0.01, -0.015]\n");
     image("1000000000");
     image("2000000000", {72, 60});
-    MAVDataloader loader(std::make_shared<tft::Transformer>());
+    MAVDataset loader(std::make_shared<tft::Transformer>());
     EXPECT_EQ(loader.getNextImageData()->mImage.size(), cv::Size(64, 64));
     EXPECT_EQ(loader.getNextImageData()->mImage.size(), cv::Size(72, 60));
 }
 
-TEST_F(MAVDataloaderTest, UnsupportedModelAndInvalidCoefficientsFailBeforeLoading) {
+TEST_F(MAVDatasetTest, UnsupportedModelAndInvalidCoefficientsFailBeforeLoading) {
     calibration("distortion_model: unknown\ndistortion_coefficients: [0, 0, 0, 0]\n");
-    EXPECT_THROW(MAVDataloader(std::make_shared<tft::Transformer>()), std::runtime_error);
+    EXPECT_THROW(MAVDataset(std::make_shared<tft::Transformer>()), std::runtime_error);
     calibration("distortion_model: equidistant\ndistortion_coefficients: [0, 0, 0, 0]\n");
-    EXPECT_THROW(MAVDataloader(std::make_shared<tft::Transformer>()), std::runtime_error);
+    EXPECT_THROW(MAVDataset(std::make_shared<tft::Transformer>()), std::runtime_error);
     calibration("distortion_model: rad-tan\ndistortion_coefficients: [0, 0, 0]\n");
-    EXPECT_THROW(MAVDataloader(std::make_shared<tft::Transformer>()), std::runtime_error);
+    EXPECT_THROW(MAVDataset(std::make_shared<tft::Transformer>()), std::runtime_error);
 }

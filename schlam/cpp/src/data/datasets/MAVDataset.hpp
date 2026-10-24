@@ -12,17 +12,23 @@
 #include <filesystem>
 #include <thread>
 
-#include "../DatasetInterface.h"
+#include "../DatasetInterface.hpp"
 
-class MAVDataloader : public DatasetInterface {
+class MAVDataset : public DatasetInterface {
 
 public:
-  MAVDataloader(std::shared_ptr<tft::Transformer> aTransformer);
+  MAVDataset(std::shared_ptr<tft::Transformer> aTransformer);
 
-  ~MAVDataloader();
+  ~MAVDataset();
+
+  double getImageAspectRatio() override;
+
+  bool hasIMU() override;
+  bool hasGT() override;
 
   std::shared_ptr<ImageData> getNextImageData() override;
-  std::shared_ptr<std::pair<IMUData, GTData>> getNextIMUData() override;
+  std::shared_ptr<IMUData> getNextIMUData() override;
+  std::shared_ptr<GTData> getNextGTData() override;
 
   bool empty() override;
 
@@ -39,18 +45,17 @@ private:
   std::thread mIMULoader;
 
   boost::sync_bounded_queue<std::shared_ptr<ImageData>> mImageQueue;
-  boost::sync_bounded_queue<std::shared_ptr<std::pair<IMUData, GTData>>> mIMUQueue;
+  boost::sync_bounded_queue<std::shared_ptr<IMUData>> mIMUQueue;
+  boost::sync_bounded_queue<std::shared_ptr<GTData>> mGTQueue;
 
   std::filesystem::path mDatasetPath;
   std::filesystem::path mCamera0Path;
 
-  const std::string mIMUCF{"imu"};
   std::shared_ptr<io::CSVReader<7>> mIMUCSVReader;
   double mGyroscopeNoiseDensity{0.0};
   double mGyroscopeRandomWalk{0.0};
   double mAccelerometerNoiseDensity{0.0};
   double mAccelerometerRandomWalk{0.0};
-
 
   const std::string mGTCF{"gt/body"};
   const std::string mGTCamera0CF{"gt/cam0"};
@@ -62,13 +67,7 @@ private:
   Eigen::Matrix3d mCamera0Rotation;
   Eigen::Vector3d mCamera0Translation;
 
-  std::uint32_t mImageIndex{0};
-  std::uint32_t mIMUIndex{0};
   std::atomic_bool mAllImagesRead{false};
   std::atomic_bool mAllIMURead{false};
 };
 
-std::chrono::system_clock::time_point
-stringNanoToTimePoint(const std::string &nano_str);
-std::chrono::system_clock::time_point
-longNanoToTimePoint(const std::uint64_t &aNanos);

@@ -88,8 +88,8 @@ public:
         {"Feature image", true}, {"Match image", true},
         {"Ground truth path", true}, {"Predicted path", true}, {"Orbit camera", false}
     }};
-    double imageAlpha{1.0};
-    double orbitDistance{3.0};
+    double imageAlpha{0.6};
+    double orbitDistance{12.0};
     std::function<void()> viewCam0;
     std::function<void()> viewPredicted;
 
@@ -240,11 +240,19 @@ void Plotter::DrawGrid(int size, double step) {
     setColor(mTheme.grid);
     glBegin(GL_LINES);
     for (int i = -size; i <= size; ++i) {
-        glVertex3f(i * step, -size * step, 0.f);
-        glVertex3f(i * step, size * step, 0.f);
+        if (!mZUP) {
+            glVertex3f(i * step, 0.f, -size * step);
+            glVertex3f(i * step, 0.f, size * step);
 
-        glVertex3f(-size * step, i * step, 0.f);
-        glVertex3f(size * step, i * step, 0.f);
+            glVertex3f(-size * step, 0.f, i * step);
+            glVertex3f(size * step, 0.f, i * step);
+        } else {
+            glVertex3f(i * step, -size * step, 0.f);
+            glVertex3f(i * step, size * step, 0.f);
+
+            glVertex3f(-size * step, i * step, 0.f);
+            glVertex3f(size * step, i * step, 0.f);
+        }
     }
     glEnd();
 }
@@ -253,13 +261,14 @@ void Plotter::DrawGrid(int size, double step) {
 // Plotter methods
 // -----------------------------
 Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics)
-    : Plotter(apTransformer, aCameraIntrinsics, Theme{}) {}
+    : Plotter(apTransformer, aCameraIntrinsics, Theme{}, 1920 / 1080.0) {}
 
 Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
-                 const Theme& aTheme)
+                 const Theme& aTheme, const double aRatio)
     : mTheme(aTheme)
     , mCameraIntrinsics(aCameraIntrinsics)
-    , mpTransformer(apTransformer) {
+    , mpTransformer(apTransformer)
+    , mImageAspectRatio(aRatio){
     setup();
 }
 
@@ -683,7 +692,7 @@ void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_
 
         if (targetX >= 0 && targetX < colorResult.cols &&
             targetY >= 0 && targetY < colorResult.rows) {
-            cv::circle(colorResult, cv::Point(targetX, targetY), 0, toBgr(mTheme.featureMarker), -1);
+            cv::circle(colorResult, cv::Point(targetX, targetY), 2, toBgr(mTheme.featureMarker), -1);
         }
     }
 
@@ -799,8 +808,8 @@ void Plotter::run() {
     // 1. Camera setup
     pangolin::OpenGlRenderState s_cam(
         pangolin::ProjectionMatrix(752, 480, mCameraIntrinsics(0, 0), mCameraIntrinsics(1, 1), mCameraIntrinsics(0, 2), mCameraIntrinsics(1, 2), 0.01,
-                                   100),
-        pangolin::ModelViewLookAt(0, 0, 3, 3, 3, 0, pangolin::AxisZ));
+                                   1000),
+        pangolin::ModelViewLookAt(0, -150, -100, 0, 0, 50, mZUP ? pangolin::AxisZ : pangolin::AxisNegY));
 
     // 2. 3D viewport
     pangolin::Handler3D handler(s_cam, pangolin::AxisZ);
@@ -810,11 +819,11 @@ void Plotter::run() {
 
 
     pangolin::View &featureView = pangolin::CreateDisplay()
-            .SetBounds(0.6, 1.0, 0.6, 1.0, 1920.f / 1080)
+            .SetBounds(0.6, 1.0, 0.6, 1.0, mImageAspectRatio)
             .SetLock(pangolin::LockRight, pangolin::LockTop);
 
     pangolin::View &matcherView = pangolin::CreateDisplay()
-            .SetBounds(0.0, 0.6, 0.6, 1.0, 1920.f / (1080 * 2))
+            .SetBounds(0.0, 0.6, 0.6, 1.0, mImageAspectRatio / 2)
             .SetLock(pangolin::LockRight, pangolin::LockBottom);
 
     glClearColor(mTheme.background.red / 255.f, mTheme.background.green / 255.f,
@@ -887,7 +896,7 @@ void Plotter::run() {
 
         // Draw grid
         glLineWidth(1.0f);
-        DrawGrid(10, 1.0f);
+        DrawGrid(100, 1.0f);
 
         drawMap(sidebar.enabled(Sidebar::KeyframeFrustums), sidebar.enabled(Sidebar::FrameNames),
                 sidebar.imageAlpha);

@@ -1,7 +1,7 @@
-#include "../mav_dataloader.hpp"
-#include "tft/rigid_transform_3d.hpp"
 
-#include <Eigen/Dense>
+#include "MAVDataset.hpp"
+#include "tft/rigid_transform_3d.hpp"
+#include "data/data_helper.hpp"
 
 #include <csv.h>
 
@@ -16,36 +16,49 @@
 #include <filesystem>
 #include <thread>
 #include <chrono>
-#include <stdexcept>
 
 
-MAVDataloader::MAVDataloader(std::shared_ptr<tft::Transformer> aTransformer)
-    : mImageQueue(3), mIMUQueue(20) {
-    const char* raw_val = std::getenv("MAV_PATH");
-    mDatasetPath  = (raw_val != nullptr) ? raw_val : "";
+
+MAVDataset::MAVDataset(std::shared_ptr<tft::Transformer> aTransformer)
+    : mImageQueue(3), mIMUQueue(2000), mGTQueue(2000) {
+    const char *raw_val = std::getenv("MAV_PATH");
+    mDatasetPath = (raw_val != nullptr) ? raw_val : "";
 
     loadCamera0Config();
     aTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
-        mCamera0CF, mIMUCF, mCamera0Rotation, mCamera0Translation));
-    aTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
-        mGTCamera0CF, mGTCF, mCamera0Rotation, mCamera0Translation));
+        mCamera0CF, mGTCF, mCamera0Rotation, mCamera0Translation));
 
     loadIMUConfig();
-    mImageLoader = std::thread(std::bind(&MAVDataloader::loadImageData, this));
-    mIMULoader = std::thread(std::bind(&MAVDataloader::loadIMUData, this));
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    mImageLoader = std::thread(std::bind(&MAVDataset::loadImageData, this));
+    mIMULoader = std::thread(std::bind(&MAVDataset::loadIMUData, this));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 }
 
-MAVDataloader::~MAVDataloader() {
+MAVDataset::~MAVDataset() {
     if (mImageLoader.joinable())
         mImageLoader.join();
     if (mIMULoader.joinable())
         mIMULoader.join();
 }
 
-bool MAVDataloader::empty() { return (mImageQueue.empty() && mAllImagesRead) || (mIMUQueue.empty() && mAllIMURead); }
+double MAVDataset::getImageAspectRatio() {
+    return 1920 / 1080.0;
+}
 
-void MAVDataloader::loadCamera0Config() {
+bool MAVDataset::hasIMU() {
+    return true;
+}
+
+bool MAVDataset::hasGT() {
+    return true;
+}
+
+bool MAVDataset::empty() {
+    return (mImageQueue.empty() && mAllImagesRead) || (mIMUQueue.empty() && mAllIMURead) ||
+               (mGTQueue.empty() && mAllIMURead);
+}
+
+void MAVDataset::loadCamera0Config() {
     mCamera0Path = mDatasetPath / "cam0";
     YAML::Node camera0Config = YAML::LoadFile(mCamera0Path / "sensor.yaml");
     double fu = camera0Config["intrinsics"][0].as<double>(0.0);
@@ -54,7 +67,7 @@ void MAVDataloader::loadCamera0Config() {
     double cv = camera0Config["intrinsics"][3].as<double>(0.0);
     mCamera0Intrinsics << fu, 0, cu, 0, fv, cv, 0, 0, 1;
 
-    const auto coefficients = camera0Config["distortion_coefficients"].as<std::vector<double>>();
+    const auto coefficients = camera0Config["distortion_coefficients"].as<std::vector<double> >();
     const auto distortionModel = camera0Config["distortion_model"].as<std::string>("rad-tan");
     const auto cameraModel = camera0Config["camera_model"].as<std::string>("pinhole");
     mCamera0DistortionCoefficients = cv::Mat(coefficients).clone();
@@ -65,12 +78,12 @@ void MAVDataloader::loadCamera0Config() {
     mCamera0Translation = Eigen::Vector3d(ec[3], ec[7], ec[11]);
 }
 
-Eigen::Matrix3d MAVDataloader::getCameraIntrinsics() {
+Eigen::Matrix3d MAVDataset::getCameraIntrinsics() {
     return mCamera0Intrinsics;
 }
 
 
-void MAVDataloader::loadIMUConfig() {
+void MAVDataset::loadIMUConfig() {
     YAML::Node imuConfig = YAML::LoadFile(mDatasetPath / "imu0" / "sensor.yaml");
     double mGyroscopeNoiseDensity =
             imuConfig["gyroscope_noise_density"].as<double>();
@@ -100,7 +113,7 @@ void MAVDataloader::loadIMUConfig() {
     );
 }
 
-void MAVDataloader::loadImageData() {
+void MAVDataset::loadImageData() {
     auto imagePath = mCamera0Path / "data";
     std::vector<std::filesystem::path> filesInDirectory;
     auto imageFilepaths = std::filesystem::directory_iterator(imagePath);
@@ -115,7 +128,7 @@ void MAVDataloader::loadImageData() {
     for (auto &filepath: filesInDirectory) {
         const std::string imageFile = filepath.string();
         utils::TTimestamp timestamp =
-                stringNanoToTimePoint(filepath.filename().stem());
+                helpers::stringNanoToTimePoint(filepath.filename().stem());
 
         cv::Mat image = cv::imread(imageFile, cv::IMREAD_GRAYSCALE);
         if (!image.empty() && !mCamera0DistortionCoefficients.empty()) {
@@ -123,7 +136,7 @@ void MAVDataloader::loadImageData() {
                 mapSize = image.size();
                 // Keep the original intrinsics for the corrected pinhole image.
                 cv::initUndistortRectifyMap(cameraMatrix, mCamera0DistortionCoefficients,
-                    cv::Mat(), cameraMatrix, mapSize, CV_16SC2, map1, map2);
+                                            cv::Mat(), cameraMatrix, mapSize, CV_16SC2, map1, map2);
             }
             cv::Mat correctedImage;
             cv::remap(image, correctedImage, map1, map2, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
@@ -136,7 +149,7 @@ void MAVDataloader::loadImageData() {
     mAllImagesRead = true;
 }
 
-void MAVDataloader::loadIMUData() {
+void MAVDataset::loadIMUData() {
     std::uint64_t ts, gt_ts;
     double ax, ay, az, wx, wy, wz;
     double gt_px, gt_py, gt_pz, gt_qw, gt_qx, gt_qy, gt_qz, gt_vx, gt_vy, gt_vz;
@@ -150,39 +163,28 @@ void MAVDataloader::loadIMUData() {
         Eigen::Vector3d gtVel(gt_vx, gt_vy, gt_vz);
         Eigen::Quaterniond gtQuat(gt_qw, gt_qx, gt_qy, gt_qz);
 
-        auto data = std::make_shared<std::pair<IMUData, GTData> >(std::pair(
-            IMUData(longNanoToTimePoint(ts), acceleration, angularVelocity, mIMUCF,
-                    mGyroscopeNoiseDensity, mGyroscopeRandomWalk,
-                    mAccelerometerNoiseDensity, mAccelerometerRandomWalk),
-            GTData(longNanoToTimePoint(gt_ts), gtPos, gtQuat.toRotationMatrix(),
-                   gtVel, "world")));
+        auto imuData = std::make_shared<IMUData>(
+            helpers::longNanoToTimePoint(ts), acceleration, angularVelocity, mGTCF,
+            mGyroscopeNoiseDensity, mGyroscopeRandomWalk,
+            mAccelerometerNoiseDensity, mAccelerometerRandomWalk);
+        auto gtData = std::make_shared<GTData>(helpers::longNanoToTimePoint(gt_ts), gtPos, gtQuat.toRotationMatrix(),
+                                               gtVel, "world");
 
-        mIMUQueue.push_back(data);
+        mIMUQueue.push_back(imuData);
+        mGTQueue.push_back(gtData);
     }
     mAllIMURead = true;
 }
 
-std::shared_ptr<ImageData> MAVDataloader::getNextImageData() {
+std::shared_ptr<ImageData> MAVDataset::getNextImageData() {
     return mImageQueue.pull_front();
 }
 
-std::shared_ptr<std::pair<IMUData, GTData> > MAVDataloader::getNextIMUData() {
+std::shared_ptr<IMUData> MAVDataset::getNextIMUData() {
     return mIMUQueue.pull_front();
 }
 
-std::chrono::system_clock::time_point
-stringNanoToTimePoint(const std::string &nano_str) {
-    long long nanos = std::stoll(nano_str);
-    std::chrono::nanoseconds duration(nanos);
-    return std::chrono::system_clock::time_point(
-        std::chrono::duration_cast<std::chrono::system_clock::duration>(
-            duration));
+std::shared_ptr<GTData> MAVDataset::getNextGTData() {
+    return mGTQueue.pull_front();
 }
 
-std::chrono::system_clock::time_point
-longNanoToTimePoint(const std::uint64_t &aNanos) {
-    std::chrono::nanoseconds duration(aNanos);
-    return std::chrono::system_clock::time_point(
-        std::chrono::duration_cast<std::chrono::system_clock::duration>(
-            duration));
-}
