@@ -1,4 +1,4 @@
-#include "plotter.hpp"
+#include "PangolinPlotter.hpp"
 
 #include <Eigen/src/Geometry/Quaternion.h>
 #include <GL/gl.h>
@@ -21,22 +21,22 @@
 namespace {
 constexpr int kSidebarWidth = 248;
 
-void setColor(const Plotter::Color& color) {
+void setColor(const PangolinPlotter::Color& color) {
     glColor3ub(color.red, color.green, color.blue);
 }
 
-cv::Scalar toBgr(const Plotter::Color& color) {
+cv::Scalar toBgr(const PangolinPlotter::Color& color) {
     return cv::Scalar(color.blue, color.green, color.red);
 }
 
-Plotter::Color blend(const Plotter::Color& near, const Plotter::Color& far, float amount) {
+PangolinPlotter::Color blend(const PangolinPlotter::Color& near, const PangolinPlotter::Color& far, float amount) {
     const auto channel = [amount](unsigned char start, unsigned char end) {
         return static_cast<unsigned char>(start + (end - start) * amount);
     };
     return {channel(near.red, far.red), channel(near.green, far.green), channel(near.blue, far.blue)};
 }
 
-void drawRect(float left, float bottom, float width, float height, const Plotter::Color& color) {
+void drawRect(float left, float bottom, float width, float height, const PangolinPlotter::Color& color) {
     setColor(color);
     glBegin(GL_QUADS);
     glVertex2f(left, bottom);
@@ -46,13 +46,13 @@ void drawRect(float left, float bottom, float width, float height, const Plotter
     glEnd();
 }
 
-void drawWindowText(const std::string& text, float x, float y, const Plotter::Color& color) {
+void drawWindowText(const std::string& text, float x, float y, const PangolinPlotter::Color& color) {
     setColor(color);
     pangolin::default_font().Text(text).DrawWindow(x, y);
 }
 
 void drawOutlinedWorldText(const std::string& text, const Eigen::Vector3d& position,
-                           const Plotter::Color& color, const Plotter::Color& outline) {
+                           const PangolinPlotter::Color& color, const PangolinPlotter::Color& outline) {
     GLdouble projection[16], modelview[16], screenX, screenY, screenZ;
     GLint viewport[4];
     glGetDoublev(GL_PROJECTION_MATRIX, projection);
@@ -80,7 +80,7 @@ public:
                   OrbitCamera, ToggleCount };
     struct Entry { const char* label; bool enabled; };
 
-    explicit Sidebar(const Plotter::Theme& theme) : mTheme(theme) {}
+    explicit Sidebar(const PangolinPlotter::Theme& theme) : mTheme(theme) {}
 
     std::array<Entry, ToggleCount> toggles{{
         {"Pause", false}, {"Show frames", true}, {"Frame names", true},
@@ -226,7 +226,7 @@ private:
         orbitDistance = kMinOrbitDistance + fraction * (kMaxOrbitDistance - kMinOrbitDistance);
     }
 
-    const Plotter::Theme& mTheme;
+    const PangolinPlotter::Theme& mTheme;
     int mScroll{0};
     bool mDraggingSlider{false};
     bool mDraggingOrbitDistance{false};
@@ -236,7 +236,7 @@ private:
 // -----------------------------
 // Helper drawing functions
 // -----------------------------
-void Plotter::DrawGrid(int size, double step) {
+void PangolinPlotter::DrawGrid(int size, double step) {
     setColor(mTheme.grid);
     glBegin(GL_LINES);
     for (int i = -size; i <= size; ++i) {
@@ -260,24 +260,29 @@ void Plotter::DrawGrid(int size, double step) {
 // -----------------------------
 // Plotter methods
 // -----------------------------
-Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics)
-    : Plotter(apTransformer, aCameraIntrinsics, Theme{}, 1920 / 1080.0) {}
+PangolinPlotter::PangolinPlotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics)
+    : PangolinPlotter(apTransformer, aCameraIntrinsics, Theme{}, 1920 / 1080.0) {}
 
-Plotter::Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
+PangolinPlotter::PangolinPlotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
                  const Theme& aTheme, const double aRatio)
     : mTheme(aTheme)
     , mCameraIntrinsics(aCameraIntrinsics)
     , mpTransformer(apTransformer)
     , mImageAspectRatio(aRatio){
-    setup();
+
+    pangolin::CreateWindowAndBind("3D Visualizer", 1920, 1080);
+    glEnable(GL_MULTISAMPLE);
+
+    // unset the current context from the main thread
+    pangolin::GetBoundWindow()->RemoveCurrent();
 }
 
-bool Plotter::shouldPause() {
+bool PangolinPlotter::shouldPause() {
     std::lock_guard guard(mPauseMutex);
     return mPause;
 }
 
-void Plotter::setMap(const Map* map) {
+void PangolinPlotter::setMap(const Map* map) {
     const auto mapToWorld = map ? mpTransformer->findTransform(map->mFrame, "world") : nullptr;
     if (map && !mapToWorld) {
         throw std::invalid_argument("Cannot visualize a map without its world transform");
@@ -288,21 +293,12 @@ void Plotter::setMap(const Map* map) {
     ++mMapRevision;
 }
 
-void Plotter::setup() {
-    pangolin::CreateWindowAndBind("3D Visualizer", 1920, 1080);
-
-    glEnable(GL_MULTISAMPLE);
-
-    // unset the current context from the main thread
-    pangolin::GetBoundWindow()->RemoveCurrent();
-}
-
-void Plotter::addTransform(
+void PangolinPlotter::addTransform(
     const std::shared_ptr<tft::RigidTransform3D> transform) {
     mTransforms.push_back(transform);
 }
 
-void Plotter::updateFrustum(const std::shared_ptr<ImageData> aImageData,
+void PangolinPlotter::updateFrustum(const std::shared_ptr<ImageData> aImageData,
                            const std::shared_ptr<tft::RigidTransform3D> aPredictedPose) {
     const auto cam0Pose = aImageData
         ? mpTransformer->findTransform(aImageData->mCoordinateFrame, "world") : nullptr;
@@ -313,7 +309,7 @@ void Plotter::updateFrustum(const std::shared_ptr<ImageData> aImageData,
     m3DImageChanged = true;
 }
 
-void Plotter::updateTimestamp(const utils::TTimestamp& aTimestamp) {
+void PangolinPlotter::updateTimestamp(const utils::TTimestamp& aTimestamp) {
     std::lock_guard guard(mTimestampMutex);
     if (!mSequenceStartTimestamp) mSequenceStartTimestamp = aTimestamp;
     const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -321,7 +317,7 @@ void Plotter::updateTimestamp(const utils::TTimestamp& aTimestamp) {
     mTimestampText = std::to_string(milliseconds) + " ms";
 }
 
-void Plotter::recordFrameTime(std::chrono::steady_clock::duration elapsed) {
+void PangolinPlotter::recordFrameTime(std::chrono::steady_clock::duration elapsed) {
     const double milliseconds = std::chrono::duration<double, std::milli>(elapsed).count();
     std::lock_guard guard(mFrameTimeMutex);
     mRecentFrameTimesMs.push_back(milliseconds);
@@ -332,23 +328,23 @@ void Plotter::recordFrameTime(std::chrono::steady_clock::duration elapsed) {
     }
 }
 
-void Plotter::resetCameraPaths(const Eigen::Vector3d& aReferencePosition) {
+void PangolinPlotter::resetCameraPaths(const Eigen::Vector3d& aReferencePosition) {
     std::lock_guard guard(mCameraVisualizationMutex);
     mGroundTruthCameraPath = {aReferencePosition};
     mPredictedCameraPath = {aReferencePosition};
 }
 
-void Plotter::addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition) {
+void PangolinPlotter::addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition) {
     std::lock_guard guard(mCameraVisualizationMutex);
     mGroundTruthCameraPath.push_back(aPosition);
 }
 
-void Plotter::addPredictedCameraPosition(const Eigen::Vector3d& aPosition) {
+void PangolinPlotter::addPredictedCameraPosition(const Eigen::Vector3d& aPosition) {
     std::lock_guard guard(mCameraVisualizationMutex);
     mPredictedCameraPath.push_back(aPosition);
 }
 
-void Plotter::drawCameraPaths(bool aShowGroundTruth, bool aShowPredicted) {
+void PangolinPlotter::drawCameraPaths(bool aShowGroundTruth, bool aShowPredicted) {
     glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_LINE_BIT);
     glDisable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
@@ -378,7 +374,7 @@ void Plotter::drawCameraPaths(bool aShowGroundTruth, bool aShowPredicted) {
 }
 
 pangolin::OpenGlMatrix
-Plotter::GetPangolinModelMatrix(const Eigen::Matrix3d &R,
+PangolinPlotter::GetPangolinModelMatrix(const Eigen::Matrix3d &R,
                                 const Eigen::Vector3d &t) const {
     pangolin::OpenGlMatrix m;
     m.SetIdentity();
@@ -396,7 +392,7 @@ Plotter::GetPangolinModelMatrix(const Eigen::Matrix3d &R,
     return m;
 }
 
-void Plotter::plotTransform(
+void PangolinPlotter::plotTransform(
     const std::shared_ptr<tft::RigidTransform3D> transform, const double radius,
     const double length, const bool showFrameName) {
     // Invert the transform, because gl apparently has the inverse definition
@@ -416,7 +412,7 @@ void Plotter::plotTransform(
     glPopMatrix();
 }
 
-void Plotter::drawAxes(const double radius, const double length) {
+void PangolinPlotter::drawAxes(const double radius, const double length) {
     glPushMatrix();
 
     // X axis
@@ -440,7 +436,7 @@ void Plotter::drawAxes(const double radius, const double length) {
     glPopMatrix();
 }
 
-void Plotter::plotMatches(const cv::Mat &oldFrame, const cv::Mat &newFrame,
+void PangolinPlotter::plotMatches(const cv::Mat &oldFrame, const cv::Mat &newFrame,
                           const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches) {
     if (oldFrame.empty() || newFrame.empty()) {
         std::cerr << "Invalid image!" << std::endl;
@@ -490,7 +486,7 @@ void Plotter::plotMatches(const cv::Mat &oldFrame, const cv::Mat &newFrame,
     setMatcherTexture(colorResult);
 }
 
-void Plotter::drawCylinder(double radius, double length, int slices) {
+void PangolinPlotter::drawCylinder(double radius, double length, int slices) {
     const double TWO_PI = 2.0f * M_PI;
 
     glBegin(GL_TRIANGLE_STRIP);
@@ -510,14 +506,14 @@ void Plotter::drawCylinder(double radius, double length, int slices) {
     glEnd();
 }
 
-void Plotter::drawCameras(bool showGroundTruthPath, bool showPredictedPath,
+void PangolinPlotter::drawCameras(bool showGroundTruthPath, bool showPredictedPath,
                          bool showCam0Frustum, bool showPredictedFrustum, double alpha) {
     std::lock_guard guard(mCameraVisualizationMutex);
     drawCameraPaths(showGroundTruthPath, showPredictedPath);
     drawFrustums(showCam0Frustum, showPredictedFrustum, alpha);
 }
 
-void Plotter::drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha) {
+void PangolinPlotter::drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha) {
     if (!mFrustum || mFrustum->mImage.empty()) return;
     if (!(aShowCam0 && mFrustumPose) && !(aShowPredicted && mPredictedFrustumPose)) return;
 
@@ -553,7 +549,7 @@ void Plotter::drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha) {
     glPopAttrib();
 }
 
-void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alpha) {
+void PangolinPlotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alpha) {
     MapSnapshot snapshot;
     std::shared_ptr<tft::RigidTransform3D> mapToWorld;
     std::uint64_t mapRevision;
@@ -627,7 +623,7 @@ void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alp
     glPopAttrib();
 }
 
-void Plotter::plotFrustum(const cv::Mat& image, const Eigen::Matrix3d& intrinsics,
+void PangolinPlotter::plotFrustum(const cv::Mat& image, const Eigen::Matrix3d& intrinsics,
                          const std::shared_ptr<tft::RigidTransform3D>& transform,
                          pangolin::GlTexture& texture, double alpha) {
     glPushMatrix();
@@ -674,7 +670,7 @@ void Plotter::plotFrustum(const cv::Mat& image, const Eigen::Matrix3d& intrinsic
     glPopMatrix();
 }
 
-void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) {
+void PangolinPlotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) {
     if (aImage.empty()) {
         std::cout << "Invalid image!" << std::endl;
         return;
@@ -699,17 +695,17 @@ void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_
     setFeatureTexture(colorResult);
 }
 
-void Plotter::setFeatureTexture(const cv::Mat &aImage) {
+void PangolinPlotter::setFeatureTexture(const cv::Mat &aImage) {
     mFeatureImage = aImage;
     mFeatureImageChanged = true;
 }
 
-void Plotter::setMatcherTexture(const cv::Mat &aImage) {
+void PangolinPlotter::setMatcherTexture(const cv::Mat &aImage) {
     mMatcherImage = aImage;
     mMatcherImageChanged = true;
 }
 
-void Plotter::showFeatures() {
+void PangolinPlotter::showFeatures() {
     if (mFeatureImage.empty()) return;
 
     if (mFeatureImageChanged) {
@@ -728,7 +724,7 @@ void Plotter::showFeatures() {
     mFeatureImageTexture->RenderToViewportFlipY();
 }
 
-void Plotter::showMatches() {
+void PangolinPlotter::showMatches() {
     if (mMatcherImage.empty()) return;
 
     if (mMatcherImageChanged) {
@@ -747,7 +743,7 @@ void Plotter::showMatches() {
     mMatcherImageTexture->RenderToViewportFlipY();
 }
 
-void Plotter::showStatus() {
+void PangolinPlotter::showStatus() {
     std::string timestamp;
     {
         std::lock_guard guard(mTimestampMutex);
@@ -793,7 +789,7 @@ void Plotter::showStatus() {
 }
 
 
-void Plotter::run() {
+void PangolinPlotter::run() {
     pangolin::BindToContext("3D Visualizer");
     // enable depth
     glEnable(GL_DEPTH_TEST);

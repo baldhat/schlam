@@ -44,8 +44,8 @@ add_library(${PROJECT_NAME} SHARED
     src/random.cpp
     src/random.hpp
 
-    src/plotting/plotter.hpp
-    src/plotting/plotter.cpp
+        src/plotting/PangolinPlotter.hpp
+        src/plotting/PangolinPlotter.cpp
 
     src/tft/rigid_transform_3d.cpp
     src/tft/transformable_3d.cpp
@@ -96,6 +96,9 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/MotionModel.h
     src/schlam/KeyFrame.cpp
     src/schlam/KeyFrame.h
+        src/plotting/IPlotter.hpp
+        src/plotting/DummyPlotter.cpp
+        src/plotting/DummyPlotter.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

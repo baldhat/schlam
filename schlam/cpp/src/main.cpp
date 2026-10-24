@@ -1,5 +1,5 @@
 #include "data/datasets/MAVDataset.hpp"
-#include "plotting/plotter.hpp"
+#include "plotting/PangolinPlotter.hpp"
 #include "schlam/Ransac.h"
 #include "tft/rigid_transform_3d.hpp"
 
@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "data/datasets/KittiDataset.hpp"
+#include "plotting/DummyPlotter.h"
 #include "schlam/ORBFeatureDetector.h"
 #include "schlam/Matcher.h"
 #include "schlam/Optimizer.h"
@@ -25,7 +26,7 @@ struct SynchronizedData {
 
 SynchronizedData getNextSynchronizedData(std::shared_ptr<tft::Transformer> pTransformer,
                  std::shared_ptr<DatasetInterface> dataloader,
-                 std::shared_ptr<Plotter> plotter,
+                 std::shared_ptr<IPlotter> plotter,
                  const std::shared_ptr<tft::RigidTransform3D> cameraToIMU) {
 
     auto imageData = dataloader->getNextImageData();
@@ -179,7 +180,7 @@ void handleNewKeyframe(std::shared_ptr<Optimizer> optimizer,
 
 class FrameTimer {
 public:
-    FrameTimer(Plotter& plotter, std::chrono::steady_clock::time_point start)
+    FrameTimer(IPlotter& plotter, std::chrono::steady_clock::time_point start)
         : mPlotter(plotter), mStart(start) {}
 
     ~FrameTimer() { finish(); }
@@ -198,7 +199,7 @@ public:
     FrameTimer& operator=(const FrameTimer&) = delete;
 
 private:
-    Plotter& mPlotter;
+    IPlotter& mPlotter;
     std::chrono::steady_clock::time_point mStart;
     double mElapsedMs{0.0};
     bool mFinished{false};
@@ -210,7 +211,8 @@ int main() {
     //auto dataloader = std::make_shared<KittiDataset>(pTransformer, "02");
     auto dataloader = std::make_shared<MAVDataset>(pTransformer);
 
-    auto plotter = std::make_shared<Plotter>(pTransformer, dataloader->getCameraIntrinsics(), Plotter::Theme{}, dataloader->getImageAspectRatio());
+    //auto plotter = std::make_shared<PangolinPlotter>(pTransformer, dataloader->getCameraIntrinsics(), PangolinPlotter::Theme{}, dataloader->getImageAspectRatio());
+    std::shared_ptr<IPlotter> plotter = std::make_shared<DummyPlotter>();
     auto render_loop = std::thread([plotter] { plotter->run(); });
 
     auto initFeatureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 6);
@@ -329,7 +331,7 @@ int main() {
 
         plotter->addGroundTruthCameraPosition(data.cameraToWorld->mTranslation);
 
-        // Try if polynomic estimator works better
+        // TODO Try if polynomic estimator works better
         auto estimatedPose = motionModel.estimateLinearAt(data.imageData->mTimestamp);
         plotter->updateFrustum(data.imageData, estimatedPose);
 
@@ -339,8 +341,7 @@ int main() {
         auto frame = std::make_shared<Frame>(data.imageData);
         featureDetector->detectFeatures(*frame);
 
-        // TODO:
-        // - match only with features in predicted scale
+        // TODO Match only with features in predicted scale
         const auto matches = matchMapPointsByProjection(map.get(), frame, estimatedPose, pTransformer, 50, 50);
         std::cout << "Matched " << matches.size() << " out of " << map->mPoints.size() << " map points" << std::endl;
         std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchedFeatures;

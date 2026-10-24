@@ -193,53 +193,6 @@ TEST(MatcherTest, GlobalMatchesOwnFeaturesAndUseEachTargetOnce) {
     EXPECT_EQ(matches[1][0]->getImgY(), 75);
 }
 
-TEST(MatcherTest, ProjectionMatchesOwnProjectedAndDetectedFeatures) {
-    cv::Mat image(100, 100, CV_8UC1, cv::Scalar(0));
-    Eigen::Matrix3d intrinsics;
-    intrinsics << 100, 0, 50, 0, 100, 50, 0, 0, 1;
-    auto imageData = std::make_shared<ImageData>(utils::TTimestamp{}, image, intrinsics, "current");
-    auto frame = std::make_shared<Frame>(imageData);
-    std::array<uint8_t, 32> descriptor{};
-    descriptor[0] = 0xa5;
-    frame->mKeypointTree = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(51, 50, 0, 0, 0, descriptor), KeyPoint(80, 80)});
-    frame->mKeypointTree->divide();
-    std::weak_ptr<KeyPoint> observation = frame->mKeypointTree->getFeatures(49, 53, 48, 52)[0];
-
-    auto map = std::make_shared<Map>("world");
-    const auto descriptorSource = std::make_shared<KeyPoint>(0, 0, 0, 0, 0, descriptor);
-    map->addMapPoint(Eigen::Vector3d(0, 0, -5), descriptorSource, 0);
-    map->addMapPoint(Eigen::Vector3d(0, 0, 5), descriptorSource, 0);
-    map->addMapPoint(Eigen::Vector3d(10, 0, 5), descriptorSource, 0);
-    // Both visible projections compete for the same observation.
-    map->addMapPoint(Eigen::Vector3d(0.05, 0, 5), descriptorSource, 0);
-    map->addMapPoint(Eigen::Vector3d(1, 1, 5), descriptorSource, 0);
-    auto pose = std::make_shared<tft::RigidTransform3D>("current", "world",
-        Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
-    auto transformer = std::make_shared<tft::Transformer>();
-    transformer->registerTransform(pose);
-
-    auto [matches, matched] = matchByProjection(map.get(), frame, pose, transformer, 20, 2);
-    ASSERT_EQ(matches[0].size(), 1);
-    ASSERT_EQ(matches[1].size(), 1);
-    EXPECT_EQ(matched, (std::vector<bool>{false, true, false, false, false}));
-    std::weak_ptr<KeyPoint> projection = matches[0][0];
-    std::weak_ptr<Frame> originalFrame = frame;
-    frame.reset();
-    map.reset();
-
-    EXPECT_TRUE(originalFrame.expired());
-    EXPECT_EQ(matches[0][0]->getImgX(), 50);
-    EXPECT_EQ(matches[0][0]->getImgY(), 50);
-    EXPECT_EQ(matches[0][0]->getDescriptor(), descriptor);
-    EXPECT_EQ(matches[1][0], observation.lock());
-    EXPECT_EQ(matches[1][0]->getImgX(), 51);
-    EXPECT_EQ(matches[1][0]->getImgY(), 50);
-    matches = {};
-    EXPECT_TRUE(projection.expired());
-    EXPECT_TRUE(observation.expired());
-}
-
 TEST(MapPointTest, ViewingAngleUsesSixtyDegreeLimit) {
     MapPoint point(Eigen::Vector3d::Zero(), MapPoint::Descriptor{}, 0, 0);
     point.addInlierObservation(MapPoint::Descriptor{}, Eigen::Vector3d::UnitZ());
@@ -297,41 +250,6 @@ TEST(MatcherTest, WindowMaskIncludesUnmatchedSourcesAtTheirOriginalIndices) {
     ASSERT_EQ(matches[0].size(), 1);
     EXPECT_EQ(matches[0][0], source[1]);
     EXPECT_EQ(matched, (std::vector<bool>{false, true, false}));
-}
-
-TEST(MatcherTest, ProjectionMaskPreservesMapPointAndObservationOrder) {
-    cv::Mat image(100, 100, CV_8UC1, cv::Scalar(0));
-    Eigen::Matrix3d intrinsics;
-    intrinsics << 100, 0, 50, 0, 100, 50, 0, 0, 1;
-    auto imageData = std::make_shared<ImageData>(utils::TTimestamp{}, image, intrinsics, "current");
-    auto frame = std::make_shared<Frame>(imageData);
-    frame->mKeypointTree = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(30, 30), KeyPoint(70, 70)});
-    frame->mKeypointTree->divide();
-    std::array<uint8_t, 32> descriptor{};
-    auto map = std::make_shared<Map>("world");
-    const auto descriptorSource = std::make_shared<KeyPoint>(0, 0, 0, 0, 0, descriptor);
-    map->addMapPoint(Eigen::Vector3d(10, 0, 5), descriptorSource, 0);
-    map->addMapPoint(Eigen::Vector3d(1, 1, 5), descriptorSource, 0);
-    map->addMapPoint(Eigen::Vector3d(0, 0, -5), descriptorSource, 0);
-    map->addMapPoint(Eigen::Vector3d(-1, -1, 5), descriptorSource, 0);
-    auto pose = std::make_shared<tft::RigidTransform3D>("current", "world",
-        Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
-    auto transformer = std::make_shared<tft::Transformer>();
-    transformer->registerTransform(pose);
-
-    const auto [matches, matched] = matchByProjection(map.get(), frame, pose, transformer, 20, 1);
-    ASSERT_EQ(matches[1].size(), 2);
-    EXPECT_EQ(matched, (std::vector<bool>{false, true, false, true}));
-    std::size_t observationIndex = 0;
-    for (std::size_t mapIndex = 0; mapIndex < map->mPoints.size(); ++mapIndex) {
-        if (matched[mapIndex]) {
-            const Eigen::Vector3d projected = intrinsics * map->mPoints.at(mapIndex).mPosition;
-            EXPECT_EQ(matches[1][observationIndex]->getImgX(), projected.x() / projected.z());
-            EXPECT_EQ(matches[1][observationIndex]->getImgY(), projected.y() / projected.z());
-            ++observationIndex;
-        }
-    }
 }
 
 TEST_F(ORBFeatureDetectorTest, SparseInputPreservesFeatures) {

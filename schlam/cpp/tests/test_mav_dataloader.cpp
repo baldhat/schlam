@@ -1,12 +1,14 @@
 #include <gtest/gtest.h>
 
-#include "data/mav_dataloader.hpp"
+#include "data/datasets/MAVDataset.hpp"
 
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
+
+#include "data/data_helper.hpp"
 
 class MAVDatasetTest : public ::testing::Test {
 protected:
@@ -74,7 +76,7 @@ TEST_F(MAVDatasetTest, RadTanCorrectionUsesCalibratedRaysAndPreservesMetadata) {
         const auto frame = loader.getNextImageData();
         ASSERT_EQ(frame->mImage.size(), cv::Size(64, 64));
         expectIntrinsics(*frame);
-        EXPECT_EQ(frame->mTimestamp, longNanoToTimePoint((frameIndex + 1) * 1000000000ULL));
+        EXPECT_EQ(frame->mTimestamp, helpers::longNanoToTimePoint((frameIndex + 1) * 1000000000ULL));
         // The input ramp has intensity 3*x. Compute its source coordinate from
         // the calibrated radial/tangential projection, independent of remapping.
         const double x = (10 - 31.5) / 40;

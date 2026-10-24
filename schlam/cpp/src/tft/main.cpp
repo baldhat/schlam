@@ -1,4 +1,4 @@
-#include "../plotting/plotter.hpp"
+#include "../plotting/PangolinPlotter.hpp"
 
 #include "rigid_transform_3d.hpp"
 #include "transformable_3d.hpp"
@@ -13,10 +13,10 @@
 int main()
 {
     auto pTransformer = std::make_shared<tft::Transformer>();
-    Plotter plotter(pTransformer);
+    PangolinPlotter plotter(pTransformer, Eigen::Matrix3d({{200, 0, 200}, {0, 200, 200}, {0, 0, 1}}));
     
    
-    auto render_loop = std::thread(std::bind(&Plotter::run, &plotter));
+    auto render_loop = std::thread(std::bind(&PangolinPlotter::run, &plotter));
 
     Eigen::Matrix3d rotZ180{{-1, 0, 0}, {0, -1, 0}, {0, 0, 1}};
     Eigen::Matrix3d rotZ90{{0, -1, 0}, {1, 0, 0}, {0, 0, 1}};

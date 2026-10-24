@@ -12,11 +12,11 @@
 #include "QuadTreeNode.h"
 #include "Frame.h"
 
-class Plotter;
+class IPlotter;
 
 class ORBFeatureDetector {
 public:
-    ORBFeatureDetector(const std::uint32_t aNumFeatures, std::shared_ptr<Plotter> apPlotter,
+    ORBFeatureDetector(const std::uint32_t aNumFeatures, std::shared_ptr<IPlotter> apPlotter,
                        const std::uint8_t aNumLevels,
                        const double aLevelFactor = 1 / 1.2);
 
@@ -32,7 +32,7 @@ private:
     double mLevelFactor{0};
     std::vector<double> mLevelFactors;
     std::vector<Point> mOrientationIndices;
-    std::shared_ptr<Plotter> mpPlotter;
+    std::shared_ptr<IPlotter> mpPlotter;
 
     schlam::FastFeatureDetector mFastFeatureDetector;
     std::vector<std::uint32_t> mNumFeaturesPerLevel;
