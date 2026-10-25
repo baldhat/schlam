@@ -96,9 +96,13 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/MotionModel.h
     src/schlam/KeyFrame.cpp
     src/schlam/KeyFrame.h
-        src/plotting/IPlotter.hpp
-        src/plotting/DummyPlotter.cpp
-        src/plotting/DummyPlotter.h
+    src/plotting/IPlotter.hpp
+    src/plotting/DummyPlotter.cpp
+    src/plotting/DummyPlotter.h
+    src/schlam/SchlamSystem.cpp
+    src/schlam/SchlamSystem.h
+    src/schlam/Profiler.cpp
+    src/schlam/Profiler.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
