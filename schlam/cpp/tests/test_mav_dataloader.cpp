@@ -63,7 +63,7 @@ protected:
         Eigen::Matrix3d expected;
         expected << 40, 0, 31.5, 0, 45, 31.5, 0, 0, 1;
         EXPECT_TRUE(frame.mIntrinsics.isApprox(expected));
-        EXPECT_EQ(frame.mCoordinateFrame, "cam0");
+        EXPECT_EQ(frame.mCoordinateFrame, "gt/cam0");
     }
 };
 

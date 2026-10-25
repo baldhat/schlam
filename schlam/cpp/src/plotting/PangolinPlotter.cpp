@@ -839,7 +839,7 @@ void PangolinPlotter::run() {
         std::shared_ptr<tft::RigidTransform3D> cam0Pose;
         {
             std::lock_guard guard(mCameraVisualizationMutex);
-            if (mFrustumPose && mFrustumPose->mSource == "cam0") {
+            if (mFrustumPose && mFrustumPose->mSource == "gt/cam0") {
                 cam0Pose = mFrustumPose;
             }
         }

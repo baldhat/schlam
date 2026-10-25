@@ -64,7 +64,7 @@ private:
     const std::string mGTCamera0CF{"gt/cam0"};
     std::shared_ptr<io::CSVReader<11> > mGTCSVReader;
 
-    const std::string mCamera0CF{"cam0"};
+    const std::string mCamera0CF{"gt/cam0"};
     Eigen::Matrix3d mCamera0Intrinsics;
     Eigen::Matrix3d mCamera0Rotation;
     Eigen::Vector3d mCamera0Translation;

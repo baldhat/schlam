@@ -16,7 +16,7 @@ utils::TTimestamp at(std::chrono::nanoseconds offset) {
 
 std::shared_ptr<tft::RigidTransform3D> pose(const Eigen::Vector3d& position,
                            const Eigen::Matrix3d& rotation = Eigen::Matrix3d::Identity(),
-                           const std::string& source = "cam0",
+                           const std::string& source = "gt/cam0",
                            const std::string& target = "world") {
     return std::make_shared<tft::RigidTransform3D>(source, target, rotation, position);
 }
@@ -133,7 +133,7 @@ TEST(MotionModelTest, RejectsDifferentTargetFramesWithoutChangingHistory) {
     MotionModel model;
     model.addPose(pose({0, 0, 0}), at(0ns));
     model.addPose(pose({1, 0, 0}), at(50ms));
-    EXPECT_THROW(model.addPose(pose({100, 0, 0}, Eigen::Matrix3d::Identity(), "cam0", "map"),
+    EXPECT_THROW(model.addPose(pose({100, 0, 0}, Eigen::Matrix3d::Identity(), "gt/cam0", "map"),
         at(100ms)), std::invalid_argument);
 
     const auto predicted = model.estimateLinearAt(at(100ms));

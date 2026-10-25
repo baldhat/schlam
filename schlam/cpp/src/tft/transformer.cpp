@@ -47,10 +47,15 @@ void Transformer::registerTransform(
 
   if (aTransform->mTarget != "world") {
     mRootedFrames.erase(aTransform->mTarget);
+    // Adds the transform to the rooted transforms if possible, for faster lookup later
+    findTransform("world", aTransform->mTarget);
   }
   if (aTransform->mSource != "world") {
     mRootedFrames.erase(aTransform->mSource);
+    // Adds the transform to the rooted transforms if possible, for faster lookup later
+    findTransform(aTransform->mSource, "world");
   }
+
 }
 
 Transformable3D Transformer::transform(const Transformable3D &transformable,
@@ -58,10 +63,9 @@ Transformable3D Transformer::transform(const Transformable3D &transformable,
   auto transform = findTransform(transformable.getCF(), target);
   if (transform != nullptr) {
     return transform->apply(transformable);
-  } else {
-    std::cout << "WARN: No transform found from " << transformable.getCF()
-              << "->" << target << std::endl;
   }
+  std::cout << "WARN: No transform found from " << transformable.getCF()
+            << "->" << target << std::endl;
   return transformable;
 }
 
@@ -92,11 +96,11 @@ Transformer::findTransform(const std::string &source,
     queue.pop();
     visited.emplace(currentNode);
 
+    // If we found the transform to the world frame, store it
+    if (currentNode == mRootName && mRootedFrames.count(source) == 0) {
+      mRootedFrames.emplace(std::make_pair(source, currentTransform->inverse()));
+    }
     if (currentNode == target) {
-      // If we found the transform to the world frame, store it
-      if (target == mRootName && mRootedFrames.count(source) == 0) {
-        mRootedFrames.emplace(std::make_pair(source, currentTransform->inverse()));
-      }
       return currentTransform;
     }
 

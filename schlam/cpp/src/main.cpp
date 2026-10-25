@@ -60,11 +60,7 @@ SynchronizedData getNextSynchronizedData(std::shared_ptr<tft::Transformer> pTran
             "gt/body", "world", gtData->mRotation, gtData->mPosition);
         cameraToWorld = imuToWorld * cameraToIMU;
         pTransformer->registerTransform(imuToWorld);
-        // Register the composed pose directly so cam0s cached world pose is refreshed.
         pTransformer->registerTransform(cameraToWorld);
-
-        pTransformer->findTransform("gt/body", "world");
-        pTransformer->findTransform("cam0", "world");
     }
     return {imageData, imuData, gtData, cameraToWorld};
 }
@@ -218,17 +214,14 @@ int main() {
     //std::shared_ptr<IPlotter> plotter = std::make_shared<DummyPlotter>();
     auto render_loop = std::thread([plotter] { plotter->run(); });
 
-    auto initFeatureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 6);
     auto featureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 6);
 
     auto optimizer = std::make_shared<Optimizer>();
 
     auto motionModel = MotionModel();
 
-    const auto cameraToIMU = pTransformer->findTransform("cam0", "gt/body");
-    auto imuAndGT = dataloader->getNextIMUData();
+    const auto cameraToIMU = pTransformer->findTransform("gt/cam0", "gt/body");
 
-    int i = 0;
     std::string prevFrameName;
     std::shared_ptr<tft::RigidTransform3D> referenceGTCameraPose;
     std::shared_ptr<tft::RigidTransform3D> referenceCameraToWorld;
@@ -236,7 +229,7 @@ int main() {
     std::unique_ptr<Map> map;
 
     std::shared_ptr<Frame> referenceFrame;
-    const auto selectReference = [&](std::shared_ptr<Frame> frame,
+    const auto setFrameAsReference = [&](std::shared_ptr<Frame> frame,
                                      const std::shared_ptr<tft::RigidTransform3D>& cameraToWorld) {
         prevFrameName = "cam_ref";
         referenceCameraToWorld = std::make_shared<tft::RigidTransform3D>(
@@ -259,10 +252,10 @@ int main() {
 
         auto frame = std::make_shared<Frame>(data.imageData);
 
-        initFeatureDetector->detectFeatures(*frame);
+        featureDetector->detectFeatures(*frame);
 
         if (!referenceFrame) {
-            selectReference(frame, data.cameraToWorld);
+            setFrameAsReference(frame, data.cameraToWorld);
             continue;
         }
 
@@ -274,7 +267,7 @@ int main() {
         plotter->plotMatches(oldFrame->mImage, frame->mImage, matches);
 
         if (matches[0].size() < 50) {
-            selectReference(frame, data.cameraToWorld);
+            setFrameAsReference(frame, data.cameraToWorld);
             std::cout << "Selecting new reference" << std::endl;
             continue;
         }
@@ -294,16 +287,14 @@ int main() {
             // Use the GT camera baseline to put translation and points in metres.
             if (scaleToBaseline(referenceGTCameraPose, data.cameraToWorld, t_opt, pts_opt)) continue;
 
-            const std::string frameName = "cam_pred" + std::to_string(i++);
+            const std::string frameName = "pred/cam0";
             const auto referenceToNew = std::make_shared<tft::RigidTransform3D>(
                 prevFrameName, frameName, R_opt, t_opt);
             referenceFrame->mMapToCamera = tft::RigidTransform3D::identity(prevFrameName, prevFrameName);
             frame->mMapToCamera = referenceToNew;
             pTransformer->registerTransform(referenceCameraToWorld);
-            pTransformer->findTransform(prevFrameName, "world");
             const auto newCameraToWorld = referenceCameraToWorld * referenceToNew->inverse();
             pTransformer->registerTransform(newCameraToWorld);
-            pTransformer->findTransform(frameName, "world");
             plotter->addPredictedCameraPosition(newCameraToWorld->mTranslation);
             plotter->updateFrustum(data.imageData, newCameraToWorld);
 
@@ -339,7 +330,6 @@ int main() {
         plotter->updateFrustum(data.imageData, estimatedPose);
 
         pTransformer->registerTransform(estimatedPose);
-        pTransformer->findTransform(estimatedPose->mSource, "world");
 
         auto frame = std::make_shared<Frame>(data.imageData);
         featureDetector->detectFeatures(*frame);
@@ -389,7 +379,6 @@ int main() {
 
             const auto optimizedCameraToWorld = mapToWorld * frame->mMapToCamera->inverse();
             pTransformer->registerTransform(optimizedCameraToWorld);
-            pTransformer->findTransform(optimizedCameraToWorld->mSource, "world");
             plotter->updateFrustum(data.imageData, optimizedCameraToWorld);
             motionModel.addPose(optimizedCameraToWorld, data.imageData->mTimestamp);
             plotter->addPredictedCameraPosition(optimizedCameraToWorld->mTranslation);
