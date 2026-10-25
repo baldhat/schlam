@@ -143,12 +143,12 @@ bool Map::removePoint(MapPointId pointId) {
 
 
 bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe) {
-    static constexpr std::size_t minNumInliers = 50;
+    static constexpr std::size_t minNumInliers = 25;
     static constexpr std::size_t minFramesSinceLastKeyframe = 5;
 
     bool hasMinimumInliers = numInliers >= minNumInliers;
-    bool hasMinimumVisibleChange = numInliers < 0.9 * mKeyFrames.at(nextKeyFrameId-1).mObservedPoints.size();
-    hasMinimumVisibleChange &= framesSinceLastKeyframe >= minFramesSinceLastKeyframe;
+    bool hasMinimumVisibleChange = numInliers < 100; //0.9 * mKeyFrames.at(nextKeyFrameId-1).mObservedPoints.size();
+    //hasMinimumVisibleChange &= framesSinceLastKeyframe >= minFramesSinceLastKeyframe;
     return hasMinimumInliers && hasMinimumVisibleChange;
 }
 
