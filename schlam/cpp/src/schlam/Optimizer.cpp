@@ -599,7 +599,9 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     // OPTIMIZE
     if (!optimizer.initializeOptimization()) return false;
     optimizer.setVerbose(false);
-    if (optimizer.optimize(50) <= 0) return false;
+    optimizer.setForceStopFlag(&stopCovisibility_);
+    optimizer.optimize(50);
+    stopCovisibility_ = false;
 
     // Validate before publishing to the map
     for (const auto& [frameId, vertexId] : frameToVertexId) {
@@ -629,4 +631,8 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     }
     return true;
 
+}
+
+void Optimizer::stopCovisibility() {
+    stopCovisibility_ = true;
 }

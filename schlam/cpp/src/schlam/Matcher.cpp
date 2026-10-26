@@ -140,10 +140,10 @@ matchWindow(const std::shared_ptr<QuadTreeNode>& aTree1,
     return matchWindow(features1, aTree2, aMaxDistance, aWindowSize);
 }
 
-void recordMapPointVisibility(Map* map, const Frame& frame,
+void recordMapPointVisibility(TrackingSnapshot& snapshot, const Frame& frame,
                               const tft::RigidTransform3D& mapToCamera) {
     const auto center = cameraCenter(mapToCamera);
-    for (auto& [pointId, point] : map->mPoints) {
+    for (auto& [pointId, point] : snapshot.mapPoints) {
         if (point.isViewDirectionCompatible(center) &&
             projectIntoFrame(point, frame, mapToCamera))
             ++point.mVisibleInTracking;
@@ -151,17 +151,17 @@ void recordMapPointVisibility(Map* map, const Frame& frame,
 }
 
 std::vector<MapPointMatch>
-matchMapPointsByProjection(Map* map,
+matchMapPointsByProjection(TrackingSnapshot& snapshot,
                           const std::shared_ptr<Frame>& frame,
                           const std::shared_ptr<tft::RigidTransform3D>& estimatedPose,
                           const std::shared_ptr<tft::Transformer>& aTransformer,
                           const double aMaxDistance, const double aWindowSize) {
-    const auto mapToCamera = aTransformer->findTransform(map->mFrame, estimatedPose->mSource);
+    const auto mapToCamera = aTransformer->findTransform(snapshot.frame, estimatedPose->mSource);
     std::vector<MapPointMatch> matches;
-    matches.reserve(map->mPoints.size());
+    matches.reserve(snapshot.mapPoints.size());
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
     const auto center = cameraCenter(*mapToCamera);
-    for (const auto [pointId, mapPoint] : map->mPoints) {
+    for (const auto [pointId, mapPoint] : snapshot.mapPoints) {
         if (!mapPoint.isViewDirectionCompatible(center)) continue;
         const auto projected = projectIntoFrame(mapPoint, *frame, *mapToCamera);
         if (!projected) continue;

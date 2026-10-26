@@ -28,6 +28,11 @@ struct MapSnapshot {
     std::vector<KeyFrameSnapshot> keyFrames;
 };
 
+struct TrackingSnapshot {
+    std::map<MapPointId, MapPoint> mapPoints;
+    std::string frame;
+};
+
 class Map {
 public:
     Map(const std::string& frameName);
@@ -37,8 +42,10 @@ public:
 
     KeyFrameId addKeyFrame(const std::shared_ptr<Frame>& frame);
     MapSnapshot getSnapshot() const;
+    TrackingSnapshot getTrackingSnapshot() const;
     void updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position);
     void updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D& mapToCamera);
+    void applyTrackingSnapshot(const TrackingSnapshot& snapshot);
     void addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId);
     bool removePoint(MapPointId pointId);
 

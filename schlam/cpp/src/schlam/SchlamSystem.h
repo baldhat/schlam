@@ -5,6 +5,8 @@
 #ifndef SCHLAM_SCHLAMSYSTEM_H
 #define SCHLAM_SCHLAMSYSTEM_H
 #include <memory>
+#include <thread>
+#include <boost/thread/concurrent_queues/sync_bounded_queue.hpp>
 
 #include "MotionModel.h"
 #include "Optimizer.h"
@@ -23,6 +25,12 @@ struct SynchronizedData {
     std::shared_ptr<IMUData> imuData;
     std::shared_ptr<GTData> gtData;
     std::shared_ptr<tft::RigidTransform3D> cameraToWorld;
+};
+
+enum class TrackingState {
+    INITIALIZING,
+    TRACKING,
+    LOST
 };
 
 class SchlamSystem {
@@ -46,6 +54,12 @@ private:
 
     std::unique_ptr<Map> map_;
     std::shared_ptr<tft::RigidTransform3D> cameraToIMU_;
+    std::uint32_t framesSinceLastKeyframe_{0};
+    TrackingState state_{TrackingState::INITIALIZING};
+    std::thread localMappingThread_;
+    std::atomic_bool localMappingIdle_{false};
+    std::atomic_bool stopLocalMapping_{false};
+    boost::sync_bounded_queue<KeyFrameId> localMappingQueue_;
 
     // Reference frame
     std::shared_ptr<tft::RigidTransform3D> referenceCameraToWorld_;
@@ -76,7 +90,9 @@ private:
     const KeyFrameId addKeyFrame(std::shared_ptr<Frame> frame, std::vector<MapPointMatch> matches,
                                  std::vector<bool> inliers);
 
-    void localMapping(const KeyFrameId keyframeId);
+    void initialize(const SynchronizedData& data);
+    void track(const SynchronizedData& data);
+    void localMapping();
 
     void setFrameAsReference(
         std::shared_ptr<Frame> frame,

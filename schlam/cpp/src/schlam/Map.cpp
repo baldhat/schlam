@@ -57,6 +57,11 @@ MapSnapshot Map::getSnapshot() const {
     return snapshot;
 }
 
+TrackingSnapshot Map::getTrackingSnapshot() const {
+    std::lock_guard guard(mMutex);
+    return {mPoints, mFrame};
+}
+
 void Map::updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position) {
     std::lock_guard guard(mMutex);
     mPoints.at(pointId).mPosition = position;
@@ -69,6 +74,16 @@ void Map::updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D&
     std::lock_guard guard(mMutex);
     mKeyFrames.at(keyFrameId).mMapToCamera = std::make_shared<tft::RigidTransform3D>(mapToCamera);
 }
+
+void Map::applyTrackingSnapshot(const TrackingSnapshot& snapshot) {
+    std::lock_guard guard(mMutex);
+    for (const auto& [pointId, point] : snapshot.mapPoints) {
+        if (mPoints.contains(pointId)) {
+            mPoints.at(pointId) = point;
+        }
+    }
+}
+
 
 void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId) {
     std::lock_guard guard(mMutex);

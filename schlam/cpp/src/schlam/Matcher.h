@@ -54,12 +54,12 @@ struct MapPointMatch {
 };
 
 // Count projected points only after the frame pose has been accepted.
-void recordMapPointVisibility(Map* map, const Frame& frame,
+void recordMapPointVisibility(TrackingSnapshot& snapshot, const Frame& frame,
                               const tft::RigidTransform3D& mapToCamera);
 
 
 std::vector<MapPointMatch>
-matchMapPointsByProjection(Map* map,
+matchMapPointsByProjection(TrackingSnapshot& snapshot,
                           const std::shared_ptr<Frame>& frame,
                           const std::shared_ptr<tft::RigidTransform3D>& estimatedPose,
                           const std::shared_ptr<tft::Transformer>& aTransformer,
