@@ -5,6 +5,7 @@
 #include "Map.h"
 
 #include "KeyPoint.h"
+#include "Matcher.h"
 
 #include <algorithm>
 #include <iterator>
@@ -34,12 +35,25 @@ MapPointId Map::addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<
     return pointId;
 }
 
-KeyFrameId Map::addKeyFrame(const std::shared_ptr<Frame>& frame) {
+KeyFrameId Map::addKeyFrame(const std::shared_ptr<Frame>& frame,
+                            const std::vector<MapPointMatch> matches,
+                            const std::vector<bool> inliers) {
+    auto keyFrameId = addKeyFrame(frame);
+    for (std::size_t j = 0; j < matches.size(); ++j) {
+        if (!inliers[j]) continue;
+
+        const auto featureIndex = matches[j].feature->getIndex().value();
+        addObservation(keyFrameId, featureIndex, matches[j].mapPointId);
+    }
+    std::cout << "[Map]: Added new keyframe with id " << keyFrameId << std::endl;
+    return keyFrameId;
+}
+
+KeyFrameId Map::addKeyFrame(const std::shared_ptr<Frame> &frame) {
     std::lock_guard guard(mMutex);
     const auto keyFrameId = nextKeyFrameId;
     mKeyFrames.insert({keyFrameId, KeyFrame(keyFrameId, *frame)});
     nextKeyFrameId++;
-    std::cout << "[Map]: Added new keyframe with id " << keyFrameId << std::endl;
     return keyFrameId;
 }
 
@@ -88,6 +102,8 @@ void Map::applyTrackingSnapshot(const TrackingSnapshot& snapshot) {
 void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId) {
     std::lock_guard guard(mMutex);
     auto& keyframe = mKeyFrames.at(keyFrameId);
+    // FIXME
+    if (!mPoints.contains(pointId)) return;
     auto& point = mPoints.at(pointId);
     const auto& feature = keyframe.mKeyPoints.at(featureIndex);
     const auto& existingPoint = keyframe.mObservedPointByFeature.at(featureIndex);
@@ -157,14 +173,14 @@ bool Map::removePoint(MapPointId pointId) {
 }
 
 
-bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe) {
+bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe, const bool localMappingIdle) {
     static constexpr std::size_t minNumInliers = 25;
     static constexpr std::size_t minFramesSinceLastKeyframe = 5;
 
     bool hasMinimumInliers = numInliers >= minNumInliers;
     bool hasMinimumVisibleChange = numInliers < 100; //0.9 * mKeyFrames.at(nextKeyFrameId-1).mObservedPoints.size();
     //hasMinimumVisibleChange &= framesSinceLastKeyframe >= minFramesSinceLastKeyframe;
-    return hasMinimumInliers && hasMinimumVisibleChange;
+    return hasMinimumInliers && hasMinimumVisibleChange && (localMappingIdle || framesSinceLastKeyframe >= 5);
 }
 
 void Map::cullMapPoints() {

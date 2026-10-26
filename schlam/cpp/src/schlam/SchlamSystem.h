@@ -87,9 +87,6 @@ private:
 
     void triangulateUnmatchedFeatures();
 
-    const KeyFrameId addKeyFrame(std::shared_ptr<Frame> frame, std::vector<MapPointMatch> matches,
-                                 std::vector<bool> inliers);
-
     void initialize(const SynchronizedData& data);
     void track(const SynchronizedData& data);
     void localMapping();

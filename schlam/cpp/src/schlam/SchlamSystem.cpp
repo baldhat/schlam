@@ -5,6 +5,7 @@
 #include "SchlamSystem.h"
 
 #include <thread>
+#include <spdlog/common.h>
 
 #include "Map.h"
 #include "Matcher.h"
@@ -222,9 +223,9 @@ void SchlamSystem::track(const SynchronizedData& data) {
 
         map_->applyTrackingSnapshot(trackingSnapshot);
 
-        if (map_->decideNewKeyframe(inlierCount, framesSinceLastKeyframe_)) {
+        if (map_->decideNewKeyframe(inlierCount, framesSinceLastKeyframe_, localMappingIdle_)) {
             framesSinceLastKeyframe_ = 0;
-            const KeyFrameId frameId = addKeyFrame(frame, matches, inliers);
+            const KeyFrameId frameId = map_->addKeyFrame(frame, matches, inliers);
             if (!localMappingIdle_) {
                 optimizer_->stopCovisibility();
             }
@@ -313,20 +314,6 @@ void SchlamSystem::triangulateUnmatchedFeatures() {
     }
 }
 
-const KeyFrameId SchlamSystem::addKeyFrame(
-    std::shared_ptr<Frame> frame,
-    const std::vector<MapPointMatch> matches,
-    const std::vector<bool> inliers) {
-    const auto frameId = map_->addKeyFrame(frame);
-    for (std::size_t j = 0; j < matches.size(); ++j) {
-        if (!inliers[j]) continue;
-
-        const auto featureIndex = matches[j].feature->getIndex().value();
-        map_->addObservation(frameId, featureIndex, matches[j].mapPointId);
-    }
-    return frameId;
-}
-
 void SchlamSystem::localMapping() {
     while (!stopLocalMapping_) {
         localMappingIdle_ = true;
@@ -340,11 +327,8 @@ void SchlamSystem::localMapping() {
         triangulateUnmatchedFeatures();
 
         // optimize
-        if (map_->mKeyFrames.size() < 30) {
-            optimizer_->optimizeFullMap(map_.get());
-        } else {
-            optimizer_->optimizeCovisibilityGraph(map_.get(), std::prev(map_->mKeyFrames.end())->second);
-        }
+        optimizer_->optimizeCovisibilityGraph(map_.get(), std::prev(map_->mKeyFrames.end())->second);
+
     }
 }
 

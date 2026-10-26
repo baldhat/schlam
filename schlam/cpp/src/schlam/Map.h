@@ -14,6 +14,7 @@
 #include "MapPoint.hpp"
 #include "MapTypes.h"
 
+struct MapPointMatch;
 class KeyPoint;
 
 struct KeyFrameSnapshot {
@@ -40,7 +41,11 @@ public:
         const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId);
     MapPointId addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId);
 
+    KeyFrameId addKeyFrame(const std::shared_ptr<Frame>& frame,
+        const std::vector<MapPointMatch> matches,
+        const std::vector<bool> inliers);
     KeyFrameId addKeyFrame(const std::shared_ptr<Frame>& frame);
+
     MapSnapshot getSnapshot() const;
     TrackingSnapshot getTrackingSnapshot() const;
     void updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position);
@@ -49,7 +54,7 @@ public:
     void addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId);
     bool removePoint(MapPointId pointId);
 
-    bool decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe);
+    bool decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe, const bool localMappingIdle);
     void cullMapPoints();
 
     std::string mFrame;
