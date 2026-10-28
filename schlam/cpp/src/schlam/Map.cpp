@@ -73,7 +73,7 @@ MapSnapshot Map::getSnapshot() const {
 
 TrackingSnapshot Map::getTrackingSnapshot() const {
     std::lock_guard guard(mMutex);
-    return {mPoints, mFrame};
+    return {mPoints, {}, {}, mFrame};
 }
 
 void Map::updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position) {
@@ -91,9 +91,14 @@ void Map::updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D&
 
 void Map::applyTrackingSnapshot(const TrackingSnapshot& snapshot) {
     std::lock_guard guard(mMutex);
-    for (const auto& [pointId, point] : snapshot.mapPoints) {
+    for (const auto& [pointId, obs] : snapshot.newObservations) {
         if (mPoints.contains(pointId)) {
-            mPoints.at(pointId) = point;
+            mPoints.at(pointId).addInlierObservation(obs.descriptor, obs.acceptedCameraCenter);
+        }
+    }
+    for (const auto& [pointId, num] : snapshot.visibleInTracking) {
+        if (mPoints.contains(pointId)) {
+            mPoints.at(pointId).mVisibleInTracking = num;
         }
     }
 }
@@ -102,8 +107,6 @@ void Map::applyTrackingSnapshot(const TrackingSnapshot& snapshot) {
 void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId) {
     std::lock_guard guard(mMutex);
     auto& keyframe = mKeyFrames.at(keyFrameId);
-    // FIXME
-    if (!mPoints.contains(pointId)) return;
     auto& point = mPoints.at(pointId);
     const auto& feature = keyframe.mKeyPoints.at(featureIndex);
     const auto& existingPoint = keyframe.mObservedPointByFeature.at(featureIndex);
@@ -179,8 +182,8 @@ bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t 
 
     bool hasMinimumInliers = numInliers >= minNumInliers;
     bool hasMinimumVisibleChange = numInliers < 100; //0.9 * mKeyFrames.at(nextKeyFrameId-1).mObservedPoints.size();
-    //hasMinimumVisibleChange &= framesSinceLastKeyframe >= minFramesSinceLastKeyframe;
-    return hasMinimumInliers && hasMinimumVisibleChange && (localMappingIdle || framesSinceLastKeyframe >= 5);
+    bool localMappingCanProcess = localMappingIdle || framesSinceLastKeyframe >= minFramesSinceLastKeyframe;
+    return hasMinimumInliers && hasMinimumVisibleChange && localMappingCanProcess;
 }
 
 void Map::cullMapPoints() {

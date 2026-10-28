@@ -29,8 +29,15 @@ struct MapSnapshot {
     std::vector<KeyFrameSnapshot> keyFrames;
 };
 
+struct Observation {
+    Descriptor descriptor;
+    Eigen::Vector3d acceptedCameraCenter;
+};
+
 struct TrackingSnapshot {
     std::map<MapPointId, MapPoint> mapPoints;
+    std::map<MapPointId, Observation> newObservations;
+    std::map<MapPointId, std::uint64_t> visibleInTracking;
     std::string frame;
 };
 

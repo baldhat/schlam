@@ -215,8 +215,7 @@ void SchlamSystem::track(const SynchronizedData& data) {
         recordMapPointVisibility(trackingSnapshot, *frame, *frame->mMapToCamera);
         for (std::size_t j = 0; j < matches.size(); ++j) {
             if (inliers[j]) {
-                trackingSnapshot.mapPoints.at(matches[j].mapPointId).addInlierObservation(
-                    matches[j].feature->getDescriptor(), acceptedCameraCenter);
+                trackingSnapshot.newObservations.insert_or_assign(matches[j].mapPointId, Observation{matches[j].feature->getDescriptor(), acceptedCameraCenter});
             }
         }
         const auto mapToWorld = transformer_->findTransform(trackingSnapshot.frame, "world");
@@ -307,9 +306,7 @@ void SchlamSystem::triangulateUnmatchedFeatures() {
                 }
             }
             std::cout << "Triangulated " << numInliers << " new MapPoints!" << std::endl;
-
             // TODO look for matches in the other keyframes
-
         }
     }
 }

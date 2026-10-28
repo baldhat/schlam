@@ -146,7 +146,7 @@ void recordMapPointVisibility(TrackingSnapshot& snapshot, const Frame& frame,
     for (auto& [pointId, point] : snapshot.mapPoints) {
         if (point.isViewDirectionCompatible(center) &&
             projectIntoFrame(point, frame, mapToCamera))
-            ++point.mVisibleInTracking;
+            snapshot.visibleInTracking.insert_or_assign(pointId, ++point.mVisibleInTracking);
     }
 }
 
