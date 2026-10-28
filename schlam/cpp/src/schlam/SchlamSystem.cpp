@@ -249,6 +249,11 @@ void SchlamSystem::track(const SynchronizedData& data) {
 void SchlamSystem::localMapping() {
     while (!stopLocalMapping_) {
         localMappingIdle_ = true;
+
+        if (localMappingQueue_.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
         auto frameId = localMappingQueue_.pull_front();
         localMappingIdle_ = false;
 

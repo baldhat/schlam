@@ -42,6 +42,7 @@ KittiDataset::KittiDataset(std::shared_ptr<tft::Transformer> aTransformer, const
 }
 
 KittiDataset::~KittiDataset() {
+    mStop = true;
     if (mImageLoader.joinable())
         mImageLoader.join();
     if (mGTLoader.joinable())
@@ -138,7 +139,8 @@ void KittiDataset::loadImageData() {
         cv::Mat image = cv::imread(imageFile, cv::IMREAD_GRAYSCALE);
         auto imageData = std::make_shared<ImageData>(
             timestamp, image, mCamera0Intrinsics, mCamera0CF);
-        mImageQueue.push_back(imageData);
+
+        while (!mStop && mImageQueue.try_push_back(imageData) != boost::queue_op_status::success);
         index++;
     }
     mAllImagesRead = true;
@@ -152,7 +154,8 @@ void KittiDataset::loadGTData() {
         auto rotation = pose.block<3, 3>(0,0);
         auto velocity = Eigen::Vector3d(std::nanf(""), std::nanf(""), std::nanf(""));
         auto gtData = std::make_shared<GTData>(mTimePoints.at(i), position, rotation, velocity, mGTCF);
-        mGTQueue.push_back(gtData);
+
+        while (!mStop && mGTQueue.try_push_back(gtData) != boost::queue_op_status::success);
     }
     mAllGTRead = true;
 }

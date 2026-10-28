@@ -76,6 +76,7 @@ private:
 
     std::atomic_bool mAllImagesRead{false};
     std::atomic_bool mAllGTRead{false};
+    std::atomic_bool mStop{false};
 
     const std::string mSequence;
 };

@@ -35,6 +35,7 @@ MAVDataset::MAVDataset(std::shared_ptr<tft::Transformer> aTransformer, const std
 }
 
 MAVDataset::~MAVDataset() {
+    mStop = true;
     if (mImageLoader.joinable())
         mImageLoader.join();
     if (mIMULoader.joinable())
@@ -150,7 +151,7 @@ void MAVDataset::loadImageData() {
         }
         auto imageData = std::make_shared<ImageData>(
             timestamp, image, mCamera0Intrinsics, mCamera0CF);
-        mImageQueue.push_back(imageData);
+        while (!mStop && mImageQueue.try_push_back(imageData) != boost::queue_op_status::success);
     }
     mAllImagesRead = true;
 }
@@ -176,8 +177,8 @@ void MAVDataset::loadIMUData() {
         auto gtData = std::make_shared<GTData>(helpers::longNanoToTimePoint(gt_ts), gtPos, gtQuat.toRotationMatrix(),
                                                gtVel, "world");
 
-        mIMUQueue.push_back(imuData);
-        mGTQueue.push_back(gtData);
+        while (!mStop && mIMUQueue.try_push_back(imuData) != boost::queue_op_status::success);
+        while (!mStop && mGTQueue.try_push_back(gtData) != boost::queue_op_status::success);
     }
     mAllIMURead = true;
 }

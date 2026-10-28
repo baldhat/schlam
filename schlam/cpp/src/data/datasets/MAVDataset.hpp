@@ -75,5 +75,6 @@ private:
 
   std::atomic_bool mAllImagesRead{false};
   std::atomic_bool mAllIMURead{false};
+  std::atomic_bool mStop{false};
 };
 
