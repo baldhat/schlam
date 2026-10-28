@@ -19,19 +19,19 @@
 
 
 
-MAVDataset::MAVDataset(std::shared_ptr<tft::Transformer> aTransformer)
-    : mImageQueue(3), mIMUQueue(2000), mGTQueue(2000) {
+MAVDataset::MAVDataset(std::shared_ptr<tft::Transformer> aTransformer, const std::string& sequence)
+    : mSequence(sequence), mImageQueue(3), mIMUQueue(2000), mGTQueue(2000) {
     const char *raw_val = std::getenv("MAV_PATH");
-    mDatasetPath = (raw_val != nullptr) ? raw_val : "";
+    mDatasetPath = std::filesystem::path((raw_val != nullptr) ? raw_val : "") / mSequence / "mav0";
 
     loadCamera0Config();
     aTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
         mCamera0CF, mGTCF, mCamera0Rotation, mCamera0Translation));
 
     loadIMUConfig();
-    mImageLoader = std::thread(std::bind(&MAVDataset::loadImageData, this));
-    mIMULoader = std::thread(std::bind(&MAVDataset::loadIMUData, this));
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    mImageLoader = std::thread(&MAVDataset::loadImageData, this);
+    mIMULoader = std::thread(&MAVDataset::loadIMUData, this);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 MAVDataset::~MAVDataset() {
@@ -56,6 +56,10 @@ bool MAVDataset::hasGT() {
 bool MAVDataset::empty() {
     return (mImageQueue.empty() && mAllImagesRead) || (mIMUQueue.empty() && mAllIMURead) ||
                (mGTQueue.empty() && mAllIMURead);
+}
+
+float MAVDataset::percentageRead() {
+    return static_cast<float>(100.0 * mNumImagesRead / mNumImages);
 }
 
 void MAVDataset::loadCamera0Config() {
@@ -120,6 +124,8 @@ void MAVDataset::loadImageData() {
     std::copy(imageFilepaths, std::filesystem::directory_iterator(), std::back_inserter(filesInDirectory));
     std::sort(filesInDirectory.begin(), filesInDirectory.end());
 
+    mNumImages = filesInDirectory.size();
+
     cv::Mat cameraMatrix;
     cv::eigen2cv(mCamera0Intrinsics, cameraMatrix);
     cv::Mat map1, map2;
@@ -177,7 +183,9 @@ void MAVDataset::loadIMUData() {
 }
 
 std::shared_ptr<ImageData> MAVDataset::getNextImageData() {
-    return mImageQueue.pull_front();
+    auto imageData = mImageQueue.pull_front();
+    mNumImagesRead++;
+    return imageData;
 }
 
 std::shared_ptr<IMUData> MAVDataset::getNextIMUData() {

@@ -38,6 +38,8 @@ public:
 
     Eigen::Matrix3d getCameraIntrinsics() override;
 
+    float percentageRead() override;
+
 private:
     void loadImageData();
 
@@ -45,7 +47,7 @@ private:
 
     void loadCamera0Config();
 
-    void loadIMUConfig();
+    void loadGTConfig();
 
     std::thread mImageLoader;
     std::thread mGTLoader;
@@ -53,6 +55,9 @@ private:
     boost::sync_bounded_queue<std::shared_ptr<ImageData> > mImageQueue;
     boost::sync_bounded_queue<std::shared_ptr<IMUData> > mIMUQueue;
     boost::sync_bounded_queue<std::shared_ptr<GTData> > mGTQueue;
+
+    std::size_t mNumImagesRead{0};
+    std::size_t mNumImages{0};
 
     std::filesystem::path mDatasetPath;
     std::filesystem::path mCamera0Path;

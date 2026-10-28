@@ -34,6 +34,13 @@ SchlamSystem::SchlamSystem(
     cameraToIMU_ = transformer_->findTransform("gt/cam0", "gt/body");
 }
 
+SchlamSystem::~SchlamSystem() {
+    stopLocalMapping_ = true;
+    if (localMappingThread_.joinable()) {
+        localMappingThread_.join();
+    }
+}
+
 void SchlamSystem::run() {
 
     // initialization
@@ -64,10 +71,8 @@ void SchlamSystem::run() {
         }
     }
 
-    std::cout << "Finished sequence, doing full map optimization pass..." << std::endl;
-    map_->cullMapPoints();
-    optimizer_->optimizeFullMap(map_.get(), true);
-    std::cout << "Finished!" << std::endl;
+
+
 }
 
 SynchronizedData SchlamSystem::getNextSynchronizedData() {
@@ -82,15 +87,15 @@ SynchronizedData SchlamSystem::getNextSynchronizedData() {
         std::max(imuBegin, gtBegin)
     );
 
-    while (imageData && imageData->mTimestamp.time_since_epoch() < highestTimestamp) {
+    while (imageData && imageData->mTimestamp.time_since_epoch() < highestTimestamp && !dataset_->empty()) {
         imageData = dataset_->getNextImageData();
     }
 
-    while (imuData && imuData->mTimestamp.time_since_epoch() < highestTimestamp) {
+    while (imuData && imuData->mTimestamp.time_since_epoch() < highestTimestamp && !dataset_->empty()) {
         imuData = dataset_->getNextIMUData();
     }
 
-    while (gtData && gtData->mTimestamp.time_since_epoch() < highestTimestamp) {
+    while (gtData && gtData->mTimestamp.time_since_epoch() < highestTimestamp && !dataset_->empty()) {
         gtData = dataset_->getNextGTData();
     }
 
@@ -179,10 +184,6 @@ void SchlamSystem::track(const SynchronizedData& data) {
     featureDetector_->detectFeatures(*frame);
 
     // TODO Match only with features in predicted scale
-    // TODO: Use map TrackingSnapshot instead of direct map access
-    // Content:
-    // - MapPoint Snapshots
-    // -
     TrackingSnapshot trackingSnapshot = map_->getTrackingSnapshot();
     const auto matches = matchMapPointsByProjection(trackingSnapshot, frame, estimatedPose, transformer_, 50, 50);
     std::cout << "Matched " << matches.size() << " out of " <<trackingSnapshot.mapPoints.size() << " map points" << std::endl;
@@ -240,7 +241,24 @@ void SchlamSystem::track(const SynchronizedData& data) {
 
     framesSinceLastKeyframe_++;
     if (matchedMapPoints.size() < 12) {
+        std::cout << "Lost tracking!" << std::endl;
         state_ = TrackingState::LOST;
+    }
+}
+
+void SchlamSystem::localMapping() {
+    while (!stopLocalMapping_) {
+        localMappingIdle_ = true;
+        auto frameId = localMappingQueue_.pull_front();
+        localMappingIdle_ = false;
+
+        auto frame = map_->mKeyFrames.at(frameId);
+        map_->cullMapPoints();
+
+        triangulateUnmatchedFeatures();
+
+        optimizer_->optimizeCovisibilityGraph(map_.get(), std::prev(map_->mKeyFrames.end())->second);
+
     }
 }
 
@@ -281,6 +299,7 @@ void SchlamSystem::buildMap(std::string prevFrameName,
 }
 
 void SchlamSystem::triangulateUnmatchedFeatures() {
+    // TODO use covisibility graph instead?
     std::size_t lastNKeyframes = 5;
     auto start = std::prev(map_->mKeyFrames.end(), std::min(lastNKeyframes, map_->mKeyFrames.size() - 1));
     auto latest = std::prev(map_->mKeyFrames.end());
@@ -308,24 +327,6 @@ void SchlamSystem::triangulateUnmatchedFeatures() {
             std::cout << "Triangulated " << numInliers << " new MapPoints!" << std::endl;
             // TODO look for matches in the other keyframes
         }
-    }
-}
-
-void SchlamSystem::localMapping() {
-    while (!stopLocalMapping_) {
-        localMappingIdle_ = true;
-        auto frameId = localMappingQueue_.pull_front();
-        localMappingIdle_ = false;
-
-        auto frame = map_->mKeyFrames.at(frameId);
-        map_->cullMapPoints();
-
-        // add map points
-        triangulateUnmatchedFeatures();
-
-        // optimize
-        optimizer_->optimizeCovisibilityGraph(map_.get(), std::prev(map_->mKeyFrames.end())->second);
-
     }
 }
 

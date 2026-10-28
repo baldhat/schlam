@@ -35,9 +35,9 @@ KittiDataset::KittiDataset(std::shared_ptr<tft::Transformer> aTransformer, const
     aTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
          mGTCF,mCamera0CF, mCamera0Rotation, mCamera0Translation));
 
-    loadIMUConfig();
-    mImageLoader = std::thread(std::bind(&KittiDataset::loadImageData, this));
-    mGTLoader = std::thread(std::bind(&KittiDataset::loadGTData, this));
+    loadGTConfig();
+    mImageLoader = std::thread(&KittiDataset::loadImageData, this);
+    mGTLoader = std::thread(&KittiDataset::loadGTData, this);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
@@ -63,6 +63,10 @@ bool KittiDataset::hasGT() {
 bool KittiDataset::empty() {
     return (mImageQueue.empty() && mAllImagesRead) || (mIMUQueue.empty() && mAllGTRead) ||
                (mGTQueue.empty() && mAllGTRead);
+}
+
+float KittiDataset::percentageRead() {
+    return static_cast<float>(100.0 * mNumImagesRead / mNumImages);
 }
 
 void KittiDataset::loadCamera0Config() {
@@ -94,7 +98,7 @@ Eigen::Matrix3d KittiDataset::getCameraIntrinsics() {
 }
 
 
-void KittiDataset::loadIMUConfig() {
+void KittiDataset::loadGTConfig() {
     auto poseFileName = mDatasetPath / "data_odometry_poses/dataset/poses" / (mSequence + ".txt");
     auto timeFileName = mDatasetPath / "data_odometry_calib/dataset/sequences" / mSequence /  + "times.txt";
 
@@ -123,6 +127,7 @@ void KittiDataset::loadImageData() {
     auto imageFilepaths = std::filesystem::directory_iterator(imagesPath);
     std::copy(imageFilepaths, std::filesystem::directory_iterator(), std::back_inserter(filesInDirectory));
     std::sort(filesInDirectory.begin(), filesInDirectory.end());
+    mNumImages = filesInDirectory.size();
 
     std::size_t index = 0;
     for (auto &filepath: filesInDirectory) {
@@ -153,7 +158,9 @@ void KittiDataset::loadGTData() {
 }
 
 std::shared_ptr<ImageData> KittiDataset::getNextImageData() {
-    return mImageQueue.pull_front();
+    auto imageData = mImageQueue.pull_front();
+    mNumImagesRead++;
+    return imageData;
 }
 
 std::shared_ptr<IMUData> KittiDataset::getNextIMUData() {

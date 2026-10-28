@@ -17,7 +17,7 @@
 class MAVDataset : public DatasetInterface {
 
 public:
-  MAVDataset(std::shared_ptr<tft::Transformer> aTransformer);
+  MAVDataset(std::shared_ptr<tft::Transformer> aTransformer, const std::string& sequence);
 
   ~MAVDataset();
 
@@ -34,6 +34,8 @@ public:
 
   Eigen::Matrix3d getCameraIntrinsics() override;
 
+  float percentageRead() override;
+
 private:
   void loadImageData();
   void loadIMUData();
@@ -48,8 +50,12 @@ private:
   boost::sync_bounded_queue<std::shared_ptr<IMUData>> mIMUQueue;
   boost::sync_bounded_queue<std::shared_ptr<GTData>> mGTQueue;
 
+  std::size_t mNumImagesRead{0};
+  std::size_t mNumImages{0};
+
   std::filesystem::path mDatasetPath;
   std::filesystem::path mCamera0Path;
+  const std::string mSequence;
 
   std::shared_ptr<io::CSVReader<7>> mIMUCSVReader;
   double mGyroscopeNoiseDensity{0.0};

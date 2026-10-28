@@ -26,6 +26,8 @@ public:
 
     virtual bool empty() = 0;
     virtual Eigen::Matrix3d getCameraIntrinsics() = 0;
+
+    virtual float percentageRead() = 0;
 };
 
 #endif //SCHLAM_DATASETINTERFACE_H

@@ -42,6 +42,7 @@ public:
         std::shared_ptr<ORBFeatureDetector> featureDetector,
         std::shared_ptr<Optimizer> optimizer,
         MotionModel& motionModel);
+    ~SchlamSystem();
 
     void run();
 private:

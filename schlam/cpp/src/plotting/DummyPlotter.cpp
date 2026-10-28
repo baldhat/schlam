@@ -19,4 +19,4 @@ void DummyPlotter::addPredictedCameraPosition(const Eigen::Vector3d& aPosition) 
 void DummyPlotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) {}
 void DummyPlotter::plotMatches(const cv::Mat& oldFrame, const cv::Mat& newFrame,
                  const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches) {}
-void DummyPlotter::run() { while (true) {std::this_thread::sleep_for(std::chrono::milliseconds(100));}}
+void DummyPlotter::run() { }

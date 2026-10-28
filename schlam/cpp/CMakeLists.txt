@@ -103,6 +103,8 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/SchlamSystem.h
     src/schlam/Profiler.cpp
     src/schlam/Profiler.h
+        src/schlam/CovisibilityHelpers.cpp
+        src/schlam/CovisibilityHelpers.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
