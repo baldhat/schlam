@@ -3,17 +3,23 @@
 //
 
 #include "SchlamSystem.h"
+#include "Optimizer.h"
+#include "MotionModel.h"
 
 #include <thread>
 #include <spdlog/common.h>
 
+#include "Frame.h"
+#include "KeyFrame.h"
 #include "Map.h"
+#include "MapPoint.hpp"
 #include "Matcher.h"
 #include "ORBFeatureDetector.h"
 #include "Profiler.h"
 #include "Ransac.h"
 #include "utils.h"
 #include "data/DatasetInterface.hpp"
+#include "tft/transformer.hpp"
 #include "plotting/IPlotter.hpp"
 
 SchlamSystem::SchlamSystem(

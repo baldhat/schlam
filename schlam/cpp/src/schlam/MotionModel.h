@@ -8,10 +8,11 @@
 #include <tuple>
 #include <vector>
 
-#include <Eigen/Core>
 #include "utils.hpp"
-#include "tft/rigid_transform_3d.hpp"
 
+namespace tft {
+    class RigidTransform3D;
+}
 
 class MotionModel {
 public:

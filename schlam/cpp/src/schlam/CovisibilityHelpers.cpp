@@ -4,6 +4,7 @@
 
 #include "CovisibilityHelpers.h"
 
+#include "KeyFrame.h"
 #include "Map.h"
 
 std::vector<Neighbor> getCovisibilityNeighbors(Map* map,

@@ -3,20 +3,17 @@
 //
 
 #include "Matcher.h"
-
-#include <algorithm>
-#include <vector>
-#include <array>
-#include <cstdint>
-#include <limits>
-#include <optional>
-#include <unordered_set>
-
 #include "Frame.h"
-#include "se3_ops.h"
+#include "MapPoint.hpp"
 #include "utils.h"
 #include "tft/rigid_transform_3d.hpp"
+#include "Map.h"
 #include "tft/transformer.hpp"
+
+#include <unordered_set>
+
+#include "KeyFrame.h"
+
 
 namespace {
 

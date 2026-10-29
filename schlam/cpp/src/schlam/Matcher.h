@@ -5,19 +5,26 @@
 #ifndef SCHLAM_MATCHER_H
 #define SCHLAM_MATCHER_H
 
-#include "KeyPoint.h"
-#include "QuadTreeNode.h"
-#include "Map.h"
-
 #include <array>
-#include <cstddef>
 #include <memory>
 #include <tuple>
 #include <vector>
 
-#include "tft/transformer.hpp"
+#include "MapTypes.h"
+
 
 class Frame;
+class Map;
+class KeyPoint;
+class QuadTreeNode;
+class TrackingSnapshot;
+class KeyFrame;
+
+namespace tft {
+    class RigidTransform3D;
+    class Transformer;
+}
+
 
 
 std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::vector<std::shared_ptr<KeyPoint>>& keypoints1,

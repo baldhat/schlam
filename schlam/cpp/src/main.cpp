@@ -1,23 +1,15 @@
 #include "data/datasets/MAVDataset.hpp"
-#include "plotting/PangolinPlotter.hpp"
-#include "schlam/Ransac.h"
-#include "tft/rigid_transform_3d.hpp"
-
-#include <algorithm>
-#include <chrono>
-#include <cmath>
-#include <thread>
-
 #include "data/datasets/KittiDataset.hpp"
+
+#include "plotting/PangolinPlotter.hpp"
 #include "plotting/DummyPlotter.h"
+
 #include "schlam/ORBFeatureDetector.h"
-#include "schlam/Matcher.h"
 #include "schlam/Optimizer.h"
-#include "schlam/Frame.h"
-#include "schlam/Map.h"
 #include "schlam/MotionModel.h"
-#include "schlam/Profiler.h"
 #include "schlam/SchlamSystem.h"
+
+#include <thread>
 
 
 int main() {

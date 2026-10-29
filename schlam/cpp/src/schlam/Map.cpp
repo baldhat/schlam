@@ -8,8 +8,12 @@
 #include "Matcher.h"
 
 #include <algorithm>
+#include <iostream>
 #include <iterator>
 #include <stdexcept>
+
+#include "KeyFrame.h"
+#include "MapPoint.hpp"
 
 
 Map::Map(const std::string& frameName) : mFrame(frameName) {}

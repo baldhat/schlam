@@ -7,11 +7,15 @@
 #include <memory>
 #include <thread>
 #include <boost/thread/concurrent_queues/sync_bounded_queue.hpp>
+#include <Eigen/Eigen>
 
-#include "MotionModel.h"
-#include "Optimizer.h"
-#include "tft/transformer.hpp"
+#include "MapTypes.h"
 
+
+namespace tft {
+    class Transformer;
+    class RigidTransform3D;
+}
 
 struct MapPointMatch;
 class IMUData;
@@ -19,6 +23,13 @@ class GTData;
 class ORBFeatureDetector;
 class IPlotter;
 class DatasetInterface;
+class ImageData;
+class Optimizer;
+class MotionModel;
+class Map;
+class Frame;
+class KeyPoint;
+
 
 struct SynchronizedData {
     std::shared_ptr<ImageData> imageData;

@@ -4,18 +4,26 @@
 
 #ifndef SCHLAM_MAP_H
 #define SCHLAM_MAP_H
+
+#include "MapTypes.h"
+
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <map>
 
-#include "KeyFrame.h"
-#include "MapPoint.hpp"
-#include "MapTypes.h"
+#include <Eigen/Core>
+#include <opencv2/core/core.hpp>
 
+#include "KeyPoint.h"
+#include "tft/rigid_transform_3d.hpp"
+
+class MapPoint;
 struct MapPointMatch;
-class KeyPoint;
+class Frame;
+class KeyFrame;
+
 
 struct KeyFrameSnapshot {
     KeyFrameId id;

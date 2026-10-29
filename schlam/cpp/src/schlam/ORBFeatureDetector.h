@@ -7,12 +7,12 @@
 #include <opencv2/core/mat.hpp>
 
 #include "FastFeatureDetector.h"
-#include "KeyPoint.h"
 #include "utils.h"
-#include "QuadTreeNode.h"
-#include "Frame.h"
 
+class Frame;
 class IPlotter;
+class QuadTreeNode;
+class KeyPoint;
 
 class ORBFeatureDetector {
 public:

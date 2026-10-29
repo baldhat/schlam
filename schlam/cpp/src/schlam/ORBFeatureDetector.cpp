@@ -7,6 +7,11 @@
 #include <opencv2/opencv.hpp>
 
 #include "plotting/IPlotter.hpp"
+#include "FastFeatureDetector.h"
+#include "KeyPoint.h"
+#include "utils.h"
+#include "QuadTreeNode.h"
+#include "Frame.h"
 
 #include <algorithm>
 #include <bitset>

@@ -12,11 +12,9 @@
 #include <vector>
 
 #include <g2o/core/sparse_optimizer.h>
-#include <g2o/core/optimization_algorithm_property.h>
-
-#include "KeyFrame.h"
 
 class Map;
+class KeyFrame;
 
 struct PoseOptimizationResult {
     Eigen::Matrix3d rotation;
