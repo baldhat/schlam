@@ -15,6 +15,7 @@
 
 #include "schlam/KeyPoint.h"
 #include "schlam/Map.h"
+#include "schlam/QuadTreeNode.h"
 
 #include <stdexcept>
 
@@ -76,7 +77,7 @@ void drawOutlinedWorldText(const std::string& text, const Eigen::Vector3d& posit
 class Sidebar : public pangolin::Handler {
 public:
     enum Toggle { Pause, Frames, FrameNames, Cam0Frustum, PredictedFrustum,
-                  KeyframeFrustums, Features, Matches, GroundTruthPath, PredictedPath,
+                  MapPoints, KeyframeFrustums, Features, KeypointTree, Matches, GroundTruthPath, PredictedPath,
                   OrbitCamera, ToggleCount };
     struct Entry { const char* label; bool enabled; };
 
@@ -84,8 +85,9 @@ public:
 
     std::array<Entry, ToggleCount> toggles{{
         {"Pause", false}, {"Show frames", true}, {"Frame names", true},
-        {"cam0 frustum", true}, {"Predicted frustum", true}, {"Keyframe frustums", true},
-        {"Feature image", true}, {"Match image", true},
+        {"cam0 frustum", true}, {"Predicted frustum", true},
+        {"Show map points", true}, {"Keyframe frustums", true},
+        {"Feature image", true}, {"Keypoint octree", false}, {"Match image", true},
         {"Ground truth path", true}, {"Predicted path", true}, {"Orbit camera", false}
     }};
     double imageAlpha{1.0};
@@ -211,9 +213,9 @@ public:
 private:
     static constexpr int kFirstButtonOffset = 48;
     static constexpr int kFirstToggleOffset = 146;
-    static constexpr int kSliderOffset = 572;
-    static constexpr int kOrbitSliderOffset = 642;
-    static constexpr int kContentHeight = 690;
+    static constexpr int kSliderOffset = 644;
+    static constexpr int kOrbitSliderOffset = 714;
+    static constexpr int kContentHeight = 762;
     static constexpr double kMinOrbitDistance = 0.5;
     static constexpr double kMaxOrbitDistance = 30.0;
 
@@ -544,7 +546,7 @@ void Plotter::drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha) {
     glPopAttrib();
 }
 
-void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alpha) {
+void Plotter::drawMap(bool showMapPoints, bool showKeyFrameFrustums, bool showFrameNames, double alpha) {
     MapSnapshot snapshot;
     std::shared_ptr<tft::RigidTransform3D> mapToWorld;
     std::uint64_t mapRevision;
@@ -565,17 +567,19 @@ void Plotter::drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alp
     glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT | GL_DEPTH_BUFFER_BIT | GL_TEXTURE_BIT | GL_LINE_BIT);
     glDisable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
-    glPushAttrib(GL_POINT_BIT);
-    glPointSize(5.f);
-    glBegin(GL_POINTS);
-    for (const auto& point : snapshot.points) {
-        const Eigen::Vector3d worldPoint = mapToWorld->mRotation * point + mapToWorld->mTranslation;
-        const float depth = static_cast<float>(std::clamp(worldPoint.z() / 2.0, 0.0, 1.0));
-        setColor(blend(mTheme.mapPointNear, mTheme.mapPointFar, depth));
-        glVertex3d(worldPoint.x(), worldPoint.y(), worldPoint.z());
+    if (showMapPoints) {
+        glPushAttrib(GL_POINT_BIT);
+        glPointSize(5.f);
+        glBegin(GL_POINTS);
+        for (const auto& point : snapshot.points) {
+            const Eigen::Vector3d worldPoint = mapToWorld->mRotation * point + mapToWorld->mTranslation;
+            const float depth = static_cast<float>(std::clamp(worldPoint.z() / 2.0, 0.0, 1.0));
+            setColor(blend(mTheme.mapPointNear, mTheme.mapPointFar, depth));
+            glVertex3d(worldPoint.x(), worldPoint.y(), worldPoint.z());
+        }
+        glEnd();
+        glPopAttrib();
     }
-    glEnd();
-    glPopAttrib();
 
     if (!showKeyFrameFrustums) {
         glPopAttrib();
@@ -665,7 +669,8 @@ void Plotter::plotFrustum(const cv::Mat& image, const Eigen::Matrix3d& intrinsic
     glPopMatrix();
 }
 
-void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) {
+void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
+                           const QuadTreeNode& aTree) {
     if (aImage.empty()) {
         std::cout << "Invalid image!" << std::endl;
         return;
@@ -677,21 +682,35 @@ void Plotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_
         colorResult = aImage.clone();
     }
 
-    for (const auto &p: aFeatures) {
-        int targetX = p->getImgX(); // * aFactor;
-        int targetY = p->getImgY(); //* aFactor;
+    cv::Mat treeResult = colorResult.clone();
+    std::vector<const QuadTreeNode*> pending{&aTree};
+    while (!pending.empty()) {
+        const auto* node = pending.back();
+        pending.pop_back();
+        const auto bounds = node->getBounds();
+        cv::rectangle(treeResult,
+                      cv::Point(static_cast<int>(bounds.left), static_cast<int>(bounds.top)),
+                      cv::Point(static_cast<int>(bounds.right), static_cast<int>(bounds.bottom)),
+                      toBgr(mTheme.sidebarAccent), 1);
+        for (const auto* child : node->getChildren()) pending.push_back(child);
+    }
 
-        if (targetX >= 0 && targetX < colorResult.cols &&
-            targetY >= 0 && targetY < colorResult.rows) {
-            cv::circle(colorResult, cv::Point(targetX, targetY), 0, toBgr(mTheme.featureMarker), -1);
+    for (const auto &point : aFeatures) {
+        const int x = static_cast<int>(point->getImgX());
+        const int y = static_cast<int>(point->getImgY());
+        if (x >= 0 && x < colorResult.cols && y >= 0 && y < colorResult.rows) {
+            cv::circle(colorResult, cv::Point(x, y), 0, toBgr(mTheme.featureMarker), -1);
+            cv::circle(treeResult, cv::Point(x, y), 0, toBgr(mTheme.featureMarker), -1);
         }
     }
 
-    setFeatureTexture(colorResult);
+    setFeatureTexture(colorResult, treeResult);
 }
 
-void Plotter::setFeatureTexture(const cv::Mat &aImage) {
+void Plotter::setFeatureTexture(const cv::Mat &aImage, const cv::Mat& aTreeImage) {
+    std::lock_guard guard(mFeatureImageMutex);
     mFeatureImage = aImage;
+    mFeatureTreeImage = aTreeImage;
     mFeatureImageChanged = true;
 }
 
@@ -700,19 +719,26 @@ void Plotter::setMatcherTexture(const cv::Mat &aImage) {
     mMatcherImageChanged = true;
 }
 
-void Plotter::showFeatures() {
-    if (mFeatureImage.empty()) return;
+void Plotter::showFeatures(bool showKeypointTree) {
+    cv::Mat image;
+    bool needsUpload;
+    {
+        std::lock_guard guard(mFeatureImageMutex);
+        image = showKeypointTree ? mFeatureTreeImage : mFeatureImage;
+        needsUpload = mFeatureImageChanged.exchange(false) || mFeatureTreeShown != showKeypointTree;
+        mFeatureTreeShown = showKeypointTree;
+    }
+    if (image.empty()) return;
 
-    if (mFeatureImageChanged) {
+    if (needsUpload || !mFeatureImageTexture) {
         mFeatureImageTexture = std::make_unique<pangolin::GlTexture>(
-            mFeatureImage.cols,
-            mFeatureImage.rows,
+            image.cols,
+            image.rows,
             GL_RGB, false, 0, GL_BGR, GL_UNSIGNED_BYTE
         );
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        mFeatureImageTexture->Upload(mFeatureImage.data, GL_BGR, GL_UNSIGNED_BYTE);
-        mFeatureImageChanged = false;
+        mFeatureImageTexture->Upload(image.data, GL_BGR, GL_UNSIGNED_BYTE);
     }
 
     setColor(mTheme.textureTint);
@@ -889,8 +915,8 @@ void Plotter::run() {
         glLineWidth(1.0f);
         DrawGrid(10, 1.0f);
 
-        drawMap(sidebar.enabled(Sidebar::KeyframeFrustums), sidebar.enabled(Sidebar::FrameNames),
-                sidebar.imageAlpha);
+        drawMap(sidebar.enabled(Sidebar::MapPoints), sidebar.enabled(Sidebar::KeyframeFrustums),
+                sidebar.enabled(Sidebar::FrameNames), sidebar.imageAlpha);
 
         drawCameras(sidebar.enabled(Sidebar::GroundTruthPath), sidebar.enabled(Sidebar::PredictedPath),
                     sidebar.enabled(Sidebar::Cam0Frustum), sidebar.enabled(Sidebar::PredictedFrustum),
@@ -910,7 +936,7 @@ void Plotter::run() {
 
         featureView.Activate();
         if (sidebar.enabled(Sidebar::Features)) {
-            showFeatures();
+            showFeatures(sidebar.enabled(Sidebar::KeypointTree));
         }
 
         matcherView.Activate();

@@ -14,6 +14,10 @@
 
 class QuadTreeNode {
 public:
+    struct Bounds {
+        double left, right, top, bottom;
+    };
+
     QuadTreeNode(const double aLeft, const double aRight, const double aTop, const double aBottom,
                  const std::vector<KeyPoint> &aFeatures);
 
@@ -35,6 +39,8 @@ public:
     void removeChild(const QuadTreeNode* aChild);
 
     std::vector<QuadTreeNode *> getChildren() const;
+
+    Bounds getBounds() const { return {mLeft, mRight, mTop, mBottom}; }
 
     double getMaxScore() const;
 

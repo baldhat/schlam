@@ -26,6 +26,7 @@
 
 
 class KeyPoint;
+class QuadTreeNode;
 class Map;
 
 class Plotter {
@@ -98,7 +99,8 @@ public:
 
     void addPredictedCameraPosition(const Eigen::Vector3d& aPosition);
 
-    void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures);
+    void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
+                      const QuadTreeNode& aTree);
 
     void plotMatches(const cv::Mat& oldFrame, const cv::Mat& newFrame,
                      const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches);
@@ -149,7 +151,10 @@ private:
     // Feature Image
     mutable std::unique_ptr<pangolin::GlTexture> mFeatureImageTexture;
     cv::Mat mFeatureImage;
+    cv::Mat mFeatureTreeImage;
     std::atomic_bool mFeatureImageChanged{false};
+    std::mutex mFeatureImageMutex;
+    bool mFeatureTreeShown{false};
 
     // Matcher Image
     mutable std::unique_ptr<pangolin::GlTexture> mMatcherImageTexture;
@@ -176,13 +181,13 @@ private:
     // Called with mCameraVisualizationMutex held by drawCameras.
     void drawFrustums(bool aShowCam0, bool aShowPredicted, double aAlpha);
 
-    void drawMap(bool showKeyFrameFrustums, bool showFrameNames, double alpha);
+    void drawMap(bool showMapPoints, bool showKeyFrameFrustums, bool showFrameNames, double alpha);
 
-    void setFeatureTexture(const cv::Mat &aImage);
+    void setFeatureTexture(const cv::Mat &aImage, const cv::Mat& aTreeImage);
 
     void setMatcherTexture(const cv::Mat &aImage);
 
-    void showFeatures();
+    void showFeatures(bool showKeypointTree);
 
     void showMatches();
 
