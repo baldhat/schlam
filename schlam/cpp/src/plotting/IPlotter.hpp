@@ -21,7 +21,8 @@ public:
     virtual void resetCameraPaths(const Eigen::Vector3d& aReferencePosition) = 0;
     virtual void addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition) = 0;
     virtual void addPredictedCameraPosition(const Eigen::Vector3d& aPosition) = 0;
-    virtual void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) = 0;
+    virtual void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
+                      const QuadTreeNode& aTree) = 0;
     virtual void plotMatches(const cv::Mat& oldFrame, const cv::Mat& newFrame,
                      const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches) = 0;
     // Start visualization (runs in main thread)

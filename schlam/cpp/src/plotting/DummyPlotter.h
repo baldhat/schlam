@@ -19,7 +19,8 @@ public:
     void resetCameraPaths(const Eigen::Vector3d& aReferencePosition) override;
     void addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition) override;
     void addPredictedCameraPosition(const Eigen::Vector3d& aPosition) override;
-    void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) override;
+    void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
+                      const QuadTreeNode& aTree) override;
     void plotMatches(const cv::Mat& oldFrame, const cv::Mat& newFrame,
                      const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches) override;
     void run() override;

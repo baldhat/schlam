@@ -16,7 +16,8 @@ void DummyPlotter::recordFrameTime(std::chrono::steady_clock::duration elapsed) 
 void DummyPlotter::resetCameraPaths(const Eigen::Vector3d& aReferencePosition) {}
 void DummyPlotter::addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition) {}
 void DummyPlotter::addPredictedCameraPosition(const Eigen::Vector3d& aPosition) {}
-void DummyPlotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures) {}
+void DummyPlotter::plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
+                      const QuadTreeNode& aTree) {}
 void DummyPlotter::plotMatches(const cv::Mat& oldFrame, const cv::Mat& newFrame,
                  const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches) {}
 void DummyPlotter::run() { while (true) {std::this_thread::sleep_for(std::chrono::milliseconds(100));}}
