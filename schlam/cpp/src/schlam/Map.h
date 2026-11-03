@@ -4,17 +4,26 @@
 
 #ifndef SCHLAM_MAP_H
 #define SCHLAM_MAP_H
+
+#include "MapTypes.h"
+
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <map>
 
-#include "KeyFrame.h"
-#include "MapPoint.hpp"
-#include "MapTypes.h"
+#include <Eigen/Core>
+#include <opencv2/core/core.hpp>
 
-class KeyPoint;
+#include "KeyPoint.h"
+#include "tft/rigid_transform_3d.hpp"
+
+class MapPoint;
+struct MapPointMatch;
+class Frame;
+class KeyFrame;
+
 
 struct KeyFrameSnapshot {
     KeyFrameId id;
@@ -28,6 +37,18 @@ struct MapSnapshot {
     std::vector<KeyFrameSnapshot> keyFrames;
 };
 
+struct Observation {
+    Descriptor descriptor;
+    Eigen::Vector3d acceptedCameraCenter;
+};
+
+struct TrackingSnapshot {
+    std::map<MapPointId, MapPoint> mapPoints;
+    std::map<MapPointId, Observation> newObservations;
+    std::map<MapPointId, std::uint64_t> visibleInTracking;
+    std::string frame;
+};
+
 class Map {
 public:
     Map(const std::string& frameName);
@@ -35,14 +56,20 @@ public:
         const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId);
     MapPointId addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId);
 
+    KeyFrameId addKeyFrame(const std::shared_ptr<Frame>& frame,
+        const std::vector<MapPointMatch> matches,
+        const std::vector<bool> inliers);
     KeyFrameId addKeyFrame(const std::shared_ptr<Frame>& frame);
+
     MapSnapshot getSnapshot() const;
+    TrackingSnapshot getTrackingSnapshot() const;
     void updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position);
     void updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D& mapToCamera);
+    void applyTrackingSnapshot(const TrackingSnapshot& snapshot);
     void addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId);
     bool removePoint(MapPointId pointId);
 
-    bool decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe);
+    bool decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe, const bool localMappingIdle);
     void cullMapPoints();
 
     std::string mFrame;

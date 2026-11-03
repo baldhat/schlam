@@ -3,6 +3,7 @@
 //
 
 #include "MotionModel.h"
+#include "tft/rigid_transform_3d.hpp"
 
 #include <Eigen/Geometry>
 
@@ -10,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
+
 
 MotionModel::MotionModel(double maxExtrapolationIntervals)
     : mMaxExtrapolationIntervals(maxExtrapolationIntervals) {

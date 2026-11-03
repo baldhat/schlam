@@ -5,7 +5,7 @@
 #ifndef SCHLAM_QUADTREE_H
 #define SCHLAM_QUADTREE_H
 
-#include "KeyPoint.h"
+class KeyPoint;
 
 #include <vector>
 #include <memory>

@@ -3,6 +3,7 @@
 //
 
 #include "QuadTreeNode.h"
+#include "KeyPoint.h"
 
 #include <cmath>
 #include <iostream>

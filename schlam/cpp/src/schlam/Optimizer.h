@@ -12,11 +12,9 @@
 #include <vector>
 
 #include <g2o/core/sparse_optimizer.h>
-#include <g2o/core/optimization_algorithm_property.h>
-
-#include "KeyFrame.h"
 
 class Map;
+class KeyFrame;
 
 struct PoseOptimizationResult {
     Eigen::Matrix3d rotation;
@@ -64,6 +62,10 @@ public:
     // Bounds the local poses and fixed anchors; skips problems without a monocular scale anchor.
     bool optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe,
                                   std::size_t maxNumVariable = 20, std::size_t maxNumFixed = 40);
+
+    void stopCovisibility();
+
+    bool stopCovisibility_{false};
 };
 
 

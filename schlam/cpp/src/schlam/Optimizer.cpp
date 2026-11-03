@@ -13,15 +13,16 @@
 
 #include <g2o/core/base_unary_edge.h>
 #include <g2o/core/optimization_algorithm_factory.h>
-#include <g2o/core/parameter.h>
 #include <g2o/types/sba/types_six_dof_expmap.h>
 
+#include "CovisibilityHelpers.h"
+#include "KeyFrame.h"
 #include "Map.h"
+#include "MapPoint.hpp"
 #include "g2o/core/block_solver.h"
 #include "g2o/core/robust_kernel_impl.h"
 #include "g2o/core/sparse_optimizer.h"
 #include "g2o/solvers/structure_only/structure_only_solver.h"
-#include "g2o/stuff/sampler.h"
 
 G2O_USE_OPTIMIZATION_LIBRARY(eigen);
 G2O_USE_OPTIMIZATION_LIBRARY(dense);
@@ -417,27 +418,10 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     if (!map || maxNumVariable == 0 || maxNumFixed < 2 ||
         !map->mKeyFrames.contains(keyframe.mId)) return false;
 
+    auto neighbors = getCovisibilityNeighbors(map, keyframe.mId, maxNumVariable - 1, 15);
+
     std::set<KeyFrameId> localFrames{keyframe.mId};
     std::set<MapPointId> candidatePoints(keyframe.mObservedPoints.begin(), keyframe.mObservedPoints.end());
-
-    using Neighbor = std::pair<KeyFrameId, std::uint32_t>;
-    std::vector<Neighbor> neighbors;
-    for (const auto& [frameId, sharedObservedCount] : keyframe.mSharedPointCount) {
-        if (frameId == keyframe.mId || sharedObservedCount < 15)
-            continue;
-
-        neighbors.emplace_back(frameId, sharedObservedCount);
-    }
-
-    const std::size_t keep =
-      std::min(neighbors.size(), maxNumVariable - 1); // current keyframe uses one slot
-    std::partial_sort(
-      neighbors.begin(), neighbors.begin() + keep, neighbors.end(),
-      [](const Neighbor& a, const Neighbor& b) {
-          if (a.second != b.second) return a.second > b.second;
-          return a.first < b.first;
-      });
-    neighbors.resize(keep);
 
     for (const auto& [neighborId, count] : neighbors) {
         localFrames.insert(neighborId);
@@ -599,7 +583,9 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     // OPTIMIZE
     if (!optimizer.initializeOptimization()) return false;
     optimizer.setVerbose(false);
-    if (optimizer.optimize(50) <= 0) return false;
+    optimizer.setForceStopFlag(&stopCovisibility_);
+    optimizer.optimize(50);
+    stopCovisibility_ = false;
 
     // Validate before publishing to the map
     for (const auto& [frameId, vertexId] : frameToVertexId) {
@@ -629,4 +615,8 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     }
     return true;
 
+}
+
+void Optimizer::stopCovisibility() {
+    stopCovisibility_ = true;
 }

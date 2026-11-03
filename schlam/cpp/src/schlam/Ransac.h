@@ -5,8 +5,6 @@
 #ifndef SCHLAM_RANSAC_H
 #define SCHLAM_RANSAC_H
 
-#include "KeyPoint.h"
-
 #include <eigen3/Eigen/Eigen>
 
 #include <opencv2/core.hpp>
@@ -17,8 +15,10 @@
 #include <vector>
 
 namespace tft {
-class RigidTransform3D;
+    class RigidTransform3D;
 }
+
+class KeyPoint;
 
 // R and t map the reference camera into the current camera. Cloud points are in
 // the reference frame, and cloud/mask entries retain the input correspondence order.

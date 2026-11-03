@@ -19,22 +19,23 @@
 
 
 
-MAVDataset::MAVDataset(std::shared_ptr<tft::Transformer> aTransformer)
-    : mImageQueue(3), mIMUQueue(2000), mGTQueue(2000) {
+MAVDataset::MAVDataset(std::shared_ptr<tft::Transformer> aTransformer, const std::string& sequence)
+    : mSequence(sequence), mImageQueue(3), mIMUQueue(2000), mGTQueue(2000) {
     const char *raw_val = std::getenv("MAV_PATH");
-    mDatasetPath = (raw_val != nullptr) ? raw_val : "";
+    mDatasetPath = std::filesystem::path((raw_val != nullptr) ? raw_val : "") / mSequence / "mav0";
 
     loadCamera0Config();
     aTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
         mCamera0CF, mGTCF, mCamera0Rotation, mCamera0Translation));
 
     loadIMUConfig();
-    mImageLoader = std::thread(std::bind(&MAVDataset::loadImageData, this));
-    mIMULoader = std::thread(std::bind(&MAVDataset::loadIMUData, this));
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    mImageLoader = std::thread(&MAVDataset::loadImageData, this);
+    mIMULoader = std::thread(&MAVDataset::loadIMUData, this);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 MAVDataset::~MAVDataset() {
+    mStop = true;
     if (mImageLoader.joinable())
         mImageLoader.join();
     if (mIMULoader.joinable())
@@ -56,6 +57,10 @@ bool MAVDataset::hasGT() {
 bool MAVDataset::empty() {
     return (mImageQueue.empty() && mAllImagesRead) || (mIMUQueue.empty() && mAllIMURead) ||
                (mGTQueue.empty() && mAllIMURead);
+}
+
+float MAVDataset::percentageRead() {
+    return static_cast<float>(100.0 * mNumImagesRead / mNumImages);
 }
 
 void MAVDataset::loadCamera0Config() {
@@ -120,6 +125,8 @@ void MAVDataset::loadImageData() {
     std::copy(imageFilepaths, std::filesystem::directory_iterator(), std::back_inserter(filesInDirectory));
     std::sort(filesInDirectory.begin(), filesInDirectory.end());
 
+    mNumImages = filesInDirectory.size();
+
     cv::Mat cameraMatrix;
     cv::eigen2cv(mCamera0Intrinsics, cameraMatrix);
     cv::Mat map1, map2;
@@ -144,7 +151,7 @@ void MAVDataset::loadImageData() {
         }
         auto imageData = std::make_shared<ImageData>(
             timestamp, image, mCamera0Intrinsics, mCamera0CF);
-        mImageQueue.push_back(imageData);
+        while (!mStop && mImageQueue.try_push_back(imageData) != boost::queue_op_status::success);
     }
     mAllImagesRead = true;
 }
@@ -170,14 +177,16 @@ void MAVDataset::loadIMUData() {
         auto gtData = std::make_shared<GTData>(helpers::longNanoToTimePoint(gt_ts), gtPos, gtQuat.toRotationMatrix(),
                                                gtVel, "world");
 
-        mIMUQueue.push_back(imuData);
-        mGTQueue.push_back(gtData);
+        while (!mStop && mIMUQueue.try_push_back(imuData) != boost::queue_op_status::success);
+        while (!mStop && mGTQueue.try_push_back(gtData) != boost::queue_op_status::success);
     }
     mAllIMURead = true;
 }
 
 std::shared_ptr<ImageData> MAVDataset::getNextImageData() {
-    return mImageQueue.pull_front();
+    auto imageData = mImageQueue.pull_front();
+    mNumImagesRead++;
+    return imageData;
 }
 
 std::shared_ptr<IMUData> MAVDataset::getNextIMUData() {

@@ -5,19 +5,26 @@
 #ifndef SCHLAM_MATCHER_H
 #define SCHLAM_MATCHER_H
 
-#include "KeyPoint.h"
-#include "QuadTreeNode.h"
-#include "Map.h"
-
 #include <array>
-#include <cstddef>
 #include <memory>
 #include <tuple>
 #include <vector>
 
-#include "tft/transformer.hpp"
+#include "MapTypes.h"
+
 
 class Frame;
+class Map;
+class KeyPoint;
+class QuadTreeNode;
+class TrackingSnapshot;
+class KeyFrame;
+
+namespace tft {
+    class RigidTransform3D;
+    class Transformer;
+}
+
 
 
 std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::vector<std::shared_ptr<KeyPoint>>& keypoints1,
@@ -54,12 +61,12 @@ struct MapPointMatch {
 };
 
 // Count projected points only after the frame pose has been accepted.
-void recordMapPointVisibility(Map* map, const Frame& frame,
+void recordMapPointVisibility(TrackingSnapshot& snapshot, const Frame& frame,
                               const tft::RigidTransform3D& mapToCamera);
 
 
 std::vector<MapPointMatch>
-matchMapPointsByProjection(Map* map,
+matchMapPointsByProjection(TrackingSnapshot& snapshot,
                           const std::shared_ptr<Frame>& frame,
                           const std::shared_ptr<tft::RigidTransform3D>& estimatedPose,
                           const std::shared_ptr<tft::Transformer>& aTransformer,

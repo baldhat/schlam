@@ -35,13 +35,14 @@ KittiDataset::KittiDataset(std::shared_ptr<tft::Transformer> aTransformer, const
     aTransformer->registerTransform(std::make_shared<tft::RigidTransform3D>(
          mGTCF,mCamera0CF, mCamera0Rotation, mCamera0Translation));
 
-    loadIMUConfig();
-    mImageLoader = std::thread(std::bind(&KittiDataset::loadImageData, this));
-    mGTLoader = std::thread(std::bind(&KittiDataset::loadGTData, this));
+    loadGTConfig();
+    mImageLoader = std::thread(&KittiDataset::loadImageData, this);
+    mGTLoader = std::thread(&KittiDataset::loadGTData, this);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 KittiDataset::~KittiDataset() {
+    mStop = true;
     if (mImageLoader.joinable())
         mImageLoader.join();
     if (mGTLoader.joinable())
@@ -63,6 +64,10 @@ bool KittiDataset::hasGT() {
 bool KittiDataset::empty() {
     return (mImageQueue.empty() && mAllImagesRead) || (mIMUQueue.empty() && mAllGTRead) ||
                (mGTQueue.empty() && mAllGTRead);
+}
+
+float KittiDataset::percentageRead() {
+    return static_cast<float>(100.0 * mNumImagesRead / mNumImages);
 }
 
 void KittiDataset::loadCamera0Config() {
@@ -94,7 +99,7 @@ Eigen::Matrix3d KittiDataset::getCameraIntrinsics() {
 }
 
 
-void KittiDataset::loadIMUConfig() {
+void KittiDataset::loadGTConfig() {
     auto poseFileName = mDatasetPath / "data_odometry_poses/dataset/poses" / (mSequence + ".txt");
     auto timeFileName = mDatasetPath / "data_odometry_calib/dataset/sequences" / mSequence /  + "times.txt";
 
@@ -123,6 +128,7 @@ void KittiDataset::loadImageData() {
     auto imageFilepaths = std::filesystem::directory_iterator(imagesPath);
     std::copy(imageFilepaths, std::filesystem::directory_iterator(), std::back_inserter(filesInDirectory));
     std::sort(filesInDirectory.begin(), filesInDirectory.end());
+    mNumImages = filesInDirectory.size();
 
     std::size_t index = 0;
     for (auto &filepath: filesInDirectory) {
@@ -133,7 +139,8 @@ void KittiDataset::loadImageData() {
         cv::Mat image = cv::imread(imageFile, cv::IMREAD_GRAYSCALE);
         auto imageData = std::make_shared<ImageData>(
             timestamp, image, mCamera0Intrinsics, mCamera0CF);
-        mImageQueue.push_back(imageData);
+
+        while (!mStop && mImageQueue.try_push_back(imageData) != boost::queue_op_status::success);
         index++;
     }
     mAllImagesRead = true;
@@ -147,13 +154,16 @@ void KittiDataset::loadGTData() {
         auto rotation = pose.block<3, 3>(0,0);
         auto velocity = Eigen::Vector3d(std::nanf(""), std::nanf(""), std::nanf(""));
         auto gtData = std::make_shared<GTData>(mTimePoints.at(i), position, rotation, velocity, mGTCF);
-        mGTQueue.push_back(gtData);
+
+        while (!mStop && mGTQueue.try_push_back(gtData) != boost::queue_op_status::success);
     }
     mAllGTRead = true;
 }
 
 std::shared_ptr<ImageData> KittiDataset::getNextImageData() {
-    return mImageQueue.pull_front();
+    auto imageData = mImageQueue.pull_front();
+    mNumImagesRead++;
+    return imageData;
 }
 
 std::shared_ptr<IMUData> KittiDataset::getNextIMUData() {

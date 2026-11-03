@@ -8,14 +8,12 @@
 #include "tft/rigid_transform_3d.hpp"
 
 #include <opencv2/calib3d/calib3d.hpp>
-
-#include <Eigen/Dense>
+#include <opencv2/core/eigen.hpp>
 
 #include <algorithm>
 #include <optional>
 #include <random>
 #include <set>
-#include <opencv2/core/eigen.hpp>
 
 namespace {
 constexpr double kMaxTriangulationCosParallax = 0.99998;
