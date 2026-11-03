@@ -19,15 +19,6 @@
 #include "tft/transformer.hpp"
 
 namespace {
-std::vector<MapPointId> sortedMapPointIds(const Map& map) {
-    std::vector<MapPointId> ids;
-    ids.reserve(map.mPoints.size());
-    for (const auto& [id, point] : map.mPoints) {
-        ids.push_back(id);
-    }
-    std::sort(ids.begin(), ids.end());
-    return ids;
-}
 
 Eigen::Vector3d cameraCenter(const tft::RigidTransform3D& mapToCamera) {
     return -mapToCamera.mRotation.transpose() * mapToCamera.mTranslation;
@@ -170,8 +161,7 @@ matchMapPointsByProjection(Map* map,
     matches.reserve(map->mPoints.size());
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
     const auto center = cameraCenter(*mapToCamera);
-    for (const auto mapPointId : sortedMapPointIds(*map)) {
-        auto& mapPoint = map->mPoints.at(mapPointId);
+    for (const auto [pointId, mapPoint] : map->mPoints) {
         if (!mapPoint.isViewDirectionCompatible(center)) continue;
         const auto projected = projectIntoFrame(mapPoint, *frame, *mapToCamera);
         if (!projected) continue;
@@ -201,31 +191,10 @@ matchMapPointsByProjection(Map* map,
 
         auto projectedFeature = std::make_shared<KeyPoint>(
             projected->x(), projected->y(), 0, 0, 0, mapPoint.mDescriptor);
-        matches.push_back({mapPointId, feature, projectedFeature});
+        matches.push_back({pointId, feature, projectedFeature});
         matchedTargets.insert(feature);
     }
     return matches;
-}
-
-std::tuple<std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>, std::vector<bool>>
-matchByProjection(Map* map,
-                  std::shared_ptr<Frame> frame,
-                  std::shared_ptr<tft::RigidTransform3D> estimatedPose,
-                  std::shared_ptr<tft::Transformer> aTransformer,
-                  const double aMaxDistance, const double aWindowSize) {
-    const auto associations = matchMapPointsByProjection(
-        map, frame, estimatedPose, aTransformer, aMaxDistance, aWindowSize);
-    std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matches;
-    const auto pointIds = sortedMapPointIds(*map);
-    std::vector<bool> matched(map->mPoints.size(), false);
-    for (const auto& association : associations) {
-        matches[0].push_back(association.projectedFeature);
-        matches[1].push_back(association.feature);
-        const auto index = std::lower_bound(pointIds.begin(), pointIds.end(), association.mapPointId)
-            - pointIds.begin();
-        matched[index] = true;
-    }
-    return {matches, matched};
 }
 
 std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(KeyFrame& frame1, KeyFrame& frame2, const double aMaxDistance) {

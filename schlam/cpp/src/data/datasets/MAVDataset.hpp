@@ -1,9 +1,9 @@
 
 #pragma once
-#include "image_data.hpp"
-#include "imu_data.hpp"
+#include "../image_data.hpp"
+#include "../imu_data.hpp"
 #include "tft/transformer.hpp"
-#include "gt_data.hpp"
+#include "../gt_data.hpp"
 
 #include <boost/thread/concurrent_queues/sync_bounded_queue.hpp>
 
@@ -12,19 +12,27 @@
 #include <filesystem>
 #include <thread>
 
-class MAVDataloader {
+#include "../DatasetInterface.hpp"
+
+class MAVDataset : public DatasetInterface {
 
 public:
-  MAVDataloader(std::shared_ptr<tft::Transformer> aTransformer);
+  MAVDataset(std::shared_ptr<tft::Transformer> aTransformer);
 
-  ~MAVDataloader();
+  ~MAVDataset();
 
-  std::shared_ptr<ImageData> getNextImageData();
-  std::shared_ptr<std::pair<IMUData, GTData>> getNextIMUData();
+  double getImageAspectRatio() override;
 
-  bool empty();
+  bool hasIMU() override;
+  bool hasGT() override;
 
-  Eigen::Matrix3d getCameraIntrinsics();
+  std::shared_ptr<ImageData> getNextImageData() override;
+  std::shared_ptr<IMUData> getNextIMUData() override;
+  std::shared_ptr<GTData> getNextGTData() override;
+
+  bool empty() override;
+
+  Eigen::Matrix3d getCameraIntrinsics() override;
 
 private:
   void loadImageData();
@@ -37,36 +45,29 @@ private:
   std::thread mIMULoader;
 
   boost::sync_bounded_queue<std::shared_ptr<ImageData>> mImageQueue;
-  boost::sync_bounded_queue<std::shared_ptr<std::pair<IMUData, GTData>>> mIMUQueue;
+  boost::sync_bounded_queue<std::shared_ptr<IMUData>> mIMUQueue;
+  boost::sync_bounded_queue<std::shared_ptr<GTData>> mGTQueue;
 
   std::filesystem::path mDatasetPath;
   std::filesystem::path mCamera0Path;
 
-  const std::string mIMUCF{"imu"};
   std::shared_ptr<io::CSVReader<7>> mIMUCSVReader;
   double mGyroscopeNoiseDensity{0.0};
   double mGyroscopeRandomWalk{0.0};
   double mAccelerometerNoiseDensity{0.0};
   double mAccelerometerRandomWalk{0.0};
 
-
   const std::string mGTCF{"gt/body"};
   const std::string mGTCamera0CF{"gt/cam0"};
   std::shared_ptr<io::CSVReader<11>> mGTCSVReader;
 
-  const std::string mCamera0CF{"cam0"};
+  const std::string mCamera0CF{"gt/cam0"};
   Eigen::Matrix3d mCamera0Intrinsics;
   cv::Mat mCamera0DistortionCoefficients;
   Eigen::Matrix3d mCamera0Rotation;
   Eigen::Vector3d mCamera0Translation;
 
-  std::uint32_t mImageIndex{0};
-  std::uint32_t mIMUIndex{0};
   std::atomic_bool mAllImagesRead{false};
   std::atomic_bool mAllIMURead{false};
 };
 
-std::chrono::system_clock::time_point
-stringNanoToTimePoint(const std::string &nano_str);
-std::chrono::system_clock::time_point
-longNanoToTimePoint(const std::uint64_t &aNanos);

@@ -6,7 +6,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "plotting/plotter.hpp"
+#include "plotting/IPlotter.hpp"
 
 #include <algorithm>
 #include <bitset>
@@ -16,7 +16,7 @@
 #include "orb_pattern.h"
 
 ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
-                                       std::shared_ptr<Plotter> apPlotter,
+                                       std::shared_ptr<IPlotter> apPlotter,
                                        const std::uint8_t aNumLevels,
                                        const double aLevelFactor) : mNumFeatures(aNumFeatures), mNumLevels(aNumLevels),
                                                                     mLevelFactor(aLevelFactor), mpPlotter(apPlotter) {

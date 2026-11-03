@@ -554,8 +554,7 @@ recoverPoseFromEssential(
         double parallax = 0;
         if (numValid > 0) {
             std::sort(currentParallaxes.begin(), currentParallaxes.end());
-
-            size_t idx = std::min(50, int(currentParallaxes.size() - 1));
+            size_t idx = std::min(30, int(currentParallaxes.size() - 1));
             parallax = std::acos(std::clamp(currentParallaxes[idx], -1.0, 1.0)) * 180.0 / CV_PI;
         }
         if (numValid > bestNumPositive) {
@@ -605,7 +604,7 @@ std::pair<bool, double> isValid(const Eigen::Vector3d &p1_3D, const Eigen::Vecto
     double cosParallax = normal1.dot(normal2) / (dist1 * dist2);
     if (!std::isfinite(cosParallax)) return {false, 0};
 
-    constexpr double cosParallaxThreshold{0.9999}; // 0.99998
+    constexpr double cosParallaxThreshold{0.99998}; // 0.99998
     // Check depth in front of first camera (only if enough parallax, as "infinite" points can easily go to negative depth)
     if (p1_3D(2) <= 0 && cosParallax < cosParallaxThreshold)
         return {false, cosParallax};

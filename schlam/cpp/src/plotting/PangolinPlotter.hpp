@@ -24,12 +24,14 @@
 #include <optional>
 #include <unordered_map>
 
+#include "IPlotter.hpp"
+
 
 class KeyPoint;
 class QuadTreeNode;
 class Map;
 
-class Plotter {
+class PangolinPlotter : public IPlotter {
 public:
     // RGB values are 8-bit in the header; OpenGL and OpenCV conversions stay in plotter.cpp.
     struct Color {
@@ -70,48 +72,47 @@ public:
         }};
     };
 
-    Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics);
+    PangolinPlotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics);
     // Supply a theme before visualization starts to customize every plotter color.
-    Plotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
-            const Theme& aTheme);
+    PangolinPlotter(std::shared_ptr<tft::Transformer> apTransformer, const Eigen::Matrix3d& aCameraIntrinsics,
+            const Theme& aTheme, const double aRatio, const bool ZUP);
 
-    ~Plotter() = default;
+    ~PangolinPlotter() = default;
 
-    bool shouldPause();
+    bool shouldPause() override;
 
     // The caller owns the map and must keep it alive while visualization runs.
-    void setMap(const Map* map);
+    void setMap(const Map* map) override;
 
-    void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform);
+    void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform) override;
 
     // The predicted pose maps the camera into world coordinates.
     void updateFrustum(const std::shared_ptr<ImageData> aImageData,
-                       const std::shared_ptr<tft::RigidTransform3D> aPredictedPose = nullptr);
+                       const std::shared_ptr<tft::RigidTransform3D> aPredictedPose = nullptr) override;
 
-    void updateTimestamp(const utils::TTimestamp& aTimestamp);
+    void updateTimestamp(const utils::TTimestamp& aTimestamp) override;
 
-    void recordFrameTime(std::chrono::steady_clock::duration elapsed);
+    void recordFrameTime(std::chrono::steady_clock::duration elapsed) override;
 
     // Camera positions are expressed in world coordinates.
-    void resetCameraPaths(const Eigen::Vector3d& aReferencePosition);
+    void resetCameraPaths(const Eigen::Vector3d& aReferencePosition) override;
 
-    void addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition);
+    void addGroundTruthCameraPosition(const Eigen::Vector3d& aPosition) override;
 
-    void addPredictedCameraPosition(const Eigen::Vector3d& aPosition);
+    void addPredictedCameraPosition(const Eigen::Vector3d& aPosition) override;
 
     void plotFeatures(const cv::Mat &aImage, const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
-                      const QuadTreeNode& aTree);
+                      const QuadTreeNode& aTree) override;
 
     void plotMatches(const cv::Mat& oldFrame, const cv::Mat& newFrame,
-                     const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches);
+                     const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aMatches) override;
 
     // Start visualization (runs in main thread)
-    void run();
-
-    void setup();
+    void run() override;
 
 private:
     const Theme mTheme;
+    const bool mZUP{false};
     std::atomic_bool mPause{false};
     std::mutex mPauseMutex;
 
@@ -140,6 +141,8 @@ private:
     std::mutex mFrameTimeMutex;
     std::size_t mDisplayedKeyframeCount{0};
     std::size_t mDisplayedMapPointCount{0};
+
+    double mImageAspectRatio {1920.0/1080.0};
 
     std::vector<Eigen::Vector3d> mGroundTruthCameraPath;
     std::vector<Eigen::Vector3d> mPredictedCameraPath;

@@ -362,7 +362,7 @@ bool Optimizer::optimizeFullMap(Map* map, bool removeOutlierPoints) {
 
     // OPTIMIZE
     if (!optimizer.initializeOptimization()) return false;
-    optimizer.setVerbose(true);
+    //optimizer.setVerbose(true);
     if (optimizer.optimize(50) <= 0) return false;
 
     // Validate before publishing to the map

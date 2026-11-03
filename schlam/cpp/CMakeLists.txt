@@ -27,7 +27,7 @@ find_package(TBB REQUIRED)
 find_package(spdlog REQUIRED)
 
 # 2. Find System Pangolin
-# set(Pangolin_DIR "/home/baldhat/dev/Pangolin/build")
+set(Pangolin_DIR "/home/jonathan_michel/dev/cpp/Pangolin/build")
 find_package(Pangolin REQUIRED CONFIG)
 include_directories(${Pangolin_INCLUDE_DIRS})
 
@@ -43,23 +43,31 @@ include_directories(
 add_library(${PROJECT_NAME} SHARED 
     src/random.cpp
     src/random.hpp
-    src/plotting/plotter.cpp
+
+        src/plotting/PangolinPlotter.hpp
+        src/plotting/PangolinPlotter.cpp
+
     src/tft/rigid_transform_3d.cpp
     src/tft/transformable_3d.cpp
     src/tft/transformer.cpp
-    src/data/image_data.cpp
-    src/data/imu_data.cpp
-    src/data/mav_dataloader.cpp
-    src/data/gt_data.cpp
-
-    src/plotting/plotter.hpp
     src/tft/rigid_transform_3d.hpp
     src/tft/transformable_3d.hpp
     src/tft/transformer.hpp
+
+    src/data/image_data.cpp
+    src/data/imu_data.cpp
+    src/data/datasets/MAVDataset.cpp
+    src/data/gt_data.cpp
+    src/data/DatasetInterface.hpp
+    src/data/datasets/KittiDataset.cpp
+    src/data/datasets/KittiDataset.hpp
+    src/data/data_helper.hpp
+    src/data/data_helper.cpp
     src/data/image_data.hpp
     src/data/imu_data.hpp
-    src/data/mav_dataloader.hpp
+    src/data/datasets/MAVDataset.hpp
     src/data/gt_data.hpp
+
     src/schlam/FastFeatureDetector.cpp
     src/schlam/FastFeatureDetector.h
     src/schlam/ORBFeatureDetector.cpp
@@ -80,14 +88,21 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/Frame.cpp
     src/schlam/Frame.h
     src/schlam/Optimizer.cpp
-        src/schlam/MapPoint.cpp
-        src/schlam/MapPoint.hpp
-        src/schlam/Map.cpp
-        src/schlam/Map.h
-        src/schlam/MotionModel.cpp
-        src/schlam/MotionModel.h
-        src/schlam/KeyFrame.cpp
-        src/schlam/KeyFrame.h
+    src/schlam/MapPoint.cpp
+    src/schlam/MapPoint.hpp
+    src/schlam/Map.cpp
+    src/schlam/Map.h
+    src/schlam/MotionModel.cpp
+    src/schlam/MotionModel.h
+    src/schlam/KeyFrame.cpp
+    src/schlam/KeyFrame.h
+    src/plotting/IPlotter.hpp
+    src/plotting/DummyPlotter.cpp
+    src/plotting/DummyPlotter.h
+    src/schlam/SchlamSystem.cpp
+    src/schlam/SchlamSystem.h
+    src/schlam/Profiler.cpp
+    src/schlam/Profiler.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -103,7 +118,7 @@ target_link_libraries(${PROJECT_NAME}
     Boost::boost Boost::thread
     fast-cpp-csv-parser::fast-cpp-csv-parser
     TBB::tbb
-    g2o::core g2o::solver_csparse g2o::solver_dense g2o::solver_eigen g2o::types_sim3 g2o::types_slam3d
+    g2o::core g2o::solver_dense g2o::solver_eigen g2o::types_sim3 g2o::types_slam3d
 )
 
 
@@ -123,7 +138,14 @@ target_link_libraries(tft ${PROJECT_NAME})
 enable_testing()
 find_package(GTest REQUIRED CONFIG)
 
-add_executable(unit_tests tests/test_ransac.cpp tests/test_reconstruction.cpp tests/test_features.cpp tests/test_mav_dataloader.cpp tests/test_motion_model.cpp tests/test_optimizer.cpp)
+add_executable(unit_tests
+    tests/test_ransac.cpp
+    tests/test_reconstruction.cpp
+    tests/test_features.cpp
+    tests/test_mav_dataloader.cpp
+    tests/test_motion_model.cpp
+    tests/test_optimizer.cpp
+)
 
 # Ensure GTest targets are linked correctly
 target_link_libraries(unit_tests PRIVATE 
