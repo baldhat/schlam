@@ -9,6 +9,8 @@
 #include "schlam/utils.h"
 #include "data/image_data.hpp"
 
+class QuadTreeNode;
+
 class IPlotter {
 public:
     virtual bool shouldPause() = 0;

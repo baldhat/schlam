@@ -18,11 +18,11 @@ int main() {
     //auto dataloader = std::make_shared<KittiDataset>(pTransformer, "02");
     auto dataloader = std::make_shared<MAVDataset>(pTransformer, "V1_02_medium");
 
-    /*std::shared_ptr<IPlotter> plotter = std::make_shared<PangolinPlotter>(
+    std::shared_ptr<IPlotter> plotter = std::make_shared<PangolinPlotter>(
         pTransformer, dataloader->getCameraIntrinsics(),
         PangolinPlotter::Theme{}, dataloader->getImageAspectRatio(),
-        true);*/
-    std::shared_ptr<IPlotter> plotter = std::make_shared<DummyPlotter>();
+        true);
+    //std::shared_ptr<IPlotter> plotter = std::make_shared<DummyPlotter>();
     auto render_loop = std::thread([plotter] { plotter->run(); });
 
     auto featureDetector = std::make_shared<ORBFeatureDetector>(1000, plotter, 6);
