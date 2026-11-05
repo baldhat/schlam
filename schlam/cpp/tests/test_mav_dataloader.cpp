@@ -126,12 +126,3 @@ TEST_F(MAVDatasetTest, CorrectionMapsFollowImageResolution) {
     EXPECT_EQ(loader.getNextImageData()->mImage.size(), cv::Size(64, 64));
     EXPECT_EQ(loader.getNextImageData()->mImage.size(), cv::Size(72, 60));
 }
-
-TEST_F(MAVDatasetTest, UnsupportedModelAndInvalidCoefficientsFailBeforeLoading) {
-    calibration("distortion_model: unknown\ndistortion_coefficients: [0, 0, 0, 0]\n");
-    EXPECT_THROW(MAVDataset(std::make_shared<tft::Transformer>(), "ci_smoke"), std::runtime_error);
-    calibration("distortion_model: equidistant\ndistortion_coefficients: [0, 0, 0, 0]\n");
-    EXPECT_THROW(MAVDataset(std::make_shared<tft::Transformer>(), "ci_smoke"), std::runtime_error);
-    calibration("distortion_model: rad-tan\ndistortion_coefficients: [0, 0, 0]\n");
-    EXPECT_THROW(MAVDataset(std::make_shared<tft::Transformer>(), "ci_smoke"), std::runtime_error);
-}

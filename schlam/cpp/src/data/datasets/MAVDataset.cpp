@@ -72,7 +72,7 @@ void MAVDataset::loadCamera0Config() {
     double cv = camera0Config["intrinsics"][3].as<double>(0.0);
     mCamera0Intrinsics << fu, 0, cu, 0, fv, cv, 0, 0, 1;
 
-    const auto coefficients = camera0Config["distortion_coefficients"].as<std::vector<double> >();
+    const auto coefficients = camera0Config["distortion_coefficients"].as<std::vector<double> >(std::vector<double>{});
     const auto distortionModel = camera0Config["distortion_model"].as<std::string>("rad-tan");
     const auto cameraModel = camera0Config["camera_model"].as<std::string>("pinhole");
     mCamera0DistortionCoefficients = cv::Mat(coefficients).clone();

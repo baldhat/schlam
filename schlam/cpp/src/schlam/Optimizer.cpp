@@ -5,6 +5,7 @@
 #include "Optimizer.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <istream>
 #include <ostream>
@@ -71,10 +72,35 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
                     const Eigen::Vector3d &aTranslation,
                     const std::vector<Eigen::Vector3d> &aPoints,
                     const Eigen::Matrix3d &aIntrinsics) {
+    if (aKeyPoints.size() != 2 || aKeyPoints[0].size() != aPoints.size() ||
+        aKeyPoints[1].size() != aPoints.size()) {
+        throw std::invalid_argument("Joint optimization requires two observations per map point");
+    }
+    for (std::size_t j = 0; j < aPoints.size(); ++j) {
+        if (!aPoints[j].allFinite()) {
+            throw std::invalid_argument("Joint optimization requires finite map points");
+        }
+        for (const auto& frame : aKeyPoints) {
+            if (!frame[j] || !std::isfinite(frame[j]->getImgX()) ||
+                !std::isfinite(frame[j]->getImgY())) {
+                throw std::invalid_argument("Joint optimization requires finite observations");
+            }
+        }
+    }
     const double initialBaseline = aTranslation.norm();
     if (!std::isfinite(initialBaseline) || initialBaseline <= 0.0) {
         throw std::invalid_argument("Joint pose and point optimization requires a finite, nonzero baseline");
     }
+    if (aPoints.empty()) return {aRotation, aTranslation, {}};
+
+    std::vector<bool> eligible(aPoints.size());
+    std::size_t eligibleCount = 0;
+    for (std::size_t j = 0; j < aPoints.size(); ++j) {
+        eligible[j] = aPoints[j].z() > 0.0 &&
+                      (aRotation * aPoints[j] + aTranslation).z() > 0.0;
+        eligibleCount += eligible[j];
+    }
+    if (eligibleCount < 3) return {aRotation, aTranslation, aPoints};
 
     g2o::SparseOptimizer optimizer;
     g2o::OptimizationAlgorithmProperty solverProp;
@@ -109,30 +135,42 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
     baselineEdge->setInformation(Eigen::Matrix<double, 1, 1>::Identity());
     optimizer.addEdge(baselineEdge);
 
-    // Add 3D points
-    for (const auto &point: aPoints) {
+    // Add 3D points that are initially in front of both cameras.
+    std::vector<g2o::VertexPointXYZ*> pointVertices(aPoints.size(), nullptr);
+    for (std::size_t j = 0; j < aPoints.size(); ++j) {
+        if (!eligible[j]) continue;
         g2o::VertexPointXYZ *v_point = new g2o::VertexPointXYZ();
         v_point->setId(vertex_id++);
-        v_point->setEstimate(point.cast<double>());
+        v_point->setEstimate(aPoints[j]);
         v_point->setMarginalized(true); // Required for BA Schur complement trick
         optimizer.addVertex(v_point);
+        pointVertices[j] = v_point;
     }
 
     // Create edges between poses and points
+    std::vector<std::array<g2o::EdgeSE3ProjectXYZ*, 2>> projectionEdges(
+        aPoints.size(), {nullptr, nullptr});
+    const double huberDelta = std::sqrt(mSettings.monocularChi2Threshold);
     for (int i = 0; i < cams.size(); i++) {
         for (int j = 0; j < aKeyPoints[0].size(); j++) {
+            if (!eligible[j]) continue;
             g2o::EdgeSE3ProjectXYZ *edge = new g2o::EdgeSE3ProjectXYZ();
-            edge->setVertex(0, optimizer.vertex(cams.size() + j));
+            edge->setVertex(0, pointVertices[j]);
             edge->setVertex(1, optimizer.vertex(i));
             edge->fx = aIntrinsics(0, 0);
             edge->fy = aIntrinsics(1, 1);
             edge->cx = aIntrinsics(0, 2);
             edge->cy = aIntrinsics(1, 2);
             edge->setMeasurement(Eigen::Vector2d(aKeyPoints[i][j]->getImgX(), aKeyPoints[i][j]->getImgY()));
-            edge->setInformation(Eigen::Matrix2d::Identity());
-            edge->setRobustKernel(new g2o::RobustKernelHuber);
+            const double inverseVariance = std::pow(
+                mSettings.pyramidScaleFactor, -2.0 * aKeyPoints[i][j]->getLevel());
+            edge->setInformation(Eigen::Matrix2d::Identity() * inverseVariance);
+            auto* robustKernel = new g2o::RobustKernelHuber;
+            robustKernel->setDelta(huberDelta);
+            edge->setRobustKernel(robustKernel);
 
             optimizer.addEdge(edge);
+            projectionEdges[j][i] = edge;
         }
     }
 
@@ -141,17 +179,41 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
     optimizer.setVerbose(false);
     optimizer.optimize(mSettings.initialIterations);
 
+    const auto isInlier = [&](std::size_t j) {
+        if (!eligible[j]) return false;
+        for (auto* edge : projectionEdges[j]) {
+            edge->computeError();
+            const double chi2 = edge->chi2();
+            if (!edge->isDepthPositive() || !std::isfinite(chi2) ||
+                chi2 > mSettings.monocularChi2Threshold) return false;
+        }
+        return true;
+    };
+    std::vector<bool> inliers(aPoints.size());
+    std::size_t inlierCount = 0;
+    for (std::size_t j = 0; j < aPoints.size(); ++j) {
+        inliers[j] = isInlier(j);
+        if (inliers[j]) ++inlierCount;
+        for (auto* edge : projectionEdges[j]) {
+            if (!edge) continue;
+            edge->setLevel(inliers[j] ? 0 : 1);
+            if (inliers[j]) edge->setRobustKernel(nullptr);
+        }
+    }
+    if (inlierCount < 3) return {aRotation, aTranslation, aPoints};
+    if (optimizer.initializeOptimization(0)) optimizer.optimize(mSettings.initialIterations);
+
     g2o::VertexSE3Expmap* v_pose = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(1));
     g2o::SE3Quat optimized_pose = v_pose->estimate();
     Eigen::Matrix3d R = optimized_pose.rotation().toRotationMatrix().cast<double>();
     Eigen::Vector3d t = optimized_pose.translation().cast<double>();
+    if (!R.allFinite() || !t.allFinite()) return {aRotation, aTranslation, aPoints};
 
-
-    std::vector<Eigen::Vector3d> optimized_points;
-    for (int j = 0; j < aPoints.size(); ++j) {
-        g2o::VertexPointXYZ* v_point = static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(cams.size() + j));
-        Eigen::Vector3d optimized_point = v_point->estimate();
-        optimized_points.push_back(optimized_point);
+    std::vector<Eigen::Vector3d> optimized_points = aPoints;
+    for (std::size_t j = 0; j < aPoints.size(); ++j) {
+        if (inliers[j] && isInlier(j) && pointVertices[j]->estimate().allFinite()) {
+            optimized_points[j] = pointVertices[j]->estimate();
+        }
     }
 
     return {R, t, optimized_points};
