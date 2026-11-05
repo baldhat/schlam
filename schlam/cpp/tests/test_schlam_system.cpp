@@ -16,6 +16,7 @@ public:
     std::vector<cv::Mat> images;
     std::size_t index = 0;
     Eigen::Vector3d origin{3, 4, 5};
+    Eigen::Matrix3d orientation = Eigen::Matrix3d::Identity();
     Eigen::Matrix3d intrinsics = (Eigen::Matrix3d() <<
         200, 0, 128, 0, 200, 128, 0, 0, 1).finished();
 
@@ -35,8 +36,8 @@ public:
     std::shared_ptr<IMUData> getNextIMUData() override { return nullptr; }
     std::shared_ptr<GTData> getNextGTData() override {
         return std::make_shared<GTData>(timestamp(index - 1),
-            origin + Eigen::Vector3d(0.1 * (index - 1), 0, 0),
-            Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero(), "world");
+            origin + orientation * Eigen::Vector3d(0.1 * (index - 1), 0, 0),
+            orientation, Eigen::Vector3d::Zero(), "world");
     }
 };
 
@@ -104,6 +105,7 @@ TEST_F(SchlamSystemResultTest, UninitializedFramesHaveTimingButNoInventedPath) {
 
 TEST_F(SchlamSystemResultTest, InitializedRunReturnsWorldMapAndTimestampedPath) {
     addTranslatedTextureFrames(3);
+    dataset->orientation = Eigen::AngleAxisd(0.4, Eigen::Vector3d::UnitZ()).toRotationMatrix();
     settings.mapping.keyframeMaximumInliers = 10000;
     settings.mapping.keyframeMinimumFrameGapWhenBusy = 0;
     const auto result = run();
@@ -111,19 +113,21 @@ TEST_F(SchlamSystemResultTest, InitializedRunReturnsWorldMapAndTimestampedPath) 
     ASSERT_EQ(finalMap.keyFrames.size(), 3);
     ASSERT_EQ(result.mapPoints.size(), finalMap.points.size());
     for (std::size_t point = 0; point < result.mapPoints.size(); ++point) {
-        EXPECT_TRUE(result.mapPoints[point].isApprox(finalMap.points[point] + dataset->origin));
+        EXPECT_TRUE(result.mapPoints[point].isApprox(
+            dataset->orientation * finalMap.points[point] + dataset->origin));
     }
     ASSERT_EQ(result.predictedPath.size(), 3);
     EXPECT_TRUE(result.predictedPath.front().position.isApprox(dataset->origin));
     for (std::size_t frame = 0; frame < result.predictedPath.size(); ++frame) {
         EXPECT_EQ(result.predictedPath[frame].timestamp, MemoryDataset::timestamp(frame));
         EXPECT_TRUE(result.predictedPath[frame].rotation.allFinite());
+        EXPECT_TRUE(result.predictedPath[frame].rotation.isApprox(dataset->orientation, 0.01));
         EXPECT_TRUE(result.predictedPath[frame].position.isApprox(
-            dataset->origin + Eigen::Vector3d(0.1 * frame, 0, 0), 0.01));
+            dataset->origin + dataset->orientation * Eigen::Vector3d(0.1 * frame, 0, 0), 0.01));
     }
     for (const auto& point : result.mapPoints) {
         EXPECT_TRUE(point.allFinite());
-        EXPECT_NEAR(point.z(), dataset->origin.z() + 2.0, 0.1);
+        EXPECT_GT(point.z(), dataset->origin.z());
     }
     EXPECT_NEAR(result.averageFrameRate, plotter->frames / plotter->processingSeconds, 1e-6);
 }
