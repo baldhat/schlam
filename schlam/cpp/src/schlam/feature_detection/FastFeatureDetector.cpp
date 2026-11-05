@@ -2,7 +2,7 @@
 // Created by baldhat on 1/4/26.
 //
 
-#include "FastFeatureDetector.h"
+#include "../FastFeatureDetector.h"
 
 #include <stdexcept>
 

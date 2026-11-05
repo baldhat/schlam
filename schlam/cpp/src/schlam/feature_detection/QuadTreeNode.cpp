@@ -2,8 +2,8 @@
 // Created by baldhat on 2/8/26.
 //
 
-#include "QuadTreeNode.h"
-#include "KeyPoint.h"
+#include "../QuadTreeNode.h"
+#include "../KeyPoint.h"
 
 #include <cmath>
 #include <iostream>

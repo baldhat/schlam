@@ -1,4 +1,4 @@
-#include "schlam/Optimizer.h"
+#include "../src/schlam/optimization/Optimizer.h"
 #include "schlam/Map.h"
 #include "schlam/KeyPoint.h"
 #include "schlam/KeyFrame.h"

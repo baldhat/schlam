@@ -6,7 +6,7 @@
 #define SCHLAM_PLOTTERINTERFACE_H
 
 #include "schlam/Map.h"
-#include "schlam/utils.h"
+#include "../schlam/helpers/utils.h"
 #include "data/image_data.hpp"
 
 class QuadTreeNode;

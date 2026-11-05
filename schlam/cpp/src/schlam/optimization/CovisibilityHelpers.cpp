@@ -2,10 +2,10 @@
 // Created by jonathan_michel on 10/28/26.
 //
 
-#include "CovisibilityHelpers.h"
+#include "../CovisibilityHelpers.h"
 
-#include "KeyFrame.h"
-#include "Map.h"
+#include "../KeyFrame.h"
+#include "../Map.h"
 
 std::vector<Neighbor> getCovisibilityNeighbors(Map* map,
                                                KeyFrameId frameId,

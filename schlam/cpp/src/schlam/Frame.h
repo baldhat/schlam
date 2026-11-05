@@ -11,7 +11,7 @@
 #include <memory>
 #include <opencv2/core/mat.hpp>
 
-#include "QuadTreeNode.h"
+#include "feature_detection/QuadTreeNode.h"
 #include "data/image_data.hpp"
 #include "tft/rigid_transform_3d.hpp"
 

@@ -5,7 +5,7 @@
 #ifndef SCHLAM_OPTIMIZER_H
 #define SCHLAM_OPTIMIZER_H
 
-#include "KeyPoint.h"
+#include "../KeyPoint.h"
 #include "config/Config.hpp"
 
 #include <memory>

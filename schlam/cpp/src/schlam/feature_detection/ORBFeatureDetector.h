@@ -8,7 +8,7 @@
 
 #include "FastFeatureDetector.h"
 #include "config/Config.hpp"
-#include "utils.h"
+#include "../helpers/utils.h"
 
 class Frame;
 class IPlotter;

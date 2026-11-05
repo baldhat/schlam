@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <set>
 
-#include "MapTypes.h"
+#include "../MapTypes.h"
 
 class Map;
 using Neighbor = std::pair<KeyFrameId, std::uint32_t>;

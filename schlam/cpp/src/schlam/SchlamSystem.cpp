@@ -3,7 +3,7 @@
 //
 
 #include "SchlamSystem.h"
-#include "Optimizer.h"
+#include "optimization/Optimizer.h"
 #include "MotionModel.h"
 
 #include <thread>
@@ -14,10 +14,10 @@
 #include "Map.h"
 #include "MapPoint.hpp"
 #include "Matcher.h"
-#include "ORBFeatureDetector.h"
-#include "Profiler.h"
+#include "feature_detection/ORBFeatureDetector.h"
+#include "helpers/Profiler.h"
 #include "Ransac.h"
-#include "utils.h"
+#include "helpers/utils.h"
 #include "data/DatasetInterface.hpp"
 #include "tft/transformer.hpp"
 #include "plotting/IPlotter.hpp"

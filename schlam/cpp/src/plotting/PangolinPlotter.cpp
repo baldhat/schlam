@@ -15,7 +15,7 @@
 
 #include "schlam/KeyPoint.h"
 #include "schlam/Map.h"
-#include "schlam/QuadTreeNode.h"
+#include "../schlam/feature_detection/QuadTreeNode.h"
 
 #include <stdexcept>
 

@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "schlam/FastFeatureDetector.h"
+#include "../src/schlam/feature_detection/FastFeatureDetector.h"
 #include "schlam/Matcher.h"
-#include "schlam/ORBFeatureDetector.h"
+#include "../src/schlam/feature_detection/ORBFeatureDetector.h"
 #include "schlam/Frame.h"
 #include "schlam/KeyFrame.h"
 #include "schlam/Map.h"

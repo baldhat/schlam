@@ -2,7 +2,7 @@
 // Created by baldhat on 2/26/26.
 //
 
-#include "Optimizer.h"
+#include "../Optimizer.h"
 
 #include <algorithm>
 #include <array>
@@ -17,9 +17,9 @@
 #include <g2o/types/sba/types_six_dof_expmap.h>
 
 #include "CovisibilityHelpers.h"
-#include "KeyFrame.h"
-#include "Map.h"
-#include "MapPoint.hpp"
+#include "../KeyFrame.h"
+#include "../Map.h"
+#include "../MapPoint.hpp"
 #include "g2o/core/block_solver.h"
 #include "g2o/core/robust_kernel_impl.h"
 #include "g2o/core/sparse_optimizer.h"

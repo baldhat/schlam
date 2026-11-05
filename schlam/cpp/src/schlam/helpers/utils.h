@@ -5,7 +5,7 @@
 #ifndef SCHLAM_UTILS_H
 #define SCHLAM_UTILS_H
 
-#include "KeyPoint.h"
+#include "../KeyPoint.h"
 
 #include <memory>
 

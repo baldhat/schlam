@@ -63,26 +63,26 @@ add_library(${PROJECT_NAME} SHARED
     src/data/datasets/MAVDataset.hpp
     src/data/gt_data.hpp
 
-    src/schlam/FastFeatureDetector.cpp
-    src/schlam/FastFeatureDetector.h
-    src/schlam/ORBFeatureDetector.cpp
-    src/schlam/ORBFeatureDetector.h
+        src/schlam/feature_detection/FastFeatureDetector.cpp
+        src/schlam/feature_detection/FastFeatureDetector.h
+        src/schlam/feature_detection/ORBFeatureDetector.cpp
+        src/schlam/feature_detection/ORBFeatureDetector.h
     src/schlam/KeyPoint.cpp
     src/schlam/KeyPoint.h
-    src/schlam/utils.cpp
-    src/schlam/utils.h
-    src/schlam/QuadTreeNode.cpp
-    src/schlam/QuadTreeNode.h
-    src/schlam/orb_pattern.h
+        src/schlam/helpers/utils.cpp
+        src/schlam/helpers/utils.h
+        src/schlam/feature_detection/QuadTreeNode.cpp
+        src/schlam/feature_detection/QuadTreeNode.h
+        src/schlam/feature_detection/orb_pattern.h
     src/schlam/Matcher.cpp
     src/schlam/Matcher.h
     src/schlam/Ransac.cpp
     src/schlam/Ransac.h
-    src/schlam/Optimizer.cpp
-    src/schlam/Optimizer.h
+        src/schlam/optimization/Optimizer.cpp
+        src/schlam/optimization/Optimizer.h
     src/schlam/Frame.cpp
     src/schlam/Frame.h
-    src/schlam/Optimizer.cpp
+        src/schlam/optimization/Optimizer.cpp
     src/schlam/MapPoint.cpp
     src/schlam/MapPoint.hpp
     src/schlam/Map.cpp
@@ -96,10 +96,10 @@ add_library(${PROJECT_NAME} SHARED
     src/plotting/DummyPlotter.h
     src/schlam/SchlamSystem.cpp
     src/schlam/SchlamSystem.h
-    src/schlam/Profiler.cpp
-    src/schlam/Profiler.h
-        src/schlam/CovisibilityHelpers.cpp
-        src/schlam/CovisibilityHelpers.h
+        src/schlam/helpers/Profiler.cpp
+        src/schlam/helpers/Profiler.h
+        src/schlam/optimization/CovisibilityHelpers.cpp
+        src/schlam/optimization/CovisibilityHelpers.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

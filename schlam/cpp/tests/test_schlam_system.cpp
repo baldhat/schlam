@@ -5,8 +5,8 @@
 #include "plotting/DummyPlotter.h"
 #include "random.hpp"
 #include "schlam/MotionModel.h"
-#include "schlam/ORBFeatureDetector.h"
-#include "schlam/Optimizer.h"
+#include "../src/schlam/feature_detection/ORBFeatureDetector.h"
+#include "../src/schlam/optimization/Optimizer.h"
 #include "schlam/SchlamSystem.h"
 #include "tft/transformer.hpp"
 

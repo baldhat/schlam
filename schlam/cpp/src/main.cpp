@@ -4,8 +4,8 @@
 #include "plotting/PangolinPlotter.hpp"
 #include "plotting/DummyPlotter.h"
 
-#include "schlam/ORBFeatureDetector.h"
-#include "schlam/Optimizer.h"
+#include "schlam/feature_detection/ORBFeatureDetector.h"
+#include "schlam/optimization/Optimizer.h"
 #include "schlam/MotionModel.h"
 #include "schlam/SchlamSystem.h"
 #include "config/ConfigParser.hpp"
