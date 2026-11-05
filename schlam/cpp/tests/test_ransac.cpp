@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "random.hpp"
 #include "schlam/Ransac.h"
+#include "schlam/KeyPoint.h"
 
 TEST(RansacSamplingTest, SharedSeedReplaysSuccessiveSubsets) {
     auto& engine = utils::randomEngine();

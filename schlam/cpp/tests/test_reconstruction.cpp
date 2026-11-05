@@ -2,6 +2,7 @@
 
 #include "random.hpp"
 #include "schlam/Ransac.h"
+#include "schlam/KeyPoint.h"
 #include "tft/rigid_transform_3d.hpp"
 
 #include <random>

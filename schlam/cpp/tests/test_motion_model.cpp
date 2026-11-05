@@ -1,4 +1,5 @@
 #include "schlam/MotionModel.h"
+#include "tft/rigid_transform_3d.hpp"
 
 #include <gtest/gtest.h>
 #include <Eigen/Geometry>

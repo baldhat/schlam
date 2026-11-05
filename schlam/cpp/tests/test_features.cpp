@@ -3,6 +3,11 @@
 #include "schlam/FastFeatureDetector.h"
 #include "schlam/Matcher.h"
 #include "schlam/ORBFeatureDetector.h"
+#include "schlam/Frame.h"
+#include "schlam/KeyFrame.h"
+#include "schlam/Map.h"
+#include "schlam/MapPoint.hpp"
+#include "tft/transformer.hpp"
 
 #include <opencv2/imgproc.hpp>
 
@@ -223,9 +228,11 @@ TEST(MatcherTest, ViewingAngleGatesMatchesAndAcceptedVisibility) {
         "current", "world", Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
     auto frontTransformer = std::make_shared<tft::Transformer>();
     frontTransformer->registerTransform(frontPose);
-    EXPECT_EQ(matchMapPointsByProjection(&map, frame, frontPose, frontTransformer, 20, 2).size(), 1);
+    auto frontSnapshot = map.getTrackingSnapshot();
+    EXPECT_EQ(matchMapPointsByProjection(frontSnapshot, frame, frontPose, frontTransformer, 20, 2).size(), 1);
     EXPECT_EQ(point.mVisibleInTracking, 0);
-    recordMapPointVisibility(&map, *frame, *frontTransformer->findTransform("world", "current"));
+    recordMapPointVisibility(frontSnapshot, *frame, *frontTransformer->findTransform("world", "current"));
+    map.applyTrackingSnapshot(frontSnapshot);
     EXPECT_EQ(point.mVisibleInTracking, 1);
 
     const Eigen::Matrix3d oppositeRotation =
@@ -234,8 +241,10 @@ TEST(MatcherTest, ViewingAngleGatesMatchesAndAcceptedVisibility) {
         "current", "world", oppositeRotation, Eigen::Vector3d(0, 0, 10));
     auto backTransformer = std::make_shared<tft::Transformer>();
     backTransformer->registerTransform(backPose);
-    EXPECT_TRUE(matchMapPointsByProjection(&map, frame, backPose, backTransformer, 20, 2).empty());
-    recordMapPointVisibility(&map, *frame, *backTransformer->findTransform("world", "current"));
+    auto backSnapshot = map.getTrackingSnapshot();
+    EXPECT_TRUE(matchMapPointsByProjection(backSnapshot, frame, backPose, backTransformer, 20, 2).empty());
+    recordMapPointVisibility(backSnapshot, *frame, *backTransformer->findTransform("world", "current"));
+    map.applyTrackingSnapshot(backSnapshot);
     EXPECT_EQ(point.mVisibleInTracking, 1);
 }
 

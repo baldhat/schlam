@@ -21,7 +21,7 @@ std::vector<Neighbor> getCovisibilityNeighbors(Map* map,
     }
 
     const std::size_t keep =
-      std::min(neighbors.size(), numNeighbors); // current keyframe uses one slot
+      std::min(neighbors.size(), numNeighbors);
     std::partial_sort(
       neighbors.begin(), neighbors.begin() + keep, neighbors.end(),
       [](const Neighbor& a, const Neighbor& b) {

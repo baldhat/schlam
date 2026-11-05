@@ -8,35 +8,27 @@ option(SCHLAM_USE_OPENCV_RECONSTRUCTION
     "Use OpenCV essential-matrix estimation and triangulation for reconstruction" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(G2O_USE_LOGGING ON)
 set(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DSPDLOG_FMT_EXTERNAL)
 
 add_compile_options(-fno-omit-frame-pointer)
 
-# 1. Find Conan packages
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(OpenGL REQUIRED)
+find_package(OpenGL REQUIRED COMPONENTS OpenGL EGL)
 find_package(Boost REQUIRED COMPONENTS thread)
 find_package(yaml-cpp REQUIRED)
 find_package(fast-cpp-csv-parser REQUIRED)
 find_package(TBB REQUIRED)
 find_package(spdlog REQUIRED)
 
-# 2. Find System Pangolin
-set(Pangolin_DIR "/home/jonathan_michel/dev/cpp/Pangolin/build")
 find_package(Pangolin REQUIRED CONFIG)
-include_directories(${Pangolin_INCLUDE_DIRS})
-
-
-add_subdirectory(external/g2o)
+find_package(g2o REQUIRED CONFIG)
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/src
-  external/g2o
 )
 
 # LIBRARY

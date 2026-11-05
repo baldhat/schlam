@@ -1,5 +1,8 @@
 #include "schlam/Optimizer.h"
 #include "schlam/Map.h"
+#include "schlam/KeyPoint.h"
+#include "schlam/KeyFrame.h"
+#include "schlam/MapPoint.hpp"
 #include "tft/transformer.hpp"
 
 #include <gtest/gtest.h>

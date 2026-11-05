@@ -1,0 +1,116 @@
+name: C++
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pull_request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-14
+      CXX: g++-14
+    defaults:
+      run:
+        working-directory: schlam/cpp
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++-14 ninja-build pkg-config \
+            libepoxy-dev libegl-dev libgl-dev libglu1-mesa-dev \
+            libx11-dev libglew-dev libtbb-dev
+
+      - name: Install Conan
+        run: python -m pip install conan==2.24.0
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Build pinned g2o package
+        run: conan create recipes/g2o -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+
+      - name: Build pinned Pangolin package
+        run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+
+      - name: Install application dependencies
+        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/${{ matrix.build_type }} \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/schlam/cpp/build/${{ matrix.build_type }}/generators/conan_toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build
+        run: cmake --build build/${{ matrix.build_type }} --parallel 2
+
+      - name: Run tests
+        run: ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
+  dataset:
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, linux, x64]
+    env:
+      CC: gcc-14
+      CXX: g++-14
+      MAV_PATH: /home/baldhat/data/mav/vicon_room1
+    defaults:
+      run:
+        working-directory: schlam/cpp
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Conan
+        run: python -m pip install conan==2.24.0
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Build pinned g2o package
+        run: conan create recipes/g2o -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+
+      - name: Build pinned Pangolin package
+        run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+
+      - name: Install application dependencies
+        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/${{ matrix.build_type }} \
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/schlam/cpp/build/${{ matrix.build_type }}/generators/conan_toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build
+        run: cmake --build build/${{ matrix.build_type }} --parallel 2
+
+      - name: Run tests
+        run: ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
+
+      - name: Run headless config
+        run: timeout 30m build/${{ matrix.build_type }}/app config/mav_headless.yaml
