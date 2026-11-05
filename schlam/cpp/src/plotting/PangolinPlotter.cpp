@@ -296,11 +296,6 @@ void PangolinPlotter::setMap(const Map* map) {
     ++mMapRevision;
 }
 
-void PangolinPlotter::addTransform(
-    const std::shared_ptr<tft::RigidTransform3D> transform) {
-    mTransforms.push_back(transform);
-}
-
 void PangolinPlotter::updateFrustum(const std::shared_ptr<ImageData> aImageData,
                            const std::shared_ptr<tft::RigidTransform3D> aPredictedPose) {
     const auto cam0Pose = aImageData

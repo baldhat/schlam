@@ -5,7 +5,7 @@
 #ifndef SCHLAM_RANSAC_H
 #define SCHLAM_RANSAC_H
 
-#include <eigen3/Eigen/Eigen>
+#include <Eigen/Eigen>
 
 #include <opencv2/core.hpp>
 

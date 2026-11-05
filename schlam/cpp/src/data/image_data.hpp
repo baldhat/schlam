@@ -5,7 +5,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include <eigen3/Eigen/Core>
+#include <Eigen/Core>
 
 class ImageData {
 public:

@@ -3,7 +3,7 @@
 
 #include "../utils.hpp"
 
-#include <eigen3/Eigen/Core>
+#include <Eigen/Core>
 
 class GTData {
 public:

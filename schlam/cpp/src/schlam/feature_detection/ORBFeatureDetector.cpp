@@ -2,7 +2,7 @@
 // Created by baldhat on 2/7/26.
 //
 
-#include "../ORBFeatureDetector.h"
+#include "ORBFeatureDetector.h"
 
 #include <opencv2/opencv.hpp>
 
@@ -10,7 +10,6 @@
 #include "FastFeatureDetector.h"
 #include "../KeyPoint.h"
 #include "../helpers/utils.h"
-#include "../QuadTreeNode.h"
 #include "../Frame.h"
 
 #include <algorithm>

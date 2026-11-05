@@ -2,11 +2,11 @@
 // Created by baldhat on 2/7/26.
 //
 
-#include "../utils.h"
+#include "utils.h"
 
 #include "../KeyPoint.h"
 
-#include <eigen3/Eigen/Eigen>
+#include <Eigen/Eigen>
 
 std::vector<cv::Mat> buildPyramid(const cv::Mat &aImage,
                                   const std::uint8_t aNLevels,

@@ -4,9 +4,8 @@
 #include "transformable_3d.hpp"
 #include "transformer.hpp"
 
-#include <eigen3/Eigen/Core>
+#include <Eigen/Core>
 
-#include <eigen3/Eigen/src/Core/Matrix.h>
 #include <thread>
 #include <vector>
 

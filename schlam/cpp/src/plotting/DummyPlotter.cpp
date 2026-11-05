@@ -8,7 +8,6 @@
 
 bool DummyPlotter::shouldPause() {return false;}
 void DummyPlotter::setMap(const Map* map) {}
-void DummyPlotter::addTransform(const std::shared_ptr<tft::RigidTransform3D> transform) {}
 void DummyPlotter::updateFrustum(const std::shared_ptr<ImageData> aImageData,
                    const std::shared_ptr<tft::RigidTransform3D> aPredictedPose) {}
 void DummyPlotter::updateTimestamp(const utils::TTimestamp& aTimestamp) {}

@@ -2,7 +2,7 @@
 // Created by jonathan_michel on 10/25/26.
 //
 
-#include "../Profiler.h"
+#include "Profiler.h"
 
 #include "plotting/IPlotter.hpp"
 

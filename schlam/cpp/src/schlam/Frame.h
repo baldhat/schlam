@@ -7,7 +7,7 @@
 
 #include "KeyPoint.h"
 
-#include <eigen3/Eigen/Core>
+#include <Eigen/Core>
 #include <memory>
 #include <opencv2/core/mat.hpp>
 

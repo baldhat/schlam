@@ -10,7 +10,7 @@
 #include <memory>
 
 #include <opencv2/opencv.hpp>
-#include <eigen3/Eigen/Eigen>
+#include <Eigen/Eigen>
 
 struct Point {
     std::int32_t x;

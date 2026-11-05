@@ -11,7 +11,7 @@
 #include <pangolin/pangolin.h>
 
 // eigen
-#include <eigen3/Eigen/Core>
+#include <Eigen/Core>
 
 // STL
 #include <vector>
@@ -84,8 +84,6 @@ public:
     // The caller owns the map and must keep it alive while visualization runs.
     void setMap(const Map* map) override;
 
-    void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform) override;
-
     // The predicted pose maps the camera into world coordinates.
     void updateFrustum(const std::shared_ptr<ImageData> aImageData,
                        const std::shared_ptr<tft::RigidTransform3D> aPredictedPose = nullptr) override;
@@ -125,7 +123,6 @@ private:
     std::mutex mMapMutex;
     std::uint64_t mKeyFrameTextureMapRevision{0};
     std::unordered_map<KeyFrameId, std::unique_ptr<pangolin::GlTexture>> mKeyFrameTextures;
-    std::vector<std::shared_ptr<tft::RigidTransform3D> > mTransforms;
 
     std::shared_ptr<tft::RigidTransform3D> mFrustumPose;
     std::shared_ptr<tft::RigidTransform3D> mPredictedFrustumPose;

@@ -15,7 +15,6 @@ class IPlotter {
 public:
     virtual bool shouldPause() = 0;
     virtual void setMap(const Map* map) = 0;
-    virtual void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform) = 0;
     // The predicted pose maps the camera into world coordinates.
     virtual void updateFrustum(const std::shared_ptr<ImageData> aImageData,
                        const std::shared_ptr<tft::RigidTransform3D> aPredictedPose = nullptr) = 0;

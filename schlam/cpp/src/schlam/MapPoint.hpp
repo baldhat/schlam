@@ -10,7 +10,7 @@
 #include <deque>
 #include <unordered_map>
 
-#include <eigen3/Eigen/Core>
+#include <Eigen/Core>
 
 #include "MapTypes.h"
 #include "config/Config.hpp"

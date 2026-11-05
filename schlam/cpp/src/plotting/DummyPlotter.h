@@ -11,7 +11,6 @@ class DummyPlotter : public IPlotter {
 public:
     bool shouldPause() override;
     void setMap(const Map* map) override;
-    void addTransform(const std::shared_ptr<tft::RigidTransform3D> transform) override;
     void updateFrustum(const std::shared_ptr<ImageData> aImageData,
                        const std::shared_ptr<tft::RigidTransform3D> aPredictedPose = nullptr) override;
     void updateTimestamp(const utils::TTimestamp& aTimestamp) override;
