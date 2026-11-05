@@ -24,12 +24,11 @@ The main executable (`src/main.cpp`) runs a frame-to-frame visual odometry loop:
 
 The C++ project uses C++23, CMake 3.23 or newer, and Conan 2.24.0. CI uses GCC/G++ 14. Pangolin and g2o are built through the local [Conan recipes](schlam/cpp/recipes/README.md); `conan.lock` pins dependency recipe revisions.
 
-On Ubuntu 24.04, install the system build and graphics dependencies:
+On Ubuntu 24.04, install the [complete system package list](schlam/cpp/recipes/system-packages-ubuntu.txt). This includes the build and graphics dependencies and the system libraries required by the locked Conan recipes for Xorg, keyboard data, VA-API, and VDPAU:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y gcc-14 g++-14 cmake git python3 python3-venv ninja-build pkg-config \
-  libepoxy-dev libegl-dev libgl-dev libglu1-mesa-dev libx11-dev libglew-dev libtbb-dev
+xargs -r -a schlam/cpp/recipes/system-packages-ubuntu.txt sudo apt-get install -y
 ```
 
 From the repository root, install Conan in a Python virtual environment and build:
@@ -80,6 +79,22 @@ build/Release/app config/kitti.yaml
 ```
 
 With no argument, `app` uses `config/mav.yaml`. Edit `dataset.sequence` in the selected config to run another sequence. The `tft` executable runs the transform-tree visualization on its own.
+
+### Run results
+
+`SchlamSystem::run()` returns an owned `SchlamResult` after queued local mapping work finishes:
+
+```cpp
+const SchlamResult result = schlamSystem.run();
+```
+
+| Field | Contents |
+| --- | --- |
+| `mapPoints` | Latest map point positions as `std::vector<Eigen::Vector3d>`, transformed into world coordinates |
+| `predictedPath` | Accepted online camera poses; each `PredictedPose` has a dataset `timestamp`, camera-to-world `rotation`, and world `position` |
+| `averageFrameRate` | Processed frames divided by total frame processing time in seconds; excludes viewer pauses and the final mapping wait |
+
+The path includes the reference pose once initialization succeeds and each subsequently accepted pose. Map points and the path are empty if initialization never succeeds. An empty dataset returns zero FPS. Tracking loss returns the map and accepted path accumulated so far. The returned path records online estimates; later bundle adjustment can refine the map without rewriting earlier path poses.
 
 ### GitHub Actions
 

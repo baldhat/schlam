@@ -48,9 +48,12 @@ int main(int argc, char** argv) {
     auto motionModel = MotionModel(settings.motion.maximumExtrapolationIntervals);
 
     SchlamSystem schlamSystem(dataloader, pTransformer, plotter, featureDetector, optimizer, motionModel, settings);
-    schlamSystem.run();
+    const auto result = schlamSystem.run();
 
     std::cout << "Finished with " << dataloader->percentageRead() << "% of data processed." << std::endl;
+    std::cout << "Created " << result.mapPoints.size() << " map points and "
+              << result.predictedPath.size() << " predicted poses at "
+              << result.averageFrameRate << " FPS." << std::endl;
 
     if (render_loop.joinable()) {
         render_loop.join();

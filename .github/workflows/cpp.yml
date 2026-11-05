@@ -32,10 +32,7 @@ jobs:
       - name: Install system build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            g++-14 ninja-build pkg-config \
-            libepoxy-dev libegl-dev libgl-dev libglu1-mesa-dev \
-            libx11-dev libglew-dev libtbb-dev
+          xargs -r -a recipes/system-packages-ubuntu.txt sudo apt-get install -y
 
       - name: Install Conan
         run: python -m pip install conan==2.24.0
@@ -44,13 +41,13 @@ jobs:
         run: conan profile detect --force
 
       - name: Build pinned g2o package
-        run: conan create recipes/g2o -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+        run: conan create recipes/g2o -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2 -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Build pinned Pangolin package
-        run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+        run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2 -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Install application dependencies
-        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2 -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Configure
         run: |
@@ -92,13 +89,13 @@ jobs:
         run: conan profile detect --force
 
       - name: Build pinned g2o package
-        run: conan create recipes/g2o -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc)
+        run: conan create recipes/g2o -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc) -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Build pinned Pangolin package
-        run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc)
+        run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc) -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Install application dependencies
-        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc)
+        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc) -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Configure
         run: |

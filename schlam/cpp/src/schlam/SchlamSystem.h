@@ -6,12 +6,14 @@
 #define SCHLAM_SCHLAMSYSTEM_H
 #include <memory>
 #include <thread>
+#include <vector>
 #include <boost/thread/concurrent_queues/sync_bounded_queue.hpp>
 #include <Eigen/Eigen>
 
 #include "MapTypes.h"
 #include "Ransac.h"
 #include "config/Config.hpp"
+#include "utils.hpp"
 
 
 namespace tft {
@@ -46,6 +48,21 @@ enum class TrackingState {
     LOST
 };
 
+struct PredictedPose {
+    utils::TTimestamp timestamp;
+    Eigen::Matrix3d rotation;
+    Eigen::Vector3d position;
+};
+
+struct SchlamResult {
+    // Positions and camera poses are expressed in world coordinates.
+    std::vector<Eigen::Vector3d> mapPoints;
+    // Accepted online estimates, including the reference pose once initialized.
+    std::vector<PredictedPose> predictedPath;
+    // Processed frames / total processing seconds, excluding viewer pauses.
+    double averageFrameRate{0.0};
+};
+
 class SchlamSystem {
 public:
     SchlamSystem(
@@ -58,7 +75,7 @@ public:
         schlam::config::Config settings = {});
     ~SchlamSystem();
 
-    void run();
+    SchlamResult run();
 private:
     std::shared_ptr<DatasetInterface> dataset_;
     std::shared_ptr<tft::Transformer> transformer_;
@@ -70,6 +87,7 @@ private:
     Reconstructor reconstructor_;
 
     std::unique_ptr<Map> map_;
+    std::vector<PredictedPose> predictedPath_;
     std::shared_ptr<tft::RigidTransform3D> cameraToIMU_;
     std::uint32_t framesSinceLastKeyframe_{0};
     TrackingState state_{TrackingState::INITIALIZING};

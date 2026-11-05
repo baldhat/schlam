@@ -50,10 +50,12 @@ SchlamSystem::~SchlamSystem() {
     }
 }
 
-void SchlamSystem::run() {
+SchlamResult SchlamSystem::run() {
+    std::size_t processedFrames = 0;
+    double processingMilliseconds = 0.0;
 
     // initialization
-    while (!dataset_->empty()) {
+    while (state_ != TrackingState::LOST && !dataset_->empty()) {
         const auto frameStart = std::chrono::steady_clock::now();
 
         auto data = getNextSynchronizedData();
@@ -70,18 +72,36 @@ void SchlamSystem::run() {
                 track(data);
                 break;
             case TrackingState::LOST:
-                return;
+                break;
 
         }
 
-        std::cout << "Frame handling took " << frameTimer.finish() << " ms" << std::endl;
+        const double frameMilliseconds = frameTimer.finish();
+        processingMilliseconds += frameMilliseconds;
+        ++processedFrames;
+        std::cout << "Frame handling took " << frameMilliseconds << " ms" << std::endl;
         while (plotter_->shouldPause()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
 
+    stopLocalMapping_ = true;
+    if (localMappingThread_.joinable()) localMappingThread_.join();
 
-
+    SchlamResult result;
+    if (map_) {
+        const auto snapshot = map_->getSnapshot();
+        const auto mapToWorld = transformer_->findTransform(map_->mFrame, "world");
+        result.mapPoints.reserve(snapshot.points.size());
+        for (const auto& point : snapshot.points) {
+            result.mapPoints.push_back(mapToWorld->apply(point));
+        }
+    }
+    result.predictedPath = predictedPath_;
+    if (processingMilliseconds > 0.0) {
+        result.averageFrameRate = 1000.0 * processedFrames / processingMilliseconds;
+    }
+    return result;
 }
 
 SynchronizedData SchlamSystem::getNextSynchronizedData() {
@@ -176,6 +196,10 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
         motionModel_.addPose(transformer_->findTransform(frameName, "world"), frame->mTimestamp);
 
         buildMap(referenceFrameName_, referenceFrame_, frame, pts2D_1, pts2D_2, pts_opt);
+        predictedPath_.push_back({referenceFrame_->mTimestamp,
+            referenceCameraToWorld_->mRotation, referenceCameraToWorld_->mTranslation});
+        predictedPath_.push_back({frame->mTimestamp,
+            newCameraToWorld->mRotation, newCameraToWorld->mTranslation});
         plotter_->setMap(map_.get());
 
         state_ = TrackingState::TRACKING;
@@ -248,6 +272,8 @@ void SchlamSystem::track(const SynchronizedData& data) {
         transformer_->registerTransform(cameratoworld);
         plotter_->updateFrustum(data.imageData, cameratoworld);
         motionModel_.addPose(cameratoworld, data.imageData->mTimestamp);
+        predictedPath_.push_back({data.imageData->mTimestamp,
+            cameratoworld->mRotation, cameratoworld->mTranslation});
         plotter_->addPredictedCameraPosition(cameratoworld->mTranslation);
     }
 
@@ -259,7 +285,7 @@ void SchlamSystem::track(const SynchronizedData& data) {
 }
 
 void SchlamSystem::localMapping() {
-    while (!stopLocalMapping_) {
+    while (!stopLocalMapping_ || !localMappingQueue_.empty()) {
         localMappingIdle_ = true;
 
         if (localMappingQueue_.empty()) {
@@ -278,6 +304,7 @@ void SchlamSystem::localMapping() {
             settings_.optimizer.localMaxVariableKeyframes, settings_.optimizer.localMaxFixedKeyframes);
 
     }
+    std::cout << "Local mapping finished!" << std::endl;
 }
 
 bool SchlamSystem::scaleToBaseline(std::shared_ptr<tft::RigidTransform3D> referenceGTCameraPose,

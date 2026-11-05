@@ -9,7 +9,18 @@ The application requires two packages built from pinned upstream source:
 
 The recipes verify SHA-256 checksums of both source archives. They build shared libraries and install each project's native CMake package config. The g2o recipe keeps logging support but disables unused solver families and GUI support. The Pangolin recipe keeps its OpenGL viewer and disables optional image and video backends. `conan.lock` pins the Conan recipe revisions of the application dependency graph.
 
-See the [main build instructions](../../../README.md#building) for system dependencies and Conan installation. From `schlam/cpp`, use GCC/G++ 14 and C++23 to match CI:
+See the [main build instructions](../../../README.md#building) for Conan installation. Install the complete Ubuntu 24.04 package list from the repository root:
+
+```sh
+sudo apt-get update
+xargs -r -a schlam/cpp/recipes/system-packages-ubuntu.txt sudo apt-get install -y
+```
+
+[`system-packages-ubuntu.txt`](system-packages-ubuntu.txt) includes the project's build and graphics dependencies, the apt requirements of the locked `xorg/system`, `xkeyboard-config/system`, `vaapi/system`, and `vdpau/system` recipes, and headers for Pangolin's Wayland backend autodetection. OpenCV's current options enable FFmpeg and Wayland, so these system libraries are needed even when the application uses `DummyPlotter`.
+
+Conan checks these packages without installing them on the self hosted runner. The GitHub hosted PR job installs the same list. If the lockfile or dependency options change, review the list against the new recipes' `system_requirements()` methods.
+
+From `schlam/cpp`, use GCC/G++ 14 and C++23 to match CI:
 
 ```sh
 export CC=gcc-14
@@ -30,3 +41,5 @@ Replace `Release` with `Debug` throughout for a Debug build. Keep your existing 
 The [GitHub Actions workflow](../../../.github/workflows/cpp.yml) runs build, tests, and the installed MAV dataset headlessly on every push, in both Debug and Release. It uses a self hosted Linux x64 runner, its persistent Conan cache, and all processors reported by `nproc`. Pull requests build and test on fresh GitHub hosted runners with two build jobs; those runners build the local recipes from source. No private Conan remote or credentials are required.
 
 See the [runner setup](../../../README.md#github-actions) for host dependencies and the dataset path.
+
+CI allows five source download retries with ten seconds between attempts using `tools.files.download:retry` and `tools.files.download:retry_wait`. This helps with transient HTTP 504 responses from upstream source hosts. Rerunning a failed job reuses completed packages on the self hosted runner; a persistent download failure still requires the upstream URL to become reachable.

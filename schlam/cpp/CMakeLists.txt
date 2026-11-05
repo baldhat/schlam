@@ -143,6 +143,7 @@ add_executable(unit_tests
     tests/test_mav_dataloader.cpp
     tests/test_motion_model.cpp
     tests/test_optimizer.cpp
+    tests/test_schlam_system.cpp
 )
 
 # Ensure GTest targets are linked correctly
