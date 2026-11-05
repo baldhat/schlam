@@ -31,8 +31,6 @@ int main()
     for (auto transform : transforms) {
         pTransformer->registerTransform(transform);
         
-        plotter.addTransform(transform);
-
         auto x = tft::Transformable3D(Eigen::Vector3d(1, 0, 0), transform->mSource);
         auto y = tft::Transformable3D(Eigen::Vector3d(0, 1, 0), transform->mSource);
         auto z = tft::Transformable3D(Eigen::Vector3d(0, 0, 1), transform->mSource);
