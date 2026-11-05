@@ -30,11 +30,14 @@ conan create recipes/g2o -s build_type=Release -s compiler.cppstd=23 --lockfile=
 conan create recipes/pangolin -s build_type=Release -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs="$(nproc)"
 conan install . -s build_type=Release -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs="$(nproc)"
 cmake -S . -B build/Release -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" -DCMAKE_BUILD_TYPE=Release
+source build/Release/generators/conanrun.sh
 cmake --build build/Release --parallel "$(nproc)"
 ctest --test-dir build/Release --output-on-failure
 ```
 
 Replace `Release` with `Debug` throughout for a Debug build. Keep your existing profile if you use a custom one; `conan profile detect --force` replaces the default profile.
+
+Activate `conanrun.sh` in each new shell before building, testing, or running the app. `VirtualRunEnv` supplies the Conan shared-library paths, including Pangolin's transitive libraries. Activation is needed during the build because GoogleTest executes the test binary to discover tests. CI activates it separately in the build, test, and headless steps because steps do not share shell environments.
 
 `conan create --build=missing` exports the recipe and reuses a matching binary from the runner account's Conan cache, normally `~/.conan2` or the configured `CONAN_HOME`. Each build type needs its own binary. Recipe, dependency, and compiler changes can require a new build. Keep the cache between jobs to reuse packages on later pushes.
 

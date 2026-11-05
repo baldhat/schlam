@@ -154,7 +154,7 @@ target_link_libraries(unit_tests PRIVATE
 )
 
 include(GoogleTest)
-# PRE_TEST avoids trying to run the binary during the 'make' phase
+# Discovery runs during the build and requires the Conan runtime environment.
 gtest_discover_tests(unit_tests)
 
 

@@ -46,6 +46,7 @@ conan create recipes/g2o -s build_type=Release -s compiler.cppstd=23 --lockfile=
 conan create recipes/pangolin -s build_type=Release -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs="$(nproc)"
 conan install . -s build_type=Release -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs="$(nproc)"
 cmake -S . -B build/Release -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" -DCMAKE_BUILD_TYPE=Release
+source build/Release/generators/conanrun.sh
 cmake --build build/Release --parallel "$(nproc)"
 ctest --test-dir build/Release --output-on-failure
 ```
@@ -54,7 +55,7 @@ Replace `Release` with `Debug` throughout to build and test Debug. `conan profil
 
 ### Running
 
-Run these commands from `schlam/cpp`. Pass a YAML config as the executable's argument to select the dataset, sequence, plotter, and component parameters:
+Run these commands from `schlam/cpp`. In each new shell, first run `source build/Release/generators/conanrun.sh` so shared libraries resolve from Conan. This activation is also required during the build because GoogleTest runs the test binary to discover tests. Pass a YAML config as the executable's argument to select the dataset, sequence, plotter, and component parameters:
 
 | Config | Dataset and sequence | Plotter |
 | --- | --- | --- |

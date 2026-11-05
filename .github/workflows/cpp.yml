@@ -56,10 +56,14 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build
-        run: cmake --build build/${{ matrix.build_type }} --parallel 2
+        run: |
+          source build/${{ matrix.build_type }}/generators/conanrun.sh
+          cmake --build build/${{ matrix.build_type }} --parallel 2
 
       - name: Run tests
-        run: ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
+        run: |
+          source build/${{ matrix.build_type }}/generators/conanrun.sh
+          ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
   dataset:
     if: github.event_name == 'push'
     runs-on: [self-hosted, linux, x64]
@@ -104,10 +108,16 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build
-        run: cmake --build build/${{ matrix.build_type }} --parallel "$(nproc)"
+        run: |
+          source build/${{ matrix.build_type }}/generators/conanrun.sh
+          cmake --build build/${{ matrix.build_type }} --parallel "$(nproc)"
 
       - name: Run tests
-        run: ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
+        run: |
+          source build/${{ matrix.build_type }}/generators/conanrun.sh
+          ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
 
       - name: Run headless config
-        run: timeout 30m build/${{ matrix.build_type }}/app config/mav_headless.yaml
+        run: |
+          source build/${{ matrix.build_type }}/generators/conanrun.sh
+          timeout 30m build/${{ matrix.build_type }}/app config/mav_headless.yaml

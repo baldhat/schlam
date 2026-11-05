@@ -16,6 +16,7 @@ gtest/1.15.0
 PkgConfigDeps
 CMakeDeps
 CMakeToolchain
+VirtualRunEnv
 
 [layout]
 cmake_layout
