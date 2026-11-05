@@ -16,10 +16,6 @@
 
 
 int main(int argc, char** argv) {
-    if (argc > 2) {
-        std::cerr << "Usage: app [config.yaml]" << std::endl;
-        return 2;
-    }
     const auto settings = schlam::config::ConfigParser::load(
         argc == 2 ? argv[1] : SCHLAM_DEFAULT_CONFIG_PATH);
     utils::randomEngine().seed(settings.reconstruction.randomSeed);
