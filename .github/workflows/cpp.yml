@@ -92,13 +92,13 @@ jobs:
         run: conan profile detect --force
 
       - name: Build pinned g2o package
-        run: conan create recipes/g2o -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+        run: conan create recipes/g2o -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc)
 
       - name: Build pinned Pangolin package
-        run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+        run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc)
 
       - name: Install application dependencies
-        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2
+        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc)
 
       - name: Configure
         run: |
@@ -107,7 +107,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build
-        run: cmake --build build/${{ matrix.build_type }} --parallel 2
+        run: cmake --build build/${{ matrix.build_type }} --parallel "$(nproc)"
 
       - name: Run tests
         run: ctest --test-dir build/${{ matrix.build_type }} --output-on-failure

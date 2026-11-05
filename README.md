@@ -4,45 +4,97 @@
 
 A from-scratch visual(-inertial) SLAM playground. The core building blocks of a SLAM frontend — feature detection, matching, RANSAC-based pose estimation, and bundle adjustment — are implemented by hand rather than taken off the shelf, in two parallel implementations:
 
-- **C++** (`schlam/cpp`): the main pipeline, running on the [EuRoC MAV dataset](https://projects.asl.ethz.ch/datasets/doku.php?id=kmavvisualinertialdatasets) with Pangolin-based 3D visualization.
+- **C++** (`schlam/cpp`): the main pipeline, supporting the [EuRoC MAV dataset](https://projects.asl.ethz.ch/datasets/doku.php?id=kmavvisualinertialdatasets) and KITTI Odometry, with configurable Pangolin visualization or headless operation.
 - **Python** (`schlam/python`): a PyTorch-based prototyping ground with IMU preintegration, pyceres bundle adjustment, and ROS 2 visualization. Supports EuRoC MAV and KITTI Odometry.
 
 ## C++ pipeline
 
 The main executable (`src/main.cpp`) runs a frame-to-frame visual odometry loop:
 
-1. **Data loading** (`src/data`) — threaded EuRoC MAV loader for images, IMU samples, and ground truth, configured via YAML sensor configs.
+1. **Data loading** (`src/data`) — threaded EuRoC MAV and KITTI Odometry loaders, selected through the application YAML config. MAV also loads IMU samples and sensor calibration.
 2. **Feature detection** (`src/schlam`) — custom FAST and ORB detectors with a quadtree (`QuadTreeNode`) for spatially even keypoint distribution.
 3. **Matching** (`Matcher`) — windowed descriptor matching between consecutive frames.
 4. **Initial reconstruction** (`Ransac`) — essential matrix estimation with RANSAC, pose recovery, and point triangulation.
 5. **Optimization** (`Optimizer`) — two-view bundle adjustment over poses and landmarks using [g2o](https://github.com/RainerKuemmerle/g2o) (Levenberg-Marquardt with Huber kernels).
-6. **Visualization** (`src/plotting`) — Pangolin viewer showing the camera frustum, point cloud, and coordinate frames.
+6. **Visualization** (`src/plotting`) — Pangolin viewer showing the camera frustum, point cloud, and coordinate frames, or `DummyPlotter` for headless runs.
 
 `src/tft` is a small transform-tree library ("tf for the rest of us") for registering and chaining rigid 3D transforms between named coordinate frames (`imu`, `cam0`, `world`, ...).
 
 ### Building
 
-Dependencies can be resolved with Conan (see `conanfile.txt`) or installed on the system; [Pangolin](https://github.com/stevenlovegrove/Pangolin) must be installed on the system either way. g2o is vendored as a git submodule.
+The C++ project uses C++23, CMake 3.23 or newer, and Conan 2.24.0. CI uses GCC/G++ 14. Pangolin and g2o are built through the local [Conan recipes](schlam/cpp/recipes/README.md); `conan.lock` pins dependency recipe revisions.
+
+On Ubuntu 24.04, install the system build and graphics dependencies:
 
 ```bash
-git submodule update --init --recursive
-
-cd schlam/cpp
-conan install . --build=missing
-cmake --preset conan-release
-cmake --build --preset conan-release
+sudo apt-get update
+sudo apt-get install -y gcc-14 g++-14 cmake git python3 python3-venv ninja-build pkg-config \
+  libepoxy-dev libegl-dev libgl-dev libglu1-mesa-dev libx11-dev libglew-dev libtbb-dev
 ```
+
+From the repository root, install Conan in a Python virtual environment and build:
+
+```bash
+python3 -m venv .venv-conan
+source .venv-conan/bin/activate
+python -m pip install conan==2.24.0
+
+export CC=gcc-14
+export CXX=g++-14
+cd schlam/cpp
+conan profile detect --force
+conan create recipes/g2o -s build_type=Release -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs="$(nproc)"
+conan create recipes/pangolin -s build_type=Release -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs="$(nproc)"
+conan install . -s build_type=Release -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs="$(nproc)"
+cmake -S . -B build/Release -DCMAKE_TOOLCHAIN_FILE="$PWD/build/Release/generators/conan_toolchain.cmake" -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release --parallel "$(nproc)"
+ctest --test-dir build/Release --output-on-failure
+```
+
+Replace `Release` with `Debug` throughout to build and test Debug. `conan profile detect --force` replaces the default Conan profile; keep an existing custom profile if you already use one.
 
 ### Running
 
-Point `MAV_PATH` at the `mav0` folder of an extracted EuRoC MAV sequence (the directory containing `cam0/`, `imu0/`, and `state_groundtruth_estimate0/`):
+Run these commands from `schlam/cpp`. Pass a YAML config as the executable's argument to select the dataset, sequence, plotter, and component parameters:
+
+| Config | Dataset and sequence | Plotter |
+| --- | --- | --- |
+| [`config/mav.yaml`](schlam/cpp/config/mav.yaml) | EuRoC MAV, `V1_02_medium` | `PangolinPlotter` |
+| [`config/mav_headless.yaml`](schlam/cpp/config/mav_headless.yaml) | EuRoC MAV, `V1_02_medium` | `DummyPlotter` |
+| [`config/kitti.yaml`](schlam/cpp/config/kitti.yaml) | KITTI Odometry, `00` | `PangolinPlotter` |
+
+For MAV, set `MAV_PATH` to the directory containing the sequence directories. The loader reads `$MAV_PATH/<dataset.sequence>/mav0`, including `cam0/`, `imu0/`, and `state_groundtruth_estimate0/`:
 
 ```bash
-export MAV_PATH=/path/to/euroc/MH_01_easy/mav0
-./app   # from the build directory
+export MAV_PATH=/path/to/euroc
+build/Release/app config/mav.yaml
+# Run without a display or rendering thread:
+build/Release/app config/mav_headless.yaml
 ```
 
-There is also a `tft` executable for testing the transform-tree visualization on its own.
+For KITTI, set `KITTI_PATH` to the directory containing the extracted `data_odometry_gray`, `data_odometry_calib`, and `data_odometry_poses` directories:
+
+```bash
+export KITTI_PATH=/path/to/kitti
+build/Release/app config/kitti.yaml
+```
+
+With no argument, `app` uses `config/mav.yaml`. Edit `dataset.sequence` in the selected config to run another sequence. The `tft` executable runs the transform-tree visualization on its own.
+
+### GitHub Actions
+
+The [C++ workflow](.github/workflows/cpp.yml) runs a Debug and Release matrix:
+
+| Trigger | Runner | Ordered stages |
+| --- | --- | --- |
+| Every push | Self hosted Linux x64 (`self-hosted`, `linux`, `x64` labels) | Build → run tests → run headless config |
+| Pull request | GitHub hosted Ubuntu 24.04 | Build → run tests |
+
+Install the system dependencies listed above on the self hosted runner. The workflow installs Conan and selects Python 3.12. The runner's service account must be able to read the installed MAV dataset at `/home/baldhat/data/mav/vicon_room1/V1_02_medium/mav0`. The job sets `MAV_PATH=/home/baldhat/data/mav/vicon_room1` and runs `config/mav_headless.yaml` with a 30-minute timeout.
+
+Conan uses the runner account's persistent cache, normally `~/.conan2` (or `CONAN_HOME` when configured). `--build=missing` reuses matching g2o and Pangolin binaries on later pushes. Debug and Release need separate binaries; changes to recipes, dependencies, or compiler settings can require rebuilding. Separate runner machines or accounts have separate caches unless configured otherwise.
+
+Self hosted builds use all processors reported by `nproc`. GitHub hosted PR builds use two build jobs to limit memory use. Fresh hosted runners build the local packages from source; no private Conan remote or credentials are required.
 
 
 ## Python pipeline
@@ -74,10 +126,14 @@ schlam/
 ├── cpp/
 │   ├── src/
 │   │   ├── schlam/     # Feature detection, matching, RANSAC, optimization
-│   │   ├── data/       # EuRoC MAV dataset loading
+│   │   ├── config/     # Application config parser and component settings
+│   │   ├── data/       # EuRoC MAV and KITTI dataset loading
 │   │   ├── tft/        # Rigid transform tree
 │   │   └── plotting/   # Pangolin visualization
 │   ├── tests/          # GTest unit tests
-│   └── external/g2o    # g2o submodule
+│   ├── config/         # MAV, KITTI, and headless YAML configs
+│   ├── recipes/        # Pinned g2o and Pangolin Conan recipes
+│   ├── conanfile.txt    # Conan dependencies
+│   └── conan.lock       # Dependency recipe revisions
 └── python/             # PyTorch/pyceres prototype pipeline
 ```
