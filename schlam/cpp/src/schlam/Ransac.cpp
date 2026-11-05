@@ -15,17 +15,13 @@
 #include <random>
 #include <set>
 
-namespace {
-constexpr double kMaxTriangulationCosParallax = 0.99998;
-}
-
 std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool> > >
-reconstructInitial(
+Reconstructor::reconstructInitial(
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
-    const Eigen::Matrix3d &aIntrinsics) {
+    const Eigen::Matrix3d &aIntrinsics) const {
     assert(aKeypoints1.size() == aKeypoints2.size());
-    const int numCandidates = 500;
+    const int numCandidates = mSettings.ransacCandidates;
 
     if (aKeypoints1.size() < 8 || aKeypoints2.size() < 8) {
         std::cout << "WARN: Not enough matches found!" << std::endl;
@@ -58,9 +54,9 @@ reconstructInitial(
         return std::nullopt;
 
     auto rh = scoreHomography / totalScore;
-    std::cout << (rh > 0.45 ? "Choosing Homography" : "Choosing Essential")
+    std::cout << (rh > mSettings.homographySelectionRatio ? "Choosing Homography" : "Choosing Essential")
             << std::endl;
-    if (rh > 0.45) {
+    if (rh > mSettings.homographySelectionRatio) {
         return recoverPoseFromHomography(homography, {points1, points2}, {aKeypoints1, aKeypoints2}, inliersHomography,
                                          aIntrinsics);
     } else {
@@ -75,11 +71,11 @@ reconstructInitial(
 }
 
 std::optional<std::tuple<std::vector<Eigen::Vector3d>, std::vector<bool>>>
-triangulate(
+Reconstructor::triangulate(
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
     const Eigen::Matrix3d& aIntrinsics,
-    const std::shared_ptr<tft::RigidTransform3D>& aTransform) {
+    const std::shared_ptr<tft::RigidTransform3D>& aTransform) const {
     if (!aTransform || aKeypoints1.empty() || aKeypoints1.size() != aKeypoints2.size()) {
         return std::nullopt;
     }
@@ -105,11 +101,11 @@ triangulate(
     bool hasInlier = false;
     for (std::size_t i = 0; i < points1.size(); ++i) {
         if (!epipolarInliers[i]) continue;
-        const auto [point1, point2] = triangulate(points1[i], points2[i], transform);
+        const auto [point1, point2] = ::triangulate(points1[i], points2[i], transform);
         const auto [valid, cosParallax] = isValid(
             point1, point2, aTransform->mRotation, aTransform->mTranslation,
             aIntrinsics, aKeypoints1[i], aKeypoints2[i]);
-        const bool inlier = valid && cosParallax < kMaxTriangulationCosParallax;
+        const bool inlier = valid && cosParallax < mSettings.triangulationCosParallax;
         points[i] = point1;
         inliers[i] = inlier;
         hasInlier = hasInlier || inlier;
@@ -123,11 +119,11 @@ triangulate(
 // ---------------------- Homography --------------------------
 // ------------------------------------------------------------
 std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool> > >
-recoverPoseFromHomography(
+Reconstructor::recoverPoseFromHomography(
     const Eigen::Matrix3d &aHomography,
     const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
     const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aKeyPoints,
-    const std::vector<bool> &aInliers, const Eigen::Matrix3d &aIntrinsics) {
+    const std::vector<bool> &aInliers, const Eigen::Matrix3d &aIntrinsics) const {
     Eigen::JacobiSVD<Eigen::MatrixXd> svd(aHomography, Eigen::ComputeFullV);
     auto normalizedHomography = (1.0 / svd.singularValues()[1]) * aHomography;
     auto normalizedSVD = normalizedHomography.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
@@ -215,7 +211,7 @@ recoverPoseFromHomography(
 
         for (std::uint32_t j = 0; j < aAllPoints[0].size(); ++j) {
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
-            const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
+            const auto [p1_3D, p2_3D] = ::triangulate(p1, p2, transformMat);
             auto kp1 = aKeyPoints[0][j];
             auto kp2 = aKeyPoints[1][j];
             auto [valid, parallax] = isValid(p1_3D, p2_3D, std::get<0>(solutions[i]), std::get<1>(solutions[i]),
@@ -223,7 +219,7 @@ recoverPoseFromHomography(
             pts.push_back(p1_3D);
             if (aInliers[j] && valid) {
                 numValid++;
-                currentTriangulated.push_back(parallax < 0.9999);
+                currentTriangulated.push_back(parallax < mSettings.homographyTriangulationCosParallax);
                 currentParallaxes.push_back(parallax);
             } else {
                 currentTriangulated.push_back(false);
@@ -232,7 +228,7 @@ recoverPoseFromHomography(
         double parallax = 0;
         if (numValid > 0) {
             std::sort(currentParallaxes.begin(), currentParallaxes.end());
-            size_t idx = std::min(50, static_cast<int>(currentParallaxes.size() - 1));
+            size_t idx = std::min(mSettings.homographyParallaxRank, static_cast<int>(currentParallaxes.size() - 1));
             parallax = std::acos(std::clamp(currentParallaxes[idx], -1.0, 1.0)) * 180.0 / CV_PI;
         }
 
@@ -249,7 +245,9 @@ recoverPoseFromHomography(
         }
     }
 
-    if (secondBstNumPositive < 0.75 * bestNumPositive && bestNumPositive > 0.9 * numInliers && bestParallax > 1.0) {
+    if (secondBstNumPositive < mSettings.solutionAmbiguityRatio * bestNumPositive &&
+        bestNumPositive > mSettings.minimumTriangulatedRatio * numInliers &&
+        bestParallax > mSettings.minimumParallaxDegrees) {
         return std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<
             bool> > >({
             bestRot, bestTrans, reconstructedPts, triangulated
@@ -259,11 +257,11 @@ recoverPoseFromHomography(
     return std::nullopt;
 }
 
-void findHomography(
+void Reconstructor::findHomography(
     const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
     const std::vector<std::array<Eigen::Matrix<double, 8, 3>, 2> > &aCandidates,
     std::vector<bool> &aInliers, double &aScore,
-    Eigen::Matrix3d &aHomographyMatrix, double aSigma) {
+    Eigen::Matrix3d &aHomographyMatrix, double aSigma) const {
     std::size_t numCandidates{aAllPoints[0].size()};
     std::vector<bool> inliers(numCandidates, false);
     aScore = 0;
@@ -305,17 +303,17 @@ computeHomography(std::array<Eigen::Matrix<double, 8, 3>, 2> &aPoints) {
 }
 
 double
-checkHomography(const Eigen::Matrix3d &aHomography,
+Reconstructor::checkHomography(const Eigen::Matrix3d &aHomography,
                 const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
-                std::vector<bool> &aInliers, const double aSigma) {
+                std::vector<bool> &aInliers, const double aSigma) const {
     double score{0};
     const size_t nPoints = aAllPoints[0].size();
 
     aInliers.assign(nPoints, false);
     auto homographyInv = aHomography.inverse();
 
-    constexpr double threshold = 5.991;
-    constexpr double homographyScore = 5.991;
+    const double threshold = mSettings.homographyChi2;
+    const double homographyScore = mSettings.scoreChi2;
     const double invSigmaSquare = 1.0 / (aSigma * aSigma);
 
     for (size_t i = 0; i < nPoints; i++) {
@@ -354,11 +352,11 @@ double calculateErrorHomography(const Eigen::Matrix3d &aHomography,
 // ------------------------ Essential Matrix -----------------------------
 // -----------------------------------------------------------------------
 
-void findEssential(
+void Reconstructor::findEssential(
     const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
     const std::vector<std::array<Eigen::Matrix<double, 8, 3>, 2> > &aCandidates,
     std::vector<bool> &aInliers, double &aScore,
-    Eigen::Matrix3d &aEssentialMatrix, double aSigma) {
+    Eigen::Matrix3d &aEssentialMatrix, double aSigma) const {
     std::size_t numCandidates{aAllPoints[0].size()};
     std::vector<bool> inliers(numCandidates, false);
     aScore = 0;
@@ -380,7 +378,8 @@ void findEssential(
     // Coordinates are already normalized by K^-1, so use unit focal length.
     // Match the existing symmetric epipolar test's normalized distance threshold.
     const cv::Mat models = cv::findEssentialMat(points[0], points[1], 1.0, cv::Point2d(0, 0),
-        cv::RANSAC, 0.99, std::sqrt(3.841) * aSigma, static_cast<int>(aCandidates.size()));
+        cv::RANSAC, mSettings.opencvRansacConfidence,
+        std::sqrt(mSettings.essentialChi2) * aSigma, static_cast<int>(aCandidates.size()));
     if (models.empty() || models.cols != 3 || models.rows % 3 != 0) {
         return;
     }
@@ -430,16 +429,16 @@ computeEssential(std::array<Eigen::Matrix<double, 8, 3>, 2> &aPoints) {
 }
 
 double
-checkEssential(const Eigen::Matrix3d &aEssentialMatrix,
+Reconstructor::checkEssential(const Eigen::Matrix3d &aEssentialMatrix,
                const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
-               std::vector<bool> &aInliers, const double aSigma) {
+               std::vector<bool> &aInliers, const double aSigma) const {
     double score{0};
     const size_t nPoints = aAllPoints[0].size();
 
     aInliers.assign(nPoints, false);
 
-    constexpr double threshold = 3.841;
-    constexpr double essentialScore = 5.991;
+    const double threshold = mSettings.essentialChi2;
+    const double essentialScore = mSettings.scoreChi2;
     const double invSigmaSquare = 1.0 / (aSigma * aSigma);
 
     const Eigen::Matrix3d essentialMatrixT = aEssentialMatrix.transpose();
@@ -482,11 +481,11 @@ double calculateSymmetricErrorEssential(const Eigen::Vector3d &aLine,
 }
 
 std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool> > >
-recoverPoseFromEssential(
+Reconstructor::recoverPoseFromEssential(
     const Eigen::Matrix3d aEssential,
     const std::array<std::vector<Eigen::Vector3d>, 2> &aAllPoints,
     const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& aKeyPoints,
-    const std::vector<bool> &aInliers, const Eigen::Matrix3d &aIntrinsics) {
+    const std::vector<bool> &aInliers, const Eigen::Matrix3d &aIntrinsics) const {
     auto svd = aEssential.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix3d U = svd.matrixU();
     Eigen::Matrix3d V = svd.matrixV();
@@ -536,7 +535,7 @@ recoverPoseFromEssential(
 
         for (std::uint32_t j = 0; j < aAllPoints[0].size(); ++j) {
             auto p1{aAllPoints[0][j]}, p2{aAllPoints[1][j]};
-            const auto [p1_3D, p2_3D] = triangulate(p1, p2, transformMat);
+            const auto [p1_3D, p2_3D] = ::triangulate(p1, p2, transformMat);
             pts.push_back(p1_3D);
             auto kp1 = aKeyPoints[0][j];
             auto kp2 = aKeyPoints[1][j];
@@ -544,7 +543,7 @@ recoverPoseFromEssential(
             if (aInliers[j] && valid) {
                 currentParallaxes.push_back(parallax);
                 numValid++;
-                currentTriangulated.push_back(parallax < kMaxTriangulationCosParallax);
+                currentTriangulated.push_back(parallax < mSettings.triangulationCosParallax);
             } else {
                 currentTriangulated.push_back(false);
             }
@@ -552,7 +551,7 @@ recoverPoseFromEssential(
         double parallax = 0;
         if (numValid > 0) {
             std::sort(currentParallaxes.begin(), currentParallaxes.end());
-            size_t idx = std::min(30, int(currentParallaxes.size() - 1));
+            size_t idx = std::min(mSettings.essentialParallaxRank, int(currentParallaxes.size() - 1));
             parallax = std::acos(std::clamp(currentParallaxes[idx], -1.0, 1.0)) * 180.0 / CV_PI;
         }
         if (numValid > bestNumPositive) {
@@ -573,7 +572,9 @@ recoverPoseFromEssential(
     std::cout << "Num inliers: " << numInliers << std::endl;
     std::cout << "Best parallax: " << bestParallax << std::endl;
 
-    if ((secondBstNumPositive < (0.75 * bestNumPositive)) && (bestNumPositive > (0.9 * numInliers)) && bestParallax > 1.0) {
+    if (secondBstNumPositive < mSettings.solutionAmbiguityRatio * bestNumPositive &&
+        bestNumPositive > mSettings.minimumTriangulatedRatio * numInliers &&
+        bestParallax > mSettings.minimumParallaxDegrees) {
         // std::cout << "Best solution is valid" << std::endl;
         return std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<
             bool> > >({
@@ -584,9 +585,9 @@ recoverPoseFromEssential(
     return std::nullopt;
 }
 
-std::pair<bool, double> isValid(const Eigen::Vector3d &p1_3D, const Eigen::Vector3d &p2_3D, const Eigen::Matrix3d &R,
+std::pair<bool, double> Reconstructor::isValid(const Eigen::Vector3d &p1_3D, const Eigen::Vector3d &p2_3D, const Eigen::Matrix3d &R,
                                const Eigen::Vector3d &t, const Eigen::Matrix3d &intrinsics,
-                               const std::shared_ptr<KeyPoint>& aKP1, const std::shared_ptr<KeyPoint>& aKP2) {
+                               const std::shared_ptr<KeyPoint>& aKP1, const std::shared_ptr<KeyPoint>& aKP2) const {
     bool finite = std::isfinite(p1_3D.x()) && std::isfinite(p1_3D.y()) &&
                   std::isfinite(p1_3D.z());
     if (!finite) return {false, 0};
@@ -602,7 +603,7 @@ std::pair<bool, double> isValid(const Eigen::Vector3d &p1_3D, const Eigen::Vecto
     double cosParallax = normal1.dot(normal2) / (dist1 * dist2);
     if (!std::isfinite(cosParallax)) return {false, 0};
 
-    constexpr double cosParallaxThreshold{0.99998}; // 0.99998
+    const double cosParallaxThreshold = mSettings.triangulationCosParallax;
     // Check depth in front of first camera (only if enough parallax, as "infinite" points can easily go to negative depth)
     if (p1_3D(2) <= 0 && cosParallax < cosParallaxThreshold)
         return {false, cosParallax};
@@ -628,7 +629,7 @@ std::pair<bool, double> isValid(const Eigen::Vector3d &p1_3D, const Eigen::Vecto
     double squareError1 = (im1x - aKP1->getImgX()) * (im1x - aKP1->getImgX()) + (im1y - aKP1->getImgY()) * (
                              im1y - aKP1->getImgY());
 
-    if (!std::isfinite(squareError1) || squareError1 > 4)
+    if (!std::isfinite(squareError1) || squareError1 > mSettings.reprojectionErrorSquared)
         return {false, cosParallax};
 
     // Check reprojection error in second image
@@ -640,7 +641,7 @@ std::pair<bool, double> isValid(const Eigen::Vector3d &p1_3D, const Eigen::Vecto
     double squareError2 = (im2x - aKP2->getImgX()) * (im2x - aKP2->getImgX()) + (im2y - aKP2->getImgY()) * (
                              im2y - aKP2->getImgY());
 
-    if (!std::isfinite(squareError2) || squareError2 > 4)
+    if (!std::isfinite(squareError2) || squareError2 > mSettings.reprojectionErrorSquared)
         return {false, cosParallax};
 
     // Low-parallax points support the pose, but are excluded from the triangulated mask.
@@ -725,4 +726,68 @@ std::vector<std::uint32_t> getSparseSubset(std::uint32_t aCount,
     }
 
     return {unique_indices.begin(), unique_indices.end()};
+}
+
+// Compatibility entry points use the same defaults as a default Reconstructor.
+std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool>>>
+reconstructInitial(const std::vector<std::shared_ptr<KeyPoint>>& first,
+                   const std::vector<std::shared_ptr<KeyPoint>>& second,
+                   const Eigen::Matrix3d& intrinsics) {
+    return Reconstructor{}.reconstructInitial(first, second, intrinsics);
+}
+
+std::optional<std::tuple<std::vector<Eigen::Vector3d>, std::vector<bool>>>
+triangulate(const std::vector<std::shared_ptr<KeyPoint>>& first,
+            const std::vector<std::shared_ptr<KeyPoint>>& second,
+            const Eigen::Matrix3d& intrinsics,
+            const std::shared_ptr<tft::RigidTransform3D>& transform) {
+    return Reconstructor{}.triangulate(first, second, intrinsics, transform);
+}
+
+void findEssential(const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                   const std::vector<std::array<Eigen::Matrix<double, 8, 3>, 2>>& candidates,
+                   std::vector<bool>& inliers, double& score, Eigen::Matrix3d& essential, double sigma) {
+    Reconstructor{}.findEssential(points, candidates, inliers, score, essential, sigma);
+}
+
+double checkEssential(const Eigen::Matrix3d& essential,
+                      const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                      std::vector<bool>& inliers, double sigma) {
+    return Reconstructor{}.checkEssential(essential, points, inliers, sigma);
+}
+
+void findHomography(const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                    const std::vector<std::array<Eigen::Matrix<double, 8, 3>, 2>>& candidates,
+                    std::vector<bool>& inliers, double& score, Eigen::Matrix3d& homography, double sigma) {
+    Reconstructor{}.findHomography(points, candidates, inliers, score, homography, sigma);
+}
+
+double checkHomography(const Eigen::Matrix3d& homography,
+                       const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                       std::vector<bool>& inliers, double sigma) {
+    return Reconstructor{}.checkHomography(homography, points, inliers, sigma);
+}
+
+std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool>>>
+recoverPoseFromEssential(const Eigen::Matrix3d essential,
+                         const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                         const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& keypoints,
+                         const std::vector<bool>& inliers, const Eigen::Matrix3d& intrinsics) {
+    return Reconstructor{}.recoverPoseFromEssential(essential, points, keypoints, inliers, intrinsics);
+}
+
+std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool>>>
+recoverPoseFromHomography(const Eigen::Matrix3d& homography,
+                          const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                          const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& keypoints,
+                          const std::vector<bool>& inliers, const Eigen::Matrix3d& intrinsics) {
+    return Reconstructor{}.recoverPoseFromHomography(homography, points, keypoints, inliers, intrinsics);
+}
+
+std::pair<bool, double> isValid(const Eigen::Vector3d& point1, const Eigen::Vector3d& point2,
+                                const Eigen::Matrix3d& rotation, const Eigen::Vector3d& translation,
+                                const Eigen::Matrix3d& intrinsics,
+                                const std::shared_ptr<KeyPoint>& keypoint1,
+                                const std::shared_ptr<KeyPoint>& keypoint2) {
+    return Reconstructor{}.isValid(point1, point2, rotation, translation, intrinsics, keypoint1, keypoint2);
 }

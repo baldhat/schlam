@@ -25,12 +25,24 @@ ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
                                        const std::uint8_t aNumLevels,
                                        const double aLevelFactor) : mNumFeatures(aNumFeatures), mNumLevels(aNumLevels),
                                                                     mLevelFactor(aLevelFactor), mpPlotter(apPlotter) {
+    mSettings.count = aNumFeatures;
+    mSettings.levels = aNumLevels;
+    mSettings.scaleFactor = 1.0 / aLevelFactor;
     for (std::uint32_t i = 0; i < mNumLevels; i++) {
         mLevelFactors.push_back(std::pow(mLevelFactor, i));
     }
     mOrientationIndices = getPointsInRadius(mOrientationRadius);
 
     distributeFeaturesToLevels();
+}
+
+ORBFeatureDetector::ORBFeatureDetector(const schlam::config::Features& settings,
+                                       std::shared_ptr<IPlotter> plotter)
+    : ORBFeatureDetector(settings.count, std::move(plotter), settings.levels, 1.0 / settings.scaleFactor) {
+    mSettings = settings;
+    mFastFeatureDetector = schlam::FastFeatureDetector(settings.fastThreshold, settings.fastArcLength);
+    mOrientationRadius = settings.orientationRadius;
+    mOrientationIndices = getPointsInRadius(mOrientationRadius);
 }
 
 void ORBFeatureDetector::detectFeatures(Frame &aFrame) {
@@ -60,8 +72,8 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = mFastFeatureDetector.calculateFastFeatures(aPyramid[level]);
         // Rotating the 31-pixel pattern can place samples up to 18 pixels from the center.
-        levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, 19);
-        computeHarrisResponse(aPyramid[level], levelFeatures, 7);
+        levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, mSettings.border);
+        computeHarrisResponse(aPyramid[level], levelFeatures, mSettings.harrisBlockSize, mSettings.harrisK);
         auto levelTree = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight,
             mNumFeaturesPerLevel[level]);
         featuresByLevel[level] = levelTree->getFeatures();
@@ -103,8 +115,8 @@ void ORBFeatureDetector::addDescriptors(
     for (size_t lvl = 0; lvl < nLevels; ++lvl) {
         cv::GaussianBlur(aPyramid[lvl],
                          blurredPyramid[lvl],
-                         cv::Size(7, 7),
-                         2, 2,
+                         cv::Size(mSettings.descriptorBlurSize, mSettings.descriptorBlurSize),
+                         mSettings.descriptorBlurSigma, mSettings.descriptorBlurSigma,
                          cv::BORDER_REPLICATE);
     }
 
@@ -229,7 +241,7 @@ void ORBFeatureDetector::retainTopN(QuadTreeNode *aTree, std::uint32_t aTopN) {
 
 
 void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vector<KeyPoint> &aFeatures,
-                                               const std::uint8_t blockSize, const double aHarrisK) {
+                                               const int blockSize, const double aHarrisK) {
     cv::Mat Ix, Iy;
     cv::filter2D(aImage, Ix, CV_32F, mGradKernelX);
     cv::filter2D(aImage, Iy, CV_32F, mGradKernelY);
@@ -248,12 +260,13 @@ void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vecto
         double sumA{0}, sumB{0}, sumC{0};
 
         // 7x7 window
-        for (int y = -3; y <= 3; ++y) {
+        const int radius = blockSize / 2;
+        for (int y = -radius; y <= radius; ++y) {
             const float *pIx2 = Ix2.ptr<float>(fy + y);
             const float *pIy2 = Iy2.ptr<float>(fy + y);
             const float *pIxy = Ixy.ptr<float>(fy + y);
 
-            for (int x = -3; x <= 3; ++x) {
+            for (int x = -radius; x <= radius; ++x) {
                 if (fx + x < 0 || fx + x >= aImage.cols) continue;
 
                 sumA += pIx2[fx + x];

@@ -6,6 +6,7 @@
 #define SCHLAM_MAP_H
 
 #include "MapTypes.h"
+#include "config/Config.hpp"
 
 #include <memory>
 #include <mutex>
@@ -51,7 +52,8 @@ struct TrackingSnapshot {
 
 class Map {
 public:
-    Map(const std::string& frameName);
+    Map(const std::string& frameName, schlam::config::Mapping mapping = {},
+        schlam::config::MapPoints mapPoints = {});
     std::vector<MapPointId> addMapPoints(const std::vector<Eigen::Vector3d>& points3d,
         const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId);
     MapPointId addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId);
@@ -80,6 +82,8 @@ public:
     KeyFrameId nextKeyFrameId{0};
 
 private:
+    schlam::config::Mapping mMappingSettings;
+    schlam::config::MapPoints mMapPointSettings;
     mutable std::mutex mMutex;
 };
 

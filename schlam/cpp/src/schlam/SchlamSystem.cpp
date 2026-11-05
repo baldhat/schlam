@@ -28,14 +28,17 @@ SchlamSystem::SchlamSystem(
         std::shared_ptr<IPlotter> plotter,
         std::shared_ptr<ORBFeatureDetector> featureDetector,
         std::shared_ptr<Optimizer> optimizer,
-        MotionModel& motionModel)
+        MotionModel& motionModel,
+        schlam::config::Config settings)
     : dataset_(dataset)
     , transformer_(transformer)
     , plotter_(plotter)
     , featureDetector_(featureDetector)
     , optimizer_(optimizer)
     , motionModel_(motionModel)
-    , localMappingQueue_(1) {
+    , settings_(std::move(settings))
+    , reconstructor_(settings_.reconstruction)
+    , localMappingQueue_(settings_.mapping.queueCapacity) {
 
     cameraToIMU_ = transformer_->findTransform("gt/cam0", "gt/body");
 }
@@ -132,16 +135,18 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
 
     auto oldFrame = referenceFrame_.get();
     auto [matches, _] = matchWindow(oldFrame->mKeypointTree,
-                                 frame->mKeypointTree, 20, 100);
+                                 frame->mKeypointTree,
+                                 settings_.initialization.matchHammingDistance,
+                                 settings_.initialization.matchWindowPixels);
     plotter_->plotMatches(oldFrame->mImage, frame->mImage, matches);
 
-    if (matches[0].size() < 50) {
+    if (matches[0].size() < settings_.initialization.minimumMatches) {
         setFrameAsReference(frame, data.cameraToWorld);
         std::cout << "Selecting new reference" << std::endl;
         return;
     }
 
-    auto reconstructOpt = reconstructInitial(matches[0], matches[1], data.imageData->mIntrinsics);
+    auto reconstructOpt = reconstructor_.reconstructInitial(matches[0], matches[1], data.imageData->mIntrinsics);
 
     if (reconstructOpt.has_value()) {
         auto [R, t, pts, inliers] = reconstructOpt.value();
@@ -191,7 +196,8 @@ void SchlamSystem::track(const SynchronizedData& data) {
 
     // TODO Match only with features in predicted scale
     TrackingSnapshot trackingSnapshot = map_->getTrackingSnapshot();
-    const auto matches = matchMapPointsByProjection(trackingSnapshot, frame, estimatedPose, transformer_, 50, 50);
+    const auto matches = matchMapPointsByProjection(trackingSnapshot, frame, estimatedPose, transformer_,
+        settings_.tracking.matchHammingDistance, settings_.tracking.projectionWindowPixels);
     std::cout << "Matched " << matches.size() << " out of " <<trackingSnapshot.mapPoints.size() << " map points" << std::endl;
     std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchedFeatures;
     std::vector<Eigen::Vector3d> matchedMapPoints;
@@ -216,7 +222,7 @@ void SchlamSystem::track(const SynchronizedData& data) {
     }
     const auto inlierCount = std::count(inliers.begin(), inliers.end(), true);
     std::cout << "Retained " << inlierCount << " pose inliers" << std::endl;
-    if (inlierCount >= 12) {
+    if (inlierCount >= settings_.tracking.minimumPoseInliers) {
         frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
             trackingSnapshot.frame, estimatedPose->mSource, rotation, translation);
         recordMapPointVisibility(trackingSnapshot, *frame, *frame->mMapToCamera);
@@ -246,7 +252,7 @@ void SchlamSystem::track(const SynchronizedData& data) {
     }
 
     framesSinceLastKeyframe_++;
-    if (matchedMapPoints.size() < 12) {
+    if (matchedMapPoints.size() < settings_.tracking.minimumMatchesBeforeLost) {
         std::cout << "Lost tracking!" << std::endl;
         state_ = TrackingState::LOST;
     }
@@ -268,7 +274,8 @@ void SchlamSystem::localMapping() {
 
         triangulateUnmatchedFeatures();
 
-        optimizer_->optimizeCovisibilityGraph(map_.get(), std::prev(map_->mKeyFrames.end())->second);
+        optimizer_->optimizeCovisibilityGraph(map_.get(), std::prev(map_->mKeyFrames.end())->second,
+            settings_.optimizer.localMaxVariableKeyframes, settings_.optimizer.localMaxFixedKeyframes);
 
     }
 }
@@ -297,7 +304,7 @@ void SchlamSystem::buildMap(std::string prevFrameName,
               std::shared_ptr<Frame> frame,
               std::vector<std::shared_ptr<KeyPoint>> pts2D_1,
               std::vector<std::shared_ptr<KeyPoint>> pts2D_2, std::vector<Eigen::Vector3d> pts_opt) {
-    map_ = std::make_unique<Map>(prevFrameName);
+    map_ = std::make_unique<Map>(prevFrameName, settings_.mapping, settings_.mapPoints);
     const auto referenceKeyFrameId = map_->addKeyFrame(referenceFrame);
     const auto initialKeyFrameId = map_->addKeyFrame(frame);
     const auto pointIds = map_->addMapPoints(pts_opt, pts2D_2, initialKeyFrameId);
@@ -311,14 +318,15 @@ void SchlamSystem::buildMap(std::string prevFrameName,
 
 void SchlamSystem::triangulateUnmatchedFeatures() {
     // TODO use covisibility graph instead?
-    std::size_t lastNKeyframes = 5;
+    std::size_t lastNKeyframes = settings_.mapping.triangulationPreviousKeyframes;
     auto start = std::prev(map_->mKeyFrames.end(), std::min(lastNKeyframes, map_->mKeyFrames.size() - 1));
     auto latest = std::prev(map_->mKeyFrames.end());
 
     for (auto it = start; it != latest; ++it) {
-        auto matches = matchUnmatchedFeatures(it->second, latest->second, 30);
+        auto matches = matchUnmatchedFeatures(it->second, latest->second,
+            settings_.mapping.triangulationMatchHammingDistance);
         auto transform = latest->second.mMapToCamera * it->second.mMapToCamera->inverse();
-        auto optionalResult = triangulate(matches[0], matches[1], latest->second.mIntrinsics, transform);
+        auto optionalResult = reconstructor_.triangulate(matches[0], matches[1], latest->second.mIntrinsics, transform);
         if (optionalResult.has_value()) {
             // add new MapPoints and observations
             auto [pts, inliers] = optionalResult.value();

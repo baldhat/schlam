@@ -830,7 +830,7 @@ void PangolinPlotter::run() {
     // 1. Camera setup
     pangolin::OpenGlRenderState s_cam(
         pangolin::ProjectionMatrix(752, 480, mCameraIntrinsics(0, 0), mCameraIntrinsics(1, 1), mCameraIntrinsics(0, 2), mCameraIntrinsics(1, 2), 0.01,
-                                   1000),
+                                   10000),
         pangolin::ModelViewLookAt(0, -150, -100, 0, 0, 50, mZUP ? pangolin::AxisZ : pangolin::AxisNegY));
 
     // 2. 3D viewport

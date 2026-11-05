@@ -8,6 +8,7 @@
 #include <bit>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <vector>
 
 namespace {
@@ -20,9 +21,10 @@ int hammingDistance(const MapPoint::Descriptor& first, const MapPoint::Descripto
 }
 }
 
-MapPoint::MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId)
+MapPoint::MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId,
+                   schlam::config::MapPoints settings)
     : mPosition(position), mDescriptor(descriptor), mLastInlierDescriptor(descriptor),
-      mDescriptorHistory{descriptor}, mId(id), mCreatorId(creatorId){
+      mId(id), mCreatorId(creatorId), mSettings(settings), mDescriptorHistory{descriptor} {
 }
 
 void MapPoint::addInlierObservation(const Descriptor& descriptor, const Eigen::Vector3d& cameraCenter) {
@@ -49,7 +51,7 @@ bool MapPoint::isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) co
     const Eigen::Vector3d direction = cameraCenter - mPosition;
     const double length = direction.norm();
     if (!std::isfinite(length) || length <= 1e-9) return false;
-    constexpr double cosMaxViewingAngle = 0.5; // 60 degrees
+    const double cosMaxViewingAngle = std::cos(mSettings.maximumViewingAngleDegrees * std::numbers::pi / 180.0);
     return direction.dot(mViewingDirectionSum) >=
            cosMaxViewingAngle * length * meanLength;
 }
@@ -57,7 +59,7 @@ bool MapPoint::isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) co
 void MapPoint::updateDescriptor(const Descriptor& descriptor) {
     mLastInlierDescriptor = descriptor;
     mDescriptorHistory.push_back(descriptor);
-    if (mDescriptorHistory.size() > descriptorHistorySize) {
+    if (mDescriptorHistory.size() > mSettings.descriptorHistorySize) {
         mDescriptorHistory.pop_front();
     }
 

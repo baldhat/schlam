@@ -63,9 +63,7 @@ public:
 }
 
 
-Optimizer::Optimizer() {
-
-}
+Optimizer::Optimizer(schlam::config::Optimizer settings) : mSettings(settings) {}
 
 std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d> >
 Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<KeyPoint>>>& aKeyPoints,
@@ -141,7 +139,7 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
     // OPTIMIZE
     optimizer.initializeOptimization();
     optimizer.setVerbose(false);
-    optimizer.optimize(50);
+    optimizer.optimize(mSettings.initialIterations);
 
     g2o::VertexSE3Expmap* v_pose = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(1));
     g2o::SE3Quat optimized_pose = v_pose->estimate();
@@ -191,9 +189,7 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
     optimizer.addVertex(pose);
 
     // Match the ORB detector's default 1.2x pyramid, with one-pixel sigma at level 0.
-    constexpr double pyramidScaleFactor = 1.2;
-    constexpr double monocularChi2Threshold = 5.991;
-    const double huberDelta = std::sqrt(monocularChi2Threshold);
+    const double huberDelta = std::sqrt(mSettings.monocularChi2Threshold);
 
     std::vector<g2o::EdgeSE3ProjectXYZOnlyPose*> projectionEdges;
     projectionEdges.reserve(aPoints.size());
@@ -206,7 +202,7 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
         edge->cx = aIntrinsics(0, 2);
         edge->cy = aIntrinsics(1, 2);
         edge->setMeasurement(Eigen::Vector2d(aKeyPoints[j]->getImgX(), aKeyPoints[j]->getImgY()));
-        const double inverseVariance = std::pow(pyramidScaleFactor, -2.0 * aKeyPoints[j]->getLevel());
+        const double inverseVariance = std::pow(mSettings.pyramidScaleFactor, -2.0 * aKeyPoints[j]->getLevel());
         edge->setInformation(Eigen::Matrix2d::Identity() * inverseVariance);
         auto* robustKernel = new g2o::RobustKernelHuber;
         robustKernel->setDelta(huberDelta);
@@ -216,13 +212,13 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
     }
 
     optimizer.initializeOptimization();
-    optimizer.optimize(50);
+    optimizer.optimize(mSettings.poseIterations);
 
     // Squared reprojection error normalized by the observation's octave variance.
     const auto isInlier = [&](g2o::EdgeSE3ProjectXYZOnlyPose* edge) {
         edge->computeError();
         const double chi2 = edge->chi2();
-        return edge->isDepthPositive() && std::isfinite(chi2) && chi2 <= monocularChi2Threshold;
+        return edge->isDepthPositive() && std::isfinite(chi2) && chi2 <= mSettings.monocularChi2Threshold;
     };
     std::vector<bool> inliers(projectionEdges.size(), false);
     std::size_t inlierCount = 0;
@@ -241,7 +237,7 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
         for (std::size_t j = 0; j < projectionEdges.size(); ++j) {
             if (inliers[j]) projectionEdges[j]->setRobustKernel(nullptr);
         }
-        optimizer.optimize(50);
+        optimizer.optimize(mSettings.poseIterations);
     }
 
 
@@ -354,8 +350,7 @@ bool Optimizer::optimizeFullMap(Map* map, bool removeOutlierPoints) {
 
             optimizer.addEdge(edge);
             if (removeOutlierPoints) {
-                constexpr double pyramidScaleFactor = 1.2;
-                const double inverseVariance = std::pow(pyramidScaleFactor, -2.0 * keypoint->getLevel());
+                const double inverseVariance = std::pow(mSettings.pyramidScaleFactor, -2.0 * keypoint->getLevel());
                 projectionObservations.push_back({pointId, edge, inverseVariance});
             }
         }
@@ -364,7 +359,7 @@ bool Optimizer::optimizeFullMap(Map* map, bool removeOutlierPoints) {
     // OPTIMIZE
     if (!optimizer.initializeOptimization()) return false;
     //optimizer.setVerbose(true);
-    if (optimizer.optimize(50) <= 0) return false;
+    if (optimizer.optimize(mSettings.fullMapIterations) <= 0) return false;
 
     // Validate before publishing to the map
     for (const auto& [frameId, vertexId] : frameToVertexId) {
@@ -392,19 +387,19 @@ bool Optimizer::optimizeFullMap(Map* map, bool removeOutlierPoints) {
     }
 
     if (removeOutlierPoints) {
-        constexpr double monocularChi2Threshold = 5.991;
         std::set<MapPointId> outlierPointIds;
         std::unordered_map<MapPointId, std::size_t> inlierObservationCounts;
         for (const auto& observation : projectionObservations) {
             observation.edge->computeError();
             const double normalizedChi2 = observation.edge->chi2() * observation.inverseVariance;
             if (observation.edge->isDepthPositive() && std::isfinite(normalizedChi2) &&
-                normalizedChi2 <= monocularChi2Threshold)
+                normalizedChi2 <= mSettings.monocularChi2Threshold)
                 ++inlierObservationCounts[observation.pointId];
         }
         for (const auto& [pointId, point] : map->mPoints) {
             const auto inlierCount = inlierObservationCounts[pointId];
-            if (inlierCount < 2 || inlierCount * 5 < point.mObservations.size() * 4)
+            if (inlierCount < mSettings.fullMapMinimumInlierObservations ||
+                static_cast<double>(inlierCount) / static_cast<double>(point.mObservations.size()) < mSettings.fullMapMinimumInlierRatio)
                 outlierPointIds.insert(pointId);
         }
         for (const auto pointId : outlierPointIds) map->removePoint(pointId);
@@ -418,7 +413,7 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     if (!map || maxNumVariable == 0 || maxNumFixed < 2 ||
         !map->mKeyFrames.contains(keyframe.mId)) return false;
 
-    auto neighbors = getCovisibilityNeighbors(map, keyframe.mId, maxNumVariable - 1, 15);
+    auto neighbors = getCovisibilityNeighbors(map, keyframe.mId, maxNumVariable - 1, mSettings.localMinimumSharedPoints);
 
     std::set<KeyFrameId> localFrames{keyframe.mId};
     std::set<MapPointId> candidatePoints(keyframe.mObservedPoints.begin(), keyframe.mObservedPoints.end());
@@ -584,7 +579,7 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     if (!optimizer.initializeOptimization()) return false;
     optimizer.setVerbose(false);
     optimizer.setForceStopFlag(&stopCovisibility_);
-    optimizer.optimize(50);
+    optimizer.optimize(mSettings.localIterations);
     stopCovisibility_ = false;
 
     // Validate before publishing to the map

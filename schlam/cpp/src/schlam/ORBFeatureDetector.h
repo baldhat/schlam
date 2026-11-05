@@ -7,6 +7,7 @@
 #include <opencv2/core/mat.hpp>
 
 #include "FastFeatureDetector.h"
+#include "config/Config.hpp"
 #include "utils.h"
 
 class Frame;
@@ -19,6 +20,7 @@ public:
     ORBFeatureDetector(const std::uint32_t aNumFeatures, std::shared_ptr<IPlotter> apPlotter,
                        const std::uint8_t aNumLevels,
                        const double aLevelFactor = 1 / 1.2);
+    ORBFeatureDetector(const schlam::config::Features& settings, std::shared_ptr<IPlotter> plotter);
 
     void detectFeatures(Frame& frame);
 
@@ -29,6 +31,7 @@ private:
     std::uint32_t mNumFeatures{0};
     std::uint8_t mNumLevels{0};
     std::uint32_t mOrientationRadius{15};
+    schlam::config::Features mSettings;
     double mLevelFactor{0};
     std::vector<double> mLevelFactors;
     std::vector<Point> mOrientationIndices;
@@ -57,7 +60,7 @@ private:
                         QuadTreeNode* aTree);
 
     void computeHarrisResponse(const cv::Mat &aImage, std::vector<KeyPoint> &aFeatures,
-                               const std::uint8_t blockSize = 7, const double aHarrisK = 0.04);
+                               const int blockSize = 7, const double aHarrisK = 0.04);
 
     std::tuple<double, double> applyGradKernels(const cv::Mat &aImage, int x, int y);
 

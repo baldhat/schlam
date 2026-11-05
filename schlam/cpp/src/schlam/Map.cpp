@@ -16,7 +16,9 @@
 #include "MapPoint.hpp"
 
 
-Map::Map(const std::string& frameName) : mFrame(frameName) {}
+Map::Map(const std::string& frameName, schlam::config::Mapping mapping,
+         schlam::config::MapPoints mapPoints)
+    : mFrame(frameName), mMappingSettings(mapping), mMapPointSettings(mapPoints) {}
 
 std::vector<MapPointId> Map::addMapPoints(const std::vector<Eigen::Vector3d>& points3d,
         const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId) {
@@ -34,7 +36,7 @@ MapPointId Map::addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<
     auto descriptor = keyPoint->getDescriptor();
     std::lock_guard guard(mMutex);
     const auto pointId = nextMapPointId;
-    mPoints.insert({pointId, MapPoint(point, descriptor, pointId, creatorId)});
+    mPoints.insert({pointId, MapPoint(point, descriptor, pointId, creatorId, mMapPointSettings)});
     nextMapPointId++;
     return pointId;
 }
@@ -181,24 +183,19 @@ bool Map::removePoint(MapPointId pointId) {
 
 
 bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe, const bool localMappingIdle) {
-    static constexpr std::size_t minNumInliers = 25;
-    static constexpr std::size_t minFramesSinceLastKeyframe = 5;
-
-    bool hasMinimumInliers = numInliers >= minNumInliers;
-    bool hasMinimumVisibleChange = numInliers < 100; //0.9 * mKeyFrames.at(nextKeyFrameId-1).mObservedPoints.size();
-    bool localMappingCanProcess = localMappingIdle || framesSinceLastKeyframe >= minFramesSinceLastKeyframe;
+    bool hasMinimumInliers = numInliers >= mMappingSettings.keyframeMinimumInliers;
+    bool hasMinimumVisibleChange = numInliers < mMappingSettings.keyframeMaximumInliers;
+    bool localMappingCanProcess = localMappingIdle || framesSinceLastKeyframe >= mMappingSettings.keyframeMinimumFrameGapWhenBusy;
     return hasMinimumInliers && hasMinimumVisibleChange && localMappingCanProcess;
 }
 
 void Map::cullMapPoints() {
-    constexpr std::uint64_t minVisibilityCount = 8;
-    constexpr std::uint64_t minSuccessRateDenominator = 4;
     std::vector<MapPointId> toRemove;
     {
         std::lock_guard guard(mMutex);
         for (const auto& [id, point] : mPoints) {
-            if (point.mVisibleInTracking >= minVisibilityCount &&
-                point.mNumInlierObservations * minSuccessRateDenominator < point.mVisibleInTracking) {
+            if (point.mVisibleInTracking >= mMapPointSettings.minimumVisibilityCount &&
+                static_cast<double>(point.mNumInlierObservations) / static_cast<double>(point.mVisibleInTracking) < mMapPointSettings.minimumTrackingSuccessRate) {
                 toRemove.push_back(id);
             }
         }

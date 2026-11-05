@@ -13,12 +13,58 @@
 #include <memory>
 #include <tuple>
 #include <vector>
+#include "config/Config.hpp"
 
 namespace tft {
     class RigidTransform3D;
 }
 
 class KeyPoint;
+
+class Reconstructor {
+public:
+    explicit Reconstructor(schlam::config::Reconstruction settings = {}) : mSettings(settings) {}
+
+    std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool>>>
+    reconstructInitial(const std::vector<std::shared_ptr<KeyPoint>>& first,
+                       const std::vector<std::shared_ptr<KeyPoint>>& second,
+                       const Eigen::Matrix3d& intrinsics) const;
+    std::optional<std::tuple<std::vector<Eigen::Vector3d>, std::vector<bool>>>
+    triangulate(const std::vector<std::shared_ptr<KeyPoint>>& first,
+                const std::vector<std::shared_ptr<KeyPoint>>& second,
+                const Eigen::Matrix3d& intrinsics,
+                const std::shared_ptr<tft::RigidTransform3D>& transform) const;
+    void findEssential(const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                       const std::vector<std::array<Eigen::Matrix<double, 8, 3>, 2>>& candidates,
+                       std::vector<bool>& inliers, double& score, Eigen::Matrix3d& essential, double sigma) const;
+    double checkEssential(const Eigen::Matrix3d& essential,
+                          const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                          std::vector<bool>& inliers, double sigma) const;
+    void findHomography(const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                        const std::vector<std::array<Eigen::Matrix<double, 8, 3>, 2>>& candidates,
+                        std::vector<bool>& inliers, double& score, Eigen::Matrix3d& homography, double sigma) const;
+    double checkHomography(const Eigen::Matrix3d& homography,
+                           const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                           std::vector<bool>& inliers, double sigma) const;
+    std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool>>>
+    recoverPoseFromEssential(const Eigen::Matrix3d essential,
+                             const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                             const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& keypoints,
+                             const std::vector<bool>& inliers, const Eigen::Matrix3d& intrinsics) const;
+    std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<bool>>>
+    recoverPoseFromHomography(const Eigen::Matrix3d& homography,
+                              const std::array<std::vector<Eigen::Vector3d>, 2>& points,
+                              const std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>& keypoints,
+                              const std::vector<bool>& inliers, const Eigen::Matrix3d& intrinsics) const;
+    std::pair<bool, double> isValid(const Eigen::Vector3d& point1, const Eigen::Vector3d& point2,
+                                    const Eigen::Matrix3d& rotation, const Eigen::Vector3d& translation,
+                                    const Eigen::Matrix3d& intrinsics,
+                                    const std::shared_ptr<KeyPoint>& keypoint1,
+                                    const std::shared_ptr<KeyPoint>& keypoint2) const;
+
+private:
+    schlam::config::Reconstruction mSettings;
+};
 
 // R and t map the reference camera into the current camera. Cloud points are in
 // the reference frame, and cloud/mask entries retain the input correspondence order.

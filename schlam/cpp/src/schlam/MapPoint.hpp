@@ -13,13 +13,15 @@
 #include <eigen3/Eigen/Core>
 
 #include "MapTypes.h"
+#include "config/Config.hpp"
 
 
 class MapPoint {
 public:
     using Descriptor = std::array<std::uint8_t, 32>;
 
-    MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId);
+    MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId,
+             schlam::config::MapPoints settings = {});
 
     void addInlierObservation(const Descriptor& descriptor, const Eigen::Vector3d& cameraCenter);
     void addTriangulationObservation(const Descriptor& descriptor);
@@ -40,7 +42,7 @@ public:
 private:
     void updateDescriptor(const Descriptor& descriptor);
     Eigen::Vector3d mViewingDirectionSum = Eigen::Vector3d::Zero();
-    static constexpr std::size_t descriptorHistorySize = 10;
+    schlam::config::MapPoints mSettings;
     std::deque<Descriptor> mDescriptorHistory;
 };
 

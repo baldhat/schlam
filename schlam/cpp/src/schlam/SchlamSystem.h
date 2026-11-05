@@ -10,6 +10,8 @@
 #include <Eigen/Eigen>
 
 #include "MapTypes.h"
+#include "Ransac.h"
+#include "config/Config.hpp"
 
 
 namespace tft {
@@ -52,7 +54,8 @@ public:
         std::shared_ptr<IPlotter> plotter,
         std::shared_ptr<ORBFeatureDetector> featureDetector,
         std::shared_ptr<Optimizer> optimizer,
-        MotionModel& motionModel);
+        MotionModel& motionModel,
+        schlam::config::Config settings = {});
     ~SchlamSystem();
 
     void run();
@@ -63,6 +66,8 @@ private:
     std::shared_ptr<ORBFeatureDetector> featureDetector_;
     std::shared_ptr<Optimizer> optimizer_;
     MotionModel& motionModel_;
+    schlam::config::Config settings_;
+    Reconstructor reconstructor_;
 
     std::unique_ptr<Map> map_;
     std::shared_ptr<tft::RigidTransform3D> cameraToIMU_;

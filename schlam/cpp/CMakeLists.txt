@@ -41,6 +41,9 @@ include_directories(
 
 # LIBRARY
 add_library(${PROJECT_NAME} SHARED 
+    src/config/ConfigParser.cpp
+    src/config/ConfigParser.hpp
+    src/config/Config.hpp
     src/random.cpp
     src/random.hpp
 
@@ -128,6 +131,7 @@ add_executable(app
     src/main.cpp
 )
 target_link_libraries(app ${PROJECT_NAME})
+target_compile_definitions(app PRIVATE SCHLAM_DEFAULT_CONFIG_PATH="${PROJECT_SOURCE_DIR}/config/mav.yaml")
 
 add_executable(tft 
     src/tft/main.cpp

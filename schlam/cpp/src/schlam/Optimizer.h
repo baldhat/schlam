@@ -6,6 +6,7 @@
 #define SCHLAM_OPTIMIZER_H
 
 #include "KeyPoint.h"
+#include "config/Config.hpp"
 
 #include <memory>
 #include <tuple>
@@ -25,7 +26,7 @@ struct PoseOptimizationResult {
 
 class Optimizer {
 public:
-    Optimizer();
+    explicit Optimizer(schlam::config::Optimizer settings = {});
 
     // Anchors monocular scale to the initial translation's baseline length.
     std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d> >
@@ -66,6 +67,8 @@ public:
     void stopCovisibility();
 
     bool stopCovisibility_{false};
+private:
+    schlam::config::Optimizer mSettings;
 };
 
 
