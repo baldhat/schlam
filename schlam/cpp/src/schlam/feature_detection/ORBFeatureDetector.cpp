@@ -70,7 +70,6 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
     std::for_each(std::execution::par, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = mFastFeatureDetector.calculateFastFeatures(aPyramid[level]);
-        // Rotating the 31-pixel pattern can place samples up to 18 pixels from the center.
         levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, mSettings.border);
         computeHarrisResponse(aPyramid[level], levelFeatures, mSettings.harrisBlockSize, mSettings.harrisK);
         auto levelTree = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight,
@@ -78,6 +77,12 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
         featuresByLevel[level] = levelTree->getFeatures();
         rescaleFeatures(featuresByLevel[level], 1.0 / mLevelFactors[level], level);
     });
+    return mergeFeatureLevels(featuresByLevel, aPyramid[0]);
+}
+
+std::unique_ptr<QuadTreeNode> ORBFeatureDetector::mergeFeatureLevels(
+    const std::vector<std::vector<std::shared_ptr<KeyPoint>>>& featuresByLevel,
+    const cv::Mat& image) {
     std::vector<std::shared_ptr<KeyPoint>> features;
     features.reserve(mNumFeatures);
     for (const auto& levelFeatures : featuresByLevel) {
@@ -86,7 +91,7 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
     std::sort(features.begin(), features.end(), [](const auto& a, const auto& b) {
         return a->getScore() > b->getScore();
     });
-    auto tree = std::make_unique<QuadTreeNode>(0, aPyramid[0].cols, 0, aPyramid[0].rows,
+    auto tree = std::make_unique<QuadTreeNode>(0, image.cols, 0, image.rows,
         features, nullptr);
     // Index the selected features without pruning another levels quota
     // Different levels can contribute features at the same full-resolution position
@@ -100,9 +105,9 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
     }
     auto treeFeatures = tree->getFeatures();
     if (mpPlotter) {
-        mpPlotter->plotFeatures(aPyramid[0], treeFeatures, *tree);
+        mpPlotter->plotFeatures(image, treeFeatures, *tree);
     }
-    return std::move(tree);
+    return tree;
 }
 
 void ORBFeatureDetector::addDescriptors(

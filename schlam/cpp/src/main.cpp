@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
     auto motionModel = MotionModel(settings.motion.maximumExtrapolationIntervals);
 
     SchlamSystem schlamSystem(dataloader, pTransformer, plotter, featureDetector, optimizer, motionModel, settings);
-    const auto result = schlamSystem.run();
+    const auto result = schlamSystem.run(); // TODO export results to file(s) and evaluate
 
     std::cout << "Finished with " << dataloader->percentageRead() << "% of data processed." << std::endl;
     std::cout << "Created " << result.mapPoints.size() << " map points and "

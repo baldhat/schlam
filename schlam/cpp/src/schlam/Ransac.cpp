@@ -87,7 +87,7 @@ Reconstructor::triangulate(
     const auto points2 = toNormalized(toEigen(aKeypoints2), inverseIntrinsics);
     const Eigen::Matrix4d transform = aTransform->matrix();
 
-    // E = [t]x R. Normalize t so the epipolar check is independent of baseline scale.
+    // E = [t]x R. Normalize t so the epipolar check is independent of baseline scale
     const Eigen::Vector3d translation = aTransform->mTranslation / baseline;
     Eigen::Matrix3d crossTranslation;
     crossTranslation << 0, -translation.z(), translation.y(),

@@ -54,6 +54,10 @@ private:
 
     std::unique_ptr<QuadTreeNode> calcFeatures(const std::vector<cv::Mat> &aPyramid);
 
+    std::unique_ptr<QuadTreeNode> mergeFeatureLevels(
+        const std::vector<std::vector<std::shared_ptr<KeyPoint>>>& featuresByLevel,
+        const cv::Mat& image);
+
     void addDescriptors(const std::vector<cv::Mat>& aPyramid, QuadTreeNode* aTree);
 
     void addOrientation(const std::vector<cv::Mat> &aPyramid,
