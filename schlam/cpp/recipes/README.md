@@ -41,7 +41,7 @@ Activate `conanrun.sh` in each new shell before building, testing, or running th
 
 `conan create --build=missing` exports the recipe and reuses a matching binary from the runner account's Conan cache, normally `~/.conan2` or the configured `CONAN_HOME`. Each build type needs its own binary. Recipe, dependency, and compiler changes can require a new build. Keep the cache between jobs to reuse packages on later pushes.
 
-The [GitHub Actions workflow](../../../.github/workflows/cpp.yml) runs build, tests, and the installed MAV dataset headlessly on every push, in both Debug and Release. It uses a self hosted Linux x64 runner, its persistent Conan cache, and all processors reported by `nproc`. Pull requests build and test on fresh GitHub hosted runners with two build jobs; those runners build the local recipes from source. No private Conan remote or credentials are required.
+The [GitHub Actions workflow](../../../.github/workflows/cpp.yml) builds and tests both Debug and Release on every push, then runs the installed MAV dataset headlessly for Release only. It uses a self hosted Linux x64 runner, its persistent Conan cache, and all processors reported by `nproc`. Pull requests build and test on fresh GitHub hosted runners with two build jobs; those runners build the local recipes from source. No private Conan remote or credentials are required.
 
 See the [runner setup](../../../README.md#github-actions) for host dependencies and the dataset path.
 

@@ -103,10 +103,10 @@ The [C++ workflow](.github/workflows/cpp.yml) runs a Debug and Release matrix:
 
 | Trigger | Runner | Ordered stages |
 | --- | --- | --- |
-| Every push | Self hosted Linux x64 (`self-hosted`, `linux`, `x64` labels) | Build → run tests → run headless config |
+| Every push | Self hosted Linux x64 (`self-hosted`, `linux`, `x64` labels) | Debug: build → run tests; Release: build → run tests → run headless config |
 | Pull request | GitHub hosted Ubuntu 24.04 | Build → run tests |
 
-Install the system dependencies listed above on the self hosted runner. The workflow installs Conan and selects Python 3.12. The runner's service account must be able to read the installed MAV dataset at `/home/baldhat/data/mav/vicon_room1/V1_02_medium/mav0`. The job sets `MAV_PATH=/home/baldhat/data/mav/vicon_room1` and runs `config/mav_headless.yaml` with a 30-minute timeout.
+Install the system dependencies listed above on the self hosted runner. The workflow installs Conan and selects Python 3.12. The runner's service account must be able to read the installed MAV dataset at `/home/baldhat/data/mav/vicon_room1/V1_02_medium/mav0`. The job sets `MAV_PATH=/home/baldhat/data/mav/vicon_room1` and runs `config/mav_headless.yaml` for Release only, with a 30-minute timeout.
 
 Conan uses the runner account's persistent cache, normally `~/.conan2` (or `CONAN_HOME` when configured). `--build=missing` reuses matching g2o and Pangolin binaries on later pushes. Debug and Release need separate binaries; changes to recipes, dependencies, or compiler settings can require rebuilding. Separate runner machines or accounts have separate caches unless configured otherwise.
 

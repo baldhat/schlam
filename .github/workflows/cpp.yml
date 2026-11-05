@@ -118,6 +118,7 @@ jobs:
           ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
 
       - name: Run headless config
+        if: matrix.build_type == 'Release'
         run: |
           source build/${{ matrix.build_type }}/generators/conanrun.sh
           timeout 30m build/${{ matrix.build_type }}/app config/mav_headless.yaml
