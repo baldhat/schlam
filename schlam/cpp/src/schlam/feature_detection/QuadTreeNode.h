@@ -23,7 +23,7 @@ public:
 
     QuadTreeNode(const double aLeft, const double aRight,
                  const double aTop, const double aBottom,
-                 const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
+                 std::vector<std::shared_ptr<KeyPoint>> aFeatures,
                  QuadTreeNode *aParent);
 
     void divide();
@@ -40,6 +40,14 @@ public:
     void removeChild(const QuadTreeNode* aChild);
 
     std::vector<QuadTreeNode *> getChildren() const;
+
+    template <typename Visitor>
+    void forEachChild(Visitor&& visit) const {
+        if (mTL) visit(mTL.get());
+        if (mTR) visit(mTR.get());
+        if (mBL) visit(mBL.get());
+        if (mBR) visit(mBR.get());
+    }
 
     Bounds getBounds() const { return {mLeft, mRight, mTop, mBottom}; }
 

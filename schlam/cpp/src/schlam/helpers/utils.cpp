@@ -12,7 +12,8 @@ std::vector<cv::Mat> buildPyramid(const cv::Mat &aImage,
                                   const std::uint8_t aNLevels,
                                   const double aScale) {
   std::vector<cv::Mat> pyramid{aImage};
-  for (int i = 0; i < aNLevels; i++) {
+  pyramid.reserve(aNLevels);
+  for (int i = 1; i < aNLevels; i++) {
     auto lastImage = pyramid.back();
     int newWidth = std::round(lastImage.cols * aScale);
     int newHeight = std::round(lastImage.rows * aScale);

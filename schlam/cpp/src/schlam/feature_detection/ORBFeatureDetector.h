@@ -34,7 +34,7 @@ private:
     schlam::config::Features mSettings;
     double mLevelFactor{0};
     std::vector<double> mLevelFactors;
-    std::vector<Point> mOrientationIndices;
+    std::vector<int> mOrientationHalfWidths;
     std::shared_ptr<IPlotter> mpPlotter;
 
     schlam::FastFeatureDetector mFastFeatureDetector;
@@ -58,10 +58,11 @@ private:
         const std::vector<std::vector<std::shared_ptr<KeyPoint>>>& featuresByLevel,
         const cv::Mat& image);
 
-    void addDescriptors(const std::vector<cv::Mat>& aPyramid, QuadTreeNode* aTree);
+    void addDescriptors(const std::vector<cv::Mat>& aPyramid,
+                        const std::vector<std::shared_ptr<KeyPoint>>& features);
 
     void addOrientation(const std::vector<cv::Mat> &aPyramid,
-                        QuadTreeNode* aTree);
+                        const std::vector<std::shared_ptr<KeyPoint>>& features);
 
     void computeHarrisResponse(const cv::Mat &aImage, std::vector<KeyPoint> &aFeatures,
                                const int blockSize = 7, const double aHarrisK = 0.04);
@@ -75,7 +76,6 @@ private:
     void rescaleFeatures(std::vector<std::shared_ptr<KeyPoint>>& aFeatures, const double aScale,
                          const std::uint32_t aLevel);
 
-    void retainTopN(QuadTreeNode* aTree, std::uint32_t aTopN);
 };
 
 

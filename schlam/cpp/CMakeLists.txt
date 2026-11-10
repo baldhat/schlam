@@ -70,6 +70,9 @@ add_library(${PROJECT_NAME} SHARED
         src/schlam/feature_detection/FastFeatureDetector.h
         src/schlam/feature_detection/ORBFeatureDetector.cpp
         src/schlam/feature_detection/ORBFeatureDetector.h
+        src/schlam/feature_detection/FeatureSelection.cpp
+        src/schlam/feature_detection/FeatureSelection.h
+        src/schlam/feature_detection/ORBDescriptor.h
     src/schlam/KeyPoint.cpp
     src/schlam/KeyPoint.h
         src/schlam/helpers/utils.cpp

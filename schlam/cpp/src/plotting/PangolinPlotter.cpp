@@ -683,35 +683,40 @@ void PangolinPlotter::plotFeatures(const cv::Mat &aImage, const std::vector<std:
         colorResult = aImage.clone();
     }
 
-    cv::Mat treeResult = colorResult.clone();
+    // Keep the geometry so toggling the tree while paused can draw the latest
+    // frame. Rasterize it only when showFeatures requests the tree image.
+    std::vector<std::array<int, 4>> treeBounds;
     std::vector<const QuadTreeNode*> pending{&aTree};
     while (!pending.empty()) {
         const auto* node = pending.back();
         pending.pop_back();
         const auto bounds = node->getBounds();
-        cv::rectangle(treeResult,
-                      cv::Point(static_cast<int>(bounds.left), static_cast<int>(bounds.top)),
-                      cv::Point(static_cast<int>(bounds.right), static_cast<int>(bounds.bottom)),
-                      toBgr(mTheme.sidebarAccent), 1);
-        for (const auto* child : node->getChildren()) pending.push_back(child);
+        treeBounds.push_back({static_cast<int>(bounds.left), static_cast<int>(bounds.right),
+                              static_cast<int>(bounds.top), static_cast<int>(bounds.bottom)});
+        node->forEachChild([&](const auto* child) { pending.push_back(child); });
     }
 
+    std::vector<cv::Point> positions;
+    positions.reserve(aFeatures.size());
     for (const auto &point : aFeatures) {
         const int x = static_cast<int>(point->getImgX());
         const int y = static_cast<int>(point->getImgY());
         if (x >= 0 && x < colorResult.cols && y >= 0 && y < colorResult.rows) {
             cv::circle(colorResult, cv::Point(x, y), 0, toBgr(mTheme.featureMarker), -1);
-            cv::circle(treeResult, cv::Point(x, y), 2, toBgr(mTheme.featureMarker), -1);
+            positions.emplace_back(x, y);
         }
     }
 
-    setFeatureTexture(colorResult, treeResult);
+    setFeatureTexture(colorResult, std::move(treeBounds), std::move(positions));
 }
 
-void PangolinPlotter::setFeatureTexture(const cv::Mat &aImage, const cv::Mat& aTreeImage) {
+void PangolinPlotter::setFeatureTexture(const cv::Mat& image, std::vector<std::array<int, 4>> bounds,
+                                       std::vector<cv::Point> positions) {
     std::lock_guard guard(mFeatureImageMutex);
-    mFeatureImage = aImage;
-    mFeatureTreeImage = aTreeImage;
+    mFeatureImage = image;
+    mFeatureTreeImage.release();
+    mFeatureTreeBounds = std::move(bounds);
+    mFeaturePositions = std::move(positions);
     mFeatureImageChanged = true;
 }
 
@@ -725,6 +730,16 @@ void PangolinPlotter::showFeatures(bool showKeypointTree) {
     bool needsUpload;
     {
         std::lock_guard guard(mFeatureImageMutex);
+        if (showKeypointTree && mFeatureTreeImage.empty() && !mFeatureImage.empty()) {
+            mFeatureTreeImage = mFeatureImage.clone();
+            for (const auto& bounds : mFeatureTreeBounds) {
+                cv::rectangle(mFeatureTreeImage, cv::Point(bounds[0], bounds[2]),
+                              cv::Point(bounds[1], bounds[3]), toBgr(mTheme.sidebarAccent), 1);
+            }
+            for (const auto& point : mFeaturePositions) {
+                cv::circle(mFeatureTreeImage, point, 2, toBgr(mTheme.featureMarker), -1);
+            }
+        }
         image = showKeypointTree ? mFeatureTreeImage : mFeatureImage;
         needsUpload = mFeatureImageChanged.exchange(false) || mFeatureTreeShown != showKeypointTree;
         mFeatureTreeShown = showKeypointTree;

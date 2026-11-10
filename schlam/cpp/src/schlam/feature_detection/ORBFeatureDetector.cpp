@@ -8,17 +8,33 @@
 
 #include "plotting/IPlotter.hpp"
 #include "FastFeatureDetector.h"
+#include "FeatureSelection.h"
+#include "ORBDescriptor.h"
 #include "../KeyPoint.h"
 #include "../helpers/utils.h"
 #include "../Frame.h"
 
 #include <algorithm>
-#include <bitset>
+#include <cstddef>
 #include <execution>
 #include <vector>
 #include <tracy/Tracy.hpp>
 
-#include "orb_pattern.h"
+namespace {
+
+std::vector<int> orientationHalfWidths(std::uint32_t radius) {
+    std::vector<int> widths(radius + 1);
+    auto x = static_cast<std::int64_t>(radius);
+    const auto radiusSquared = x * x;
+    for (std::size_t y = 0; y < widths.size(); ++y) {
+        const auto dy = static_cast<std::int64_t>(y);
+        while (x * x + dy * dy > radiusSquared) --x;
+        widths[y] = static_cast<int>(x);
+    }
+    return widths;
+}
+
+}
 
 ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
                                        std::shared_ptr<IPlotter> apPlotter,
@@ -31,7 +47,7 @@ ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
     for (std::uint32_t i = 0; i < mNumLevels; i++) {
         mLevelFactors.push_back(std::pow(mLevelFactor, i));
     }
-    mOrientationIndices = getPointsInRadius(mOrientationRadius);
+    mOrientationHalfWidths = orientationHalfWidths(mOrientationRadius);
 
     distributeFeaturesToLevels();
 }
@@ -42,15 +58,17 @@ ORBFeatureDetector::ORBFeatureDetector(const schlam::config::Features& settings,
     mSettings = settings;
     mFastFeatureDetector = schlam::FastFeatureDetector(settings.fastThreshold, settings.fastArcLength);
     mOrientationRadius = settings.orientationRadius;
-    mOrientationIndices = getPointsInRadius(mOrientationRadius);
+    mOrientationHalfWidths = orientationHalfWidths(mOrientationRadius);
 }
 
 void ORBFeatureDetector::detectFeatures(Frame &aFrame) {
     ZoneScoped;
     auto pyramid = buildPyramid(aFrame.mImage, mNumLevels, mLevelFactor);
     std::unique_ptr<QuadTreeNode> tree = calcFeatures(pyramid);
-    addOrientation(pyramid, tree.get());
-    addDescriptors(pyramid, tree.get());
+    const auto features = tree->getFeatures();
+    addOrientation(pyramid, features);
+    addDescriptors(pyramid, features);
+    if (mpPlotter) mpPlotter->plotFeatures(aFrame.mImage, features, *tree);
     aFrame.mKeypointTree = std::move(tree);
 }
 
@@ -71,6 +89,7 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
     ZoneScoped;
     std::vector<std::vector<std::shared_ptr<KeyPoint>>> featuresByLevel(mNumLevels);
     std::for_each(std::execution::par, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
+        if (mNumFeaturesPerLevel[level] == 0) return;
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = mFastFeatureDetector.calculateFastFeatures(aPyramid[level]);
         levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, mSettings.border);
@@ -96,7 +115,7 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::mergeFeatureLevels(
         return a->getScore() > b->getScore();
     });
     auto tree = std::make_unique<QuadTreeNode>(0, image.cols, 0, image.rows,
-        features, nullptr);
+        std::move(features), nullptr);
     // Index the selected features without pruning another levels quota
     // Different levels can contribute features at the same full-resolution position
     std::vector<QuadTreeNode*> pending{tree.get()};
@@ -104,24 +123,23 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::mergeFeatureLevels(
         auto* node = pending.back();
         pending.pop_back();
         node->divide();
-        const auto children = node->getChildren();
-        pending.insert(pending.end(), children.begin(), children.end());
-    }
-    auto treeFeatures = tree->getFeatures();
-    if (mpPlotter) {
-        mpPlotter->plotFeatures(image, treeFeatures, *tree);
+        node->forEachChild([&](auto* child) { pending.push_back(child); });
     }
     return tree;
 }
 
 void ORBFeatureDetector::addDescriptors(
     const std::vector<cv::Mat> &aPyramid,
-    QuadTreeNode* aTree) {
+    const std::vector<std::shared_ptr<KeyPoint>>& features) {
     ZoneScoped;
+    if (features.empty()) return;
     const size_t nLevels = aPyramid.size();
 
+    std::vector<bool> usedLevels(nLevels);
+    for (const auto& feature : features) usedLevels[feature->getLevel()] = true;
     std::vector<cv::Mat> blurredPyramid(nLevels);
     for (size_t lvl = 0; lvl < nLevels; ++lvl) {
+        if (!usedLevels[lvl]) continue;
         ZoneScoped;
         cv::GaussianBlur(aPyramid[lvl],
                          blurredPyramid[lvl],
@@ -131,14 +149,13 @@ void ORBFeatureDetector::addDescriptors(
     }
 
 
-    auto features = aTree->getFeatures();
-    std::for_each(std::execution::par_unseq,  features.begin(),  features.end(), [&](auto& feature) {
+    std::for_each(std::execution::par_unseq, features.begin(), features.end(), [&](const auto& feature) {
         const int level = feature->getLevel();
         const double factor = mLevelFactors[level];
 
         const cv::Mat &img = blurredPyramid[level];
         const uint8_t *imgData = img.data;
-        const int step = img.step;
+        const auto step = static_cast<std::ptrdiff_t>(img.step);
 
         const int centerX = int(feature->getImgX() * factor + 0.5);
         const int centerY = int(feature->getImgY() * factor + 0.5);
@@ -147,189 +164,114 @@ void ORBFeatureDetector::addDescriptors(
         const double sinA = std::sin(angle);
         const double cosA = std::cos(angle);
 
-        uint8_t desc[32] = {0};
-
+        Descriptor desc{};
         const uint8_t *centerPtr = imgData + centerY * step + centerX;
-
-        for (int i = 0; i < 256; ++i) {
-            const int idx = i * 4;
-
-            const int x0 = gOrbBitPattern31[idx];
-            const int y0 = gOrbBitPattern31[idx + 1];
-            const int x1 = gOrbBitPattern31[idx + 2];
-            const int y1 = gOrbBitPattern31[idx + 3];
-
-            const int rx0 = std::lround(x0 * cosA - y0 * sinA);
-            const int ry0 = std::lround(x0 * sinA + y0 * cosA);
-            const int rx1 = std::lround(x1 * cosA - y1 * sinA);
-            const int ry1 = std::lround(x1 * sinA + y1 * cosA);
-
-            const uint8_t p0 = *(centerPtr + ry0 * step + rx0);
-            const uint8_t p1 = *(centerPtr + ry1 * step + rx1);
-
-            desc[i >> 3] |= (p0 < p1) << (i & 7);
+        std::array<int, 1024> rotated;
+        schlam::detail::rotateOrbPattern(sinA, cosA, rotated);
+        for (std::size_t byte = 0; byte < desc.size(); ++byte) {
+            unsigned bits = 0;
+            for (int bit = 0; bit < 8; ++bit) {
+                const auto idx = byte * 32 + bit * 4;
+                const auto p0 = centerPtr[rotated[idx + 1] * step + rotated[idx]];
+                const auto p1 = centerPtr[rotated[idx + 3] * step + rotated[idx + 2]];
+                bits |= (p0 < p1) << bit;
+            }
+            desc[byte] = static_cast<std::uint8_t>(bits);
         }
 
-        feature->setDescriptor(std::to_array(desc));
+        feature->setDescriptor(desc);
     });
 }
 
 
-std::unique_ptr<QuadTreeNode> ORBFeatureDetector::filterWithOctree(std::vector<KeyPoint> &aFeatures,
+std::unique_ptr<QuadTreeNode> ORBFeatureDetector::filterWithOctree(std::vector<KeyPoint>& aFeatures,
                                                                    const std::uint32_t aWidth,
                                                                    const std::uint32_t aHeight,
                                                                    const std::uint32_t aNumFeatures) {
     ZoneScoped;
-    std::sort(aFeatures.begin(), aFeatures.end(),
-        [](KeyPoint &a, KeyPoint &b) { return a.getScore() > b.getScore(); }
-    );
-    if (aNumFeatures == 0) {
-        return std::make_unique<QuadTreeNode>(0, aWidth, 0, aHeight, std::vector<KeyPoint>{});
-    }
-    auto root = std::make_unique<QuadTreeNode>(0, aWidth, 0, aHeight, aFeatures);
-    if (aNumFeatures >= aFeatures.size()) {
-        return std::move(root);
-    }
-    std::vector<QuadTreeNode *> nodes;
-    nodes.push_back(root.get());
-    while (nodes.size() < aNumFeatures) {
-        std::vector<QuadTreeNode *> newNodes;
-        bool divided = false;
-        for (auto &node: nodes) {
-            node->divide();
-            const auto children = node->getChildren();
-            if (children.empty()) {
-                newNodes.push_back(node);
-                continue;
-            }
-            divided = true;
-            newNodes.insert(newNodes.end(), children.begin(), children.end());
-        }
-        nodes = newNodes;
-        if (!divided) break;
-    }
-
-    // Each leaf might have multiple key points right now, so only keep the best feature per leaf
-    root->retainBestFeaturesPerLeaf();
-
-    // We might have more leaves than we need, so prune the worst ones
-    retainTopN(root.get(), aNumFeatures);
-    return std::move(root);
+    const auto selected = schlam::detail::selectFeatureIndices(aFeatures, aWidth, aHeight, aNumFeatures);
+    std::vector<std::shared_ptr<KeyPoint>> features;
+    features.reserve(selected.size());
+    for (auto index : selected) features.push_back(std::make_shared<KeyPoint>(aFeatures[index]));
+    // Only the merged, full-resolution tree needs a spatial index.
+    return std::make_unique<QuadTreeNode>(0, aWidth, 0, aHeight, std::move(features), nullptr);
 }
 
-void ORBFeatureDetector::retainTopN(QuadTreeNode *aTree, std::uint32_t aTopN) {
-    ZoneScoped;
-    std::vector<QuadTreeNode *> nodes;
-    nodes.push_back(aTree);
-    bool finished = false;
-    while (!finished) {
-        if (nodes.size() > aTopN) {
-            std::nth_element(nodes.begin(), nodes.begin() + aTopN, nodes.end(),
-                [](auto a, auto b) { return a->getMaxScore() > b->getMaxScore(); });
-            for (auto it = nodes.begin() + aTopN; it != nodes.end(); ++it) {
-                auto node = *it;
-                auto parent = node->getParent();
-                parent->removeChild(node);
-            }
-            nodes.erase(nodes.begin() + aTopN, nodes.end());
-        } else {
-            std::size_t numLeaves = 0;
-            std::vector<QuadTreeNode *> newNodes;
-            for (auto &node: nodes) {
-                if (node->isLeaf()) {
-                    numLeaves++;
-                    newNodes.push_back(node);
-                    continue;
-                }
-                for (auto children = node->getChildren(); auto &child: children) {
-                    newNodes.push_back(child);
-                }
-            }
-            if (numLeaves == nodes.size()) {
-                finished = true;
-            }
-            nodes = newNodes;
-        }
-    }
-}
-
-
-void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vector<KeyPoint> &aFeatures,
+void ORBFeatureDetector::computeHarrisResponse(const cv::Mat& aImage, std::vector<KeyPoint>& aFeatures,
                                                const int blockSize, const double aHarrisK) {
     ZoneScoped;
+    if (aFeatures.empty()) return;
     cv::Mat Ix, Iy;
     cv::filter2D(aImage, Ix, CV_32F, mGradKernelX);
     cv::filter2D(aImage, Iy, CV_32F, mGradKernelY);
 
-    cv::Mat Ix2, Iy2, Ixy;
-    cv::multiply(Ix, Ix, Ix2);
-    cv::multiply(Iy, Iy, Iy2);
-    cv::multiply(Ix, Iy, Ixy);
-
-    const double scale = std::pow((1.0 / (4.0 * blockSize * 255.0)), 4);
-
-    for (auto &feature: aFeatures) {
+    // Fuse gradient products and prefix sums; each candidate then needs four
+    // lookups, independent of block size. Double sums preserve integer gradients.
+    cv::Mat integral(aImage.rows + 1, aImage.cols + 1, CV_64FC3);
+    integral.row(0).setTo(cv::Scalar(0, 0, 0));
+    for (int y = 0; y < aImage.rows; ++y) {
+        const auto* dx = Ix.ptr<float>(y);
+        const auto* dy = Iy.ptr<float>(y);
+        const auto* previous = integral.ptr<cv::Vec3d>(y);
+        auto* row = integral.ptr<cv::Vec3d>(y + 1);
+        cv::Vec3d sum(0, 0, 0);
+        row[0] = sum;
+        for (int x = 0; x < aImage.cols; ++x) {
+            // Match the original float products before accumulating in double.
+            sum += cv::Vec3d(dx[x] * dx[x], dy[x] * dy[x], dx[x] * dy[x]);
+            row[x + 1] = previous[x + 1] + sum;
+        }
+    }
+    const double scale = std::pow(1.0 / (4.0 * blockSize * 255.0), 4);
+    const int radius = blockSize / 2;
+    for (auto& feature : aFeatures) {
         const int fx = static_cast<int>(std::lround(feature.getImgX()));
         const int fy = static_cast<int>(std::lround(feature.getImgY()));
-
-        double sumA{0}, sumB{0}, sumC{0};
-
-        // 7x7 window
-        const int radius = blockSize / 2;
-        for (int y = -radius; y <= radius; ++y) {
-            const float *pIx2 = Ix2.ptr<float>(fy + y);
-            const float *pIy2 = Iy2.ptr<float>(fy + y);
-            const float *pIxy = Ixy.ptr<float>(fy + y);
-
-            for (int x = -radius; x <= radius; ++x) {
-                if (fx + x < 0 || fx + x >= aImage.cols) continue;
-
-                sumA += pIx2[fx + x];
-                sumB += pIy2[fx + x];
-                sumC += pIxy[fx + x];
-            }
-        }
-
-        double score = ((sumA * sumB - sumC * sumC) - aHarrisK * std::pow(sumA + sumB, 2)) * scale;
-        feature.setScore(score);
+        const int left = std::clamp(fx - radius, 0, aImage.cols);
+        const int right = std::clamp(fx + radius + 1, 0, aImage.cols);
+        const int top = std::clamp(fy - radius, 0, aImage.rows);
+        const int bottom = std::clamp(fy + radius + 1, 0, aImage.rows);
+        const auto* upper = integral.ptr<cv::Vec3d>(top);
+        const auto* lower = integral.ptr<cv::Vec3d>(bottom);
+        const auto sum = (lower[right] - lower[left]) - (upper[right] - upper[left]);
+        const double trace = sum[0] + sum[1];
+        feature.setScore(((sum[0] * sum[1] - sum[2] * sum[2]) - aHarrisK * (trace * trace)) * scale);
     }
 }
 
-void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
-                                        QuadTreeNode* aTree) {
+void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat>& aPyramid,
+                                        const std::vector<std::shared_ptr<KeyPoint>>& features) {
     ZoneScoped;
+    if (features.empty()) return;
     std::vector<std::vector<std::shared_ptr<KeyPoint>>> featuresByLevel(aPyramid.size());
-    for (auto &f: aTree->getFeatures()) {
-        featuresByLevel[f->getLevel()].push_back(f);
-    }
+    for (const auto& feature : features) featuresByLevel[feature->getLevel()].push_back(feature);
+    const int radius = static_cast<int>(mOrientationRadius);
+    std::vector<std::ptrdiff_t> rowOffsets(2 * radius + 1);
+    for (std::size_t level = 0; level < aPyramid.size(); ++level) {
+        if (featuresByLevel[level].empty()) continue;
+        const auto& image = aPyramid[level];
+        const auto step = static_cast<std::ptrdiff_t>(image.step);
+        for (int y = -radius; y <= radius; ++y) rowOffsets[y + radius] = y * step;
+        for (const auto& feature : featuresByLevel[level]) {
+            const int centerX = static_cast<int>(std::round(feature->getImgX() * mLevelFactors[level]));
+            const int centerY = static_cast<int>(std::round(feature->getImgY() * mLevelFactors[level]));
+            if (centerX < radius || centerX >= image.cols - radius ||
+                centerY < radius || centerY >= image.rows - radius) continue;
 
-    for (int level = 0; level < aPyramid.size(); ++level) {
-        const cv::Mat &img = aPyramid[level];
-        const auto &levelFeatures = featuresByLevel[level];
-        if (levelFeatures.empty()) continue;
-
-        const uint8_t *dataPtr = img.data;
-        const size_t step = img.step;
-        const int rows = img.rows;
-        const int cols = img.cols;
-
-        for (const auto& f: levelFeatures) {
-            int centerX = static_cast<int>(std::round(f->getImgX() * mLevelFactors[level]));
-            int centerY = static_cast<int>(std::round(f->getImgY() * mLevelFactors[level]));
-
-            const int radius = static_cast<int>(mOrientationRadius);
-            if (centerX < radius || centerX >= cols - radius ||
-                centerY < radius || centerY >= rows - radius) {
-                continue;
+            const auto* center = image.data + centerY * step + centerX;
+            std::int64_t m10 = 0, m01 = 0;
+            for (int y = -radius; y <= radius; ++y) {
+                const auto* row = center + rowOffsets[y + radius];
+                const int halfWidth = mOrientationHalfWidths[std::abs(y)];
+                std::int64_t rowSum = 0;
+                for (int x = -halfWidth; x <= halfWidth; ++x) {
+                    const auto pixel = row[x];
+                    rowSum += pixel;
+                    m10 += x * pixel;
+                }
+                m01 += y * rowSum;
             }
-
-            double m10{0}, m01{0};
-            for (const auto &[offX, offY]: mOrientationIndices) {
-                uint8_t pixelVal = dataPtr[(centerY + offY) * step + (centerX + offX)];
-                m10 += offX * pixelVal;
-                m01 += offY * pixelVal;
-            }
-            f->setAngle(std::atan2(static_cast<double>(m01), static_cast<double>(m10)));
+            feature->setAngle(std::atan2(static_cast<double>(m01), static_cast<double>(m10)));
         }
     }
 }

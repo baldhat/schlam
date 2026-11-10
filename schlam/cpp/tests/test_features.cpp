@@ -3,6 +3,7 @@
 #include "../src/schlam/feature_detection/FastFeatureDetector.h"
 #include "schlam/Matcher.h"
 #include "../src/schlam/feature_detection/ORBFeatureDetector.h"
+#include "schlam/feature_detection/ORBDescriptor.h"
 #include "schlam/Frame.h"
 #include "schlam/KeyFrame.h"
 #include "schlam/Map.h"
@@ -26,8 +27,9 @@ protected:
 
     auto detect(const cv::Mat& image) {
         auto tree = detector.calcFeatures({image});
-        detector.addOrientation({image}, tree.get());
-        detector.addDescriptors({image}, tree.get());
+        const auto features = tree->getFeatures();
+        detector.addOrientation({image}, features);
+        detector.addDescriptors({image}, features);
         return tree;
     }
 
@@ -46,7 +48,7 @@ protected:
     }
 
     void describe(const cv::Mat& image, QuadTreeNode& tree) {
-        detector.addDescriptors({image}, &tree);
+        detector.addDescriptors({image}, tree.getFeatures());
     }
 
     auto harris(const cv::Mat& image, std::vector<KeyPoint> points) {
@@ -59,14 +61,14 @@ protected:
         const auto pyramid = buildPyramid(image, 8, 1.0 / 1.2);
         QuadTreeNode expected(0, pyramid[level].cols, 0, pyramid[level].rows,
             {KeyPoint(24, 29)});
-        detector.addOrientation({pyramid[level]}, &expected);
-        detector.addDescriptors({pyramid[level]}, &expected);
+        detector.addOrientation({pyramid[level]}, expected.getFeatures());
+        detector.addDescriptors({pyramid[level]}, expected.getFeatures());
 
         std::vector<std::shared_ptr<KeyPoint>> points{std::make_shared<KeyPoint>(24, 29)};
         multilevel.rescaleFeatures(points, 1.0 / multilevel.mLevelFactors[level], level);
         QuadTreeNode actual(0, image.cols, 0, image.rows, points, nullptr);
-        multilevel.addOrientation(pyramid, &actual);
-        multilevel.addDescriptors(pyramid, &actual);
+        multilevel.addOrientation(pyramid, actual.getFeatures());
+        multilevel.addDescriptors(pyramid, actual.getFeatures());
         return std::pair(actual.getFeatures()[0], expected.getFeatures()[0]);
     }
 };

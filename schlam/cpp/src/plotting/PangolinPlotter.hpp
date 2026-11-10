@@ -152,6 +152,8 @@ private:
     mutable std::unique_ptr<pangolin::GlTexture> mFeatureImageTexture;
     cv::Mat mFeatureImage;
     cv::Mat mFeatureTreeImage;
+    std::vector<std::array<int, 4>> mFeatureTreeBounds;
+    std::vector<cv::Point> mFeaturePositions;
     std::atomic_bool mFeatureImageChanged{false};
     std::mutex mFeatureImageMutex;
     bool mFeatureTreeShown{false};
@@ -183,7 +185,8 @@ private:
 
     void drawMap(bool showMapPoints, bool showKeyFrameFrustums, bool showFrameNames, double alpha);
 
-    void setFeatureTexture(const cv::Mat &aImage, const cv::Mat& aTreeImage);
+    void setFeatureTexture(const cv::Mat& image, std::vector<std::array<int, 4>> bounds,
+                           std::vector<cv::Point> positions);
 
     void setMatcherTexture(const cv::Mat &aImage);
 

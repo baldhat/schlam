@@ -24,14 +24,13 @@ QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
 
 QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
                            const double aTop, const double aBottom,
-                           const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
+                           std::vector<std::shared_ptr<KeyPoint>> aFeatures,
                            QuadTreeNode *aParent)
     : mLeft(aLeft), mRight(aRight), mTop(aTop), mBottom(aBottom),
-      mFeatures(aFeatures),
       mHalfX(std::floor((mRight - mLeft) / 2.0)),
       mHalfY(std::floor((mBottom - mTop) / 2.0)),
       mMaxScore(aFeatures.empty() ? -std::numeric_limits<double>::max() : aFeatures[0]->getScore()),
-      mParent(aParent) {
+      mParent(aParent), mFeatures(std::move(aFeatures)) {
 }
 
 
@@ -66,22 +65,22 @@ void QuadTreeNode::divide() {
 
     if (!featuresTL.empty()) {
         mTL = std::make_unique<QuadTreeNode>(mLeft, mLeft + mHalfX, mTop,
-                                             mTop + mHalfY, featuresTL, this);
+                                             mTop + mHalfY, std::move(featuresTL), this);
     }
     if (!featuresTR.empty()) {
         mTR = std::make_unique<QuadTreeNode>(mLeft + mHalfX, mRight, mTop,
-                                             mTop + mHalfY, featuresTR, this);
+                                             mTop + mHalfY, std::move(featuresTR), this);
     }
     if (!featuresBL.empty()) {
         mBL = std::make_unique<QuadTreeNode>(mLeft, mLeft + mHalfX, mTop + mHalfY,
-                                             mBottom, featuresBL, this);
+                                             mBottom, std::move(featuresBL), this);
     }
     if (!featuresBR.empty()) {
         mBR = std::make_unique<QuadTreeNode>(mLeft + mHalfX, mRight, mTop + mHalfY,
-                                             mBottom, featuresBR, this);
+                                             mBottom, std::move(featuresBR), this);
     }
 
-    mFeatures.clear();
+    mFeatures = std::vector<std::shared_ptr<KeyPoint>>{};
 }
 
 std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures() const {
@@ -103,9 +102,7 @@ void QuadTreeNode::collectFeatures(std::vector<std::shared_ptr<KeyPoint>>& featu
     if (isLeaf()) {
         features.insert(features.end(), mFeatures.begin(), mFeatures.end());
     } else {
-        for (const auto &child: getChildren()) {
-            child->collectFeatures(features);
-        }
+        forEachChild([&](const auto* child) { child->collectFeatures(features); });
     }
 }
 
@@ -156,18 +153,7 @@ bool QuadTreeNode::isLeaf() const { return !mTL && !mTR && !mBL && !mBR; }
 
 std::vector<QuadTreeNode *> QuadTreeNode::getChildren() const {
     std::vector<QuadTreeNode *> children;
-    if (mTL) {
-        children.push_back(mTL.get());
-    }
-    if (mTR) {
-        children.push_back(mTR.get());
-    }
-    if (mBL) {
-        children.push_back(mBL.get());
-    }
-    if (mBR) {
-        children.push_back(mBR.get());
-    }
+    forEachChild([&](auto* child) { children.push_back(child); });
     return children;
 }
 
@@ -178,9 +164,7 @@ void QuadTreeNode::retainBestFeaturesPerLeaf() {
             mFeatures.erase(mFeatures.begin() + 1, mFeatures.end());
         }
     } else {
-        for (auto const &child: getChildren()) {
-            child->retainBestFeaturesPerLeaf();
-        }
+        forEachChild([](auto* child) { child->retainBestFeaturesPerLeaf(); });
     }
 }
 
