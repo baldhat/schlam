@@ -8,6 +8,7 @@ spdlog/1.13.0
 fast-cpp-csv-parser/20191004
 g2o/1.0.0.fd656273
 pangolin/0.9.4
+tracy/0.14.1
 
 [test_requires]
 gtest/1.15.0

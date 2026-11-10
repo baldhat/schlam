@@ -45,6 +45,7 @@ std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint>& aKps,
                          const std::uint32_t aImageHeight,
                          const std::uint16_t aBorderSize) {
   std::vector<KeyPoint> filtered;
+  filtered.reserve(aKps.size());
   for (std::uint32_t i = 0; i < aKps.size(); i++) {
     const auto x = aKps[i].getImgX(), y = aKps[i].getImgY();
     if (x >= aBorderSize && y >= aBorderSize &&
@@ -57,6 +58,7 @@ std::vector<KeyPoint> removeAtImageBorder(const std::vector<KeyPoint>& aKps,
 
 std::vector<Eigen::Vector3d> toEigen(const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints) {
   std::vector<Eigen::Vector3d> points;
+  points.reserve(aKeypoints.size());
   for (const auto &keyPoint : aKeypoints) {
     points.emplace_back(static_cast<double>(keyPoint->getImgX()),
                   static_cast<double>(keyPoint->getImgY()), 1);
@@ -67,6 +69,7 @@ std::vector<Eigen::Vector3d> toEigen(const std::vector<std::shared_ptr<KeyPoint>
 
 std::vector<Eigen::Vector3d> toNormalized(const std::vector<Eigen::Vector3d>& aPoints , const Eigen::Matrix3d &aInvIntrinsics) {
   std::vector<Eigen::Vector3d> points;
+  points.reserve(aPoints.size());
   for (const auto &point: aPoints) {
     points.emplace_back(aInvIntrinsics * point);
   }

@@ -31,13 +31,12 @@ reconstruction:
   solutionAmbiguityRatio: 0.75
   minimumTriangulatedRatio: 0.9
   minimumParallaxDegrees: 1.0
-  essentialParallaxRank: 30
+  essentialParallaxRank: 50
   homographyParallaxRank: 50
-  opencvRansacConfidence: 0.99
 
 initialization:
   matchHammingDistance: 20
-  matchWindowPixels: 100.0
+  matchWindowPixels: 50.0
   minimumMatches: 50
 
 tracking:

@@ -11,6 +11,7 @@
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
+#include <tracy/Tracy.hpp>
 
 #include "KeyFrame.h"
 #include "MapPoint.hpp"
@@ -190,6 +191,7 @@ bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t 
 }
 
 void Map::cullMapPoints() {
+    ZoneScoped;
     std::vector<MapPointId> toRemove;
     {
         std::lock_guard guard(mMutex);

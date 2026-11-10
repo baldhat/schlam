@@ -5,6 +5,8 @@
 #include "FastFeatureDetector.h"
 
 #include <stdexcept>
+#include <opencv2/core/utility.hpp>
+#include <tracy/Tracy.hpp>
 
 namespace schlam {
     FastFeatureDetector::FastFeatureDetector(const int aFastThreshold, const int aNumContinuous)
@@ -16,83 +18,108 @@ namespace schlam {
             throw std::invalid_argument("FAST contiguous arc length must be between 1 and 16");
         }
     }
-
-    std::vector<KeyPoint> FastFeatureDetector::calculateFastFeatures(const cv::Mat &aImage) const {
-        std::vector<KeyPoint> keypoints;
-        keypoints.reserve(aImage.rows * aImage.cols / 10);
-
+    std::vector<KeyPoint> FastFeatureDetector::calculateFastFeatures(
+        const cv::Mat& aImage) const
+    {
+        ZoneScoped;
         const int rows = aImage.rows;
         const int cols = aImage.cols;
-        const int step = aImage.step;
 
-        const uint8_t *imgData = aImage.data;
-        // Every four consecutive circle samples contain one cardinal sample.
+        if (rows < 7 || cols < 7)
+            return {};
+
+        const auto step = static_cast<std::ptrdiff_t>(aImage.step);
+        const uint8_t* imgData = aImage.data;
+
         const int minCardinalSamples = mNumContinuous / 4;
 
-        std::array<int, 16> offsets;
-        for (int k = 0; k < 16; ++k)
-            offsets[k] = mFastIndices[k][0] * step + mFastIndices[k][1];
+        std::array<std::ptrdiff_t, 16> offsets;
+        for (int k = 0; k < 16; ++k) {
+            offsets[k] =
+                mFastIndices[k][0] * step + mFastIndices[k][1];
+        }
 
-        for (int i = 3; i < rows - 3; ++i) {
-            const uint8_t *rowPtr = imgData + i * step;
+        // Partition the image into blocks of rows.
+        constexpr int blockHeight = 32;
+        const int numBlocks =
+            (rows - 6 + blockHeight - 1) / blockHeight;
 
-            for (int j = 3; j < cols - 3; ++j) {
-                const uint8_t *centerPtr = rowPtr + j;
-                const int center = *centerPtr;
+        // Each block writes to its own vector.
+        std::vector<std::vector<KeyPoint>> blockResults(numBlocks);
 
-                const int t_high = center + mFastThreshold;
-                const int t_low = center - mFastThreshold;
+        cv::parallel_for_(
+            cv::Range(0, numBlocks),
+            [&](const cv::Range& range) {
+                for (int block = range.start;
+                     block < range.end; ++block) {
 
-                int brighter = 0, darker = 0;
+                    auto& localFeatures = blockResults[block];
 
-                const int idx0 = 0;
-                const int idx4 = 4;
-                const int idx8 = 8;
-                const int idx12 = 12;
+                    const int rowBegin = 3 + block * blockHeight;
+                    const int rowEnd =
+                        std::min(rowBegin + blockHeight, rows - 3);
 
-                int p;
+                    for (int i = rowBegin; i < rowEnd; ++i) {
+                        const uint8_t* rowPtr = imgData + i * step;
 
-                p = *(centerPtr + offsets[idx0]);
-                brighter += (p > t_high);
-                darker += (p < t_low);
+                        for (int j = 3; j < cols - 3; ++j) {
+                            const uint8_t* centerPtr = rowPtr + j;
+                            const int center = *centerPtr;
 
-                p = *(centerPtr + offsets[idx4]);
-                brighter += (p > t_high);
-                darker += (p < t_low);
+                            const int t_high = center + mFastThreshold;
+                            const int t_low = center - mFastThreshold;
 
-                p = *(centerPtr + offsets[idx8]);
-                brighter += (p > t_high);
-                darker += (p < t_low);
+                            int brighter = 0;
+                            int darker = 0;
 
-                p = *(centerPtr + offsets[idx12]);
-                brighter += (p > t_high);
-                darker += (p < t_low);
+                            for (int idx : {0, 4, 8, 12}) {
+                                const int p = *(centerPtr + offsets[idx]);
+                                brighter += (p > t_high);
+                                darker += (p < t_low);
+                            }
 
-                if (brighter < minCardinalSamples && darker < minCardinalSamples)
-                    continue;
+                            if (brighter < minCardinalSamples &&
+                                darker < minCardinalSamples)
+                                continue;
 
-                int pos_count = 0;
-                int neg_count = 0;
+                            int pos_count = 0;
+                            int neg_count = 0;
 
-                // Repeat the first samples to detect arcs crossing the end of the circle.
-                for (int k = 0; k < 16 + mNumContinuous - 1; ++k) {
-                    const int idx = k < 16 ? k : k - 16;
+                            for (int k = 0;
+                                 k < 16 + mNumContinuous - 1; ++k) {
 
-                    p = *(centerPtr + offsets[idx]);
+                                const int idx = k < 16 ? k : k - 16;
+                                const int p = *(centerPtr + offsets[idx]);
 
-                    const bool isBright = (p > t_high);
-                    const bool isDark = (p < t_low);
+                                pos_count = p > t_high ? pos_count + 1 : 0;
+                                neg_count = p < t_low ? neg_count + 1 : 0;
 
-                    pos_count = isBright ? pos_count + 1 : 0;
-                    neg_count = isDark ? neg_count + 1 : 0;
-
-                    if (pos_count >= mNumContinuous || neg_count >= mNumContinuous) {
-                        keypoints.emplace_back(static_cast<uint32_t>(j),
-                                               static_cast<uint32_t>(i));
-                        break;
+                                if (pos_count >= mNumContinuous ||
+                                    neg_count >= mNumContinuous) {
+                                    localFeatures.emplace_back(
+                                        static_cast<uint32_t>(j),
+                                        static_cast<uint32_t>(i));
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
-            }
+            });
+
+        // Merge results in image-row order.
+        std::size_t total = 0;
+        for (const auto& block : blockResults)
+            total += block.size();
+
+        std::vector<KeyPoint> keypoints;
+        keypoints.reserve(total);
+
+        for (auto& block : blockResults) {
+            keypoints.insert(
+                keypoints.end(),
+                std::make_move_iterator(block.begin()),
+                std::make_move_iterator(block.end()));
         }
 
         return keypoints;

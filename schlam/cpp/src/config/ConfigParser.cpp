@@ -40,7 +40,7 @@ Config ConfigParser::load(const std::filesystem::path& path) {
     read(n, "triangulationCosParallax", c.reconstruction.triangulationCosParallax); read(n, "homographyTriangulationCosParallax", c.reconstruction.homographyTriangulationCosParallax);
     read(n, "solutionAmbiguityRatio", c.reconstruction.solutionAmbiguityRatio); read(n, "minimumTriangulatedRatio", c.reconstruction.minimumTriangulatedRatio);
     read(n, "minimumParallaxDegrees", c.reconstruction.minimumParallaxDegrees); read(n, "essentialParallaxRank", c.reconstruction.essentialParallaxRank);
-    read(n, "homographyParallaxRank", c.reconstruction.homographyParallaxRank); read(n, "opencvRansacConfidence", c.reconstruction.opencvRansacConfidence);
+    read(n, "homographyParallaxRank", c.reconstruction.homographyParallaxRank);
     n = section(root, "initialization");
     read(n, "matchHammingDistance", c.initialization.matchHammingDistance); read(n, "matchWindowPixels", c.initialization.matchWindowPixels); read(n, "minimumMatches", c.initialization.minimumMatches);
     n = section(root, "tracking");

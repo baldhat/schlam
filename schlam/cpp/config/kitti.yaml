@@ -34,7 +34,6 @@ reconstruction:
   minimumParallaxDegrees: 1.0
   essentialParallaxRank: 30
   homographyParallaxRank: 50
-  opencvRansacConfidence: 0.99
 
 initialization:
   matchHammingDistance: 20

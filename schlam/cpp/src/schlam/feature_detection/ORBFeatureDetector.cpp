@@ -16,6 +16,7 @@
 #include <bitset>
 #include <execution>
 #include <vector>
+#include <tracy/Tracy.hpp>
 
 #include "orb_pattern.h"
 
@@ -45,6 +46,7 @@ ORBFeatureDetector::ORBFeatureDetector(const schlam::config::Features& settings,
 }
 
 void ORBFeatureDetector::detectFeatures(Frame &aFrame) {
+    ZoneScoped;
     auto pyramid = buildPyramid(aFrame.mImage, mNumLevels, mLevelFactor);
     std::unique_ptr<QuadTreeNode> tree = calcFeatures(pyramid);
     addOrientation(pyramid, tree.get());
@@ -66,15 +68,18 @@ void ORBFeatureDetector::distributeFeaturesToLevels() {
 }
 
 std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector<cv::Mat> &aPyramid) {
+    ZoneScoped;
     std::vector<std::vector<std::shared_ptr<KeyPoint>>> featuresByLevel(mNumLevels);
     std::for_each(std::execution::par, mLevels.begin(), mLevels.end(), [&](std::uint8_t level) {
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = mFastFeatureDetector.calculateFastFeatures(aPyramid[level]);
         levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, mSettings.border);
+        //std::cout << "Num features at level " << std::to_string(level) << ": " << levelFeatures.size() << std::endl;
         computeHarrisResponse(aPyramid[level], levelFeatures, mSettings.harrisBlockSize, mSettings.harrisK);
         auto levelTree = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight,
             mNumFeaturesPerLevel[level]);
         featuresByLevel[level] = levelTree->getFeatures();
+        //std::cout << "Num features after filtering at level " << std::to_string(level) << ": " << featuresByLevel[level].size() << std::endl;
         rescaleFeatures(featuresByLevel[level], 1.0 / mLevelFactors[level], level);
     });
     return mergeFeatureLevels(featuresByLevel, aPyramid[0]);
@@ -83,6 +88,7 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
 std::unique_ptr<QuadTreeNode> ORBFeatureDetector::mergeFeatureLevels(
     const std::vector<std::vector<std::shared_ptr<KeyPoint>>>& featuresByLevel,
     const cv::Mat& image) {
+    ZoneScoped;
     std::vector<std::shared_ptr<KeyPoint>> features;
     features.reserve(mNumFeatures);
     for (const auto& levelFeatures : featuresByLevel) {
@@ -113,10 +119,12 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::mergeFeatureLevels(
 void ORBFeatureDetector::addDescriptors(
     const std::vector<cv::Mat> &aPyramid,
     QuadTreeNode* aTree) {
+    ZoneScoped;
     const size_t nLevels = aPyramid.size();
 
     std::vector<cv::Mat> blurredPyramid(nLevels);
     for (size_t lvl = 0; lvl < nLevels; ++lvl) {
+        ZoneScoped;
         cv::GaussianBlur(aPyramid[lvl],
                          blurredPyramid[lvl],
                          cv::Size(mSettings.descriptorBlurSize, mSettings.descriptorBlurSize),
@@ -124,7 +132,9 @@ void ORBFeatureDetector::addDescriptors(
                          cv::BORDER_REPLICATE);
     }
 
-    for (auto &feature: aTree->getFeatures()) {
+
+    auto features = aTree->getFeatures();
+    std::for_each(std::execution::par_unseq,  features.begin(),  features.end(), [&](auto& feature) {
         const int level = feature->getLevel();
         const double factor = mLevelFactors[level];
 
@@ -163,7 +173,7 @@ void ORBFeatureDetector::addDescriptors(
         }
 
         feature->setDescriptor(std::to_array(desc));
-    }
+    });
 }
 
 
@@ -171,6 +181,7 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::filterWithOctree(std::vector<K
                                                                    const std::uint32_t aWidth,
                                                                    const std::uint32_t aHeight,
                                                                    const std::uint32_t aNumFeatures) {
+    ZoneScoped;
     std::sort(aFeatures.begin(), aFeatures.end(),
         [](KeyPoint &a, KeyPoint &b) { return a.getScore() > b.getScore(); }
     );
@@ -209,6 +220,7 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::filterWithOctree(std::vector<K
 }
 
 void ORBFeatureDetector::retainTopN(QuadTreeNode *aTree, std::uint32_t aTopN) {
+    ZoneScoped;
     std::vector<QuadTreeNode *> nodes;
     nodes.push_back(aTree);
     bool finished = false;
@@ -246,6 +258,7 @@ void ORBFeatureDetector::retainTopN(QuadTreeNode *aTree, std::uint32_t aTopN) {
 
 void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vector<KeyPoint> &aFeatures,
                                                const int blockSize, const double aHarrisK) {
+    ZoneScoped;
     cv::Mat Ix, Iy;
     cv::filter2D(aImage, Ix, CV_32F, mGradKernelX);
     cv::filter2D(aImage, Iy, CV_32F, mGradKernelY);
@@ -286,6 +299,7 @@ void ORBFeatureDetector::computeHarrisResponse(const cv::Mat &aImage, std::vecto
 
 void ORBFeatureDetector::addOrientation(const std::vector<cv::Mat> &aPyramid,
                                         QuadTreeNode* aTree) {
+    ZoneScoped;
     std::vector<std::vector<std::shared_ptr<KeyPoint>>> featuresByLevel(aPyramid.size());
     for (auto &f: aTree->getFeatures()) {
         featuresByLevel[f->getLevel()].push_back(f);

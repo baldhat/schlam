@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <tracy/Tracy.hpp>
 
 QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
                            const double aTop, const double aBottom,
@@ -35,6 +36,7 @@ QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
 
 
 void QuadTreeNode::divide() {
+    ZoneScoped;
     if (!isLeaf() || mFeatures.size() < 2 ||
         (mRight - mLeft <= 1 && mBottom - mTop <= 1)) {
         return;
@@ -49,32 +51,32 @@ void QuadTreeNode::divide() {
         const bool top = feature->getImgY() < (mTop + mHalfY);
         if (left) {
             if (top) {
-                featuresTL.emplace_back(feature);
+                featuresTL.push_back(feature);
             } else {
-                featuresBL.emplace_back(feature);
+                featuresBL.push_back(feature);
             }
         } else {
             if (top) {
-                featuresTR.emplace_back(feature);
+                featuresTR.push_back(feature);
             } else {
-                featuresBR.emplace_back(feature);
+                featuresBR.push_back(feature);
             }
         }
     }
 
-    if (featuresTL.size() > 0) {
+    if (!featuresTL.empty()) {
         mTL = std::make_unique<QuadTreeNode>(mLeft, mLeft + mHalfX, mTop,
                                              mTop + mHalfY, featuresTL, this);
     }
-    if (featuresTR.size() > 0) {
+    if (!featuresTR.empty()) {
         mTR = std::make_unique<QuadTreeNode>(mLeft + mHalfX, mRight, mTop,
                                              mTop + mHalfY, featuresTR, this);
     }
-    if (featuresBL.size() > 0) {
+    if (!featuresBL.empty()) {
         mBL = std::make_unique<QuadTreeNode>(mLeft, mLeft + mHalfX, mTop + mHalfY,
                                              mBottom, featuresBL, this);
     }
-    if (featuresBR.size() > 0) {
+    if (!featuresBR.empty()) {
         mBR = std::make_unique<QuadTreeNode>(mLeft + mHalfX, mRight, mTop + mHalfY,
                                              mBottom, featuresBR, this);
     }
@@ -111,26 +113,30 @@ bool QuadTreeNode::overlaps(double xMin, double xMax, double yMin, double yMax) 
     return mLeft <= xMax && mRight >= xMin && mTop <= yMax && mBottom >= yMin;
 }
 
-std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures(double xMin, double xMax, double yMin, double yMax) const {
+
+void QuadTreeNode::getFeatures(double xMin, double xMax, double yMin, double yMax, std::vector<std::shared_ptr<KeyPoint>>& result) const {
     if (isLeaf()) {
-        std::vector<std::shared_ptr<KeyPoint>> features;
         for (const auto &feature : mFeatures) {
             if (feature->getImgX() >= xMin && feature->getImgX() <= xMax &&
                 feature->getImgY() >= yMin && feature->getImgY() <= yMax) {
-                features.push_back(feature);
+                result.push_back(feature);
             }
         }
-        return features;
     } else {
-        std::vector<std::shared_ptr<KeyPoint>> features;
         for (const auto &child: getChildren()) {
             if (child->overlaps(xMin, xMax, yMin, yMax)) {
                 auto childFeatures = child->getFeatures(xMin, xMax, yMin, yMax);
-                features.insert(features.end(), childFeatures.begin(), childFeatures.end());
+                result.insert(result.end(), childFeatures.begin(), childFeatures.end());
             }
         }
-        return features;
     }
+}
+
+std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures(double xMin, double xMax, double yMin, double yMax) const {
+    ZoneScoped;
+    std::vector<std::shared_ptr<KeyPoint>> result;
+    getFeatures(xMin, xMax, yMin, yMax, result);
+    return result;
 }
 
 void QuadTreeNode::removeChild(const QuadTreeNode *aChild) {
@@ -167,6 +173,7 @@ std::vector<QuadTreeNode *> QuadTreeNode::getChildren() const {
 }
 
 void QuadTreeNode::retainBestFeaturesPerLeaf() {
+    ZoneScoped;
     if (isLeaf()) {
         if (!mFeatures.empty()) {
             mFeatures.erase(mFeatures.begin() + 1, mFeatures.end());

@@ -15,6 +15,7 @@
 #include <g2o/core/base_unary_edge.h>
 #include <g2o/core/optimization_algorithm_factory.h>
 #include <g2o/types/sba/types_six_dof_expmap.h>
+#include <tracy/Tracy.hpp>
 
 #include "CovisibilityHelpers.h"
 #include "../KeyFrame.h"
@@ -72,6 +73,7 @@ Optimizer::optimizePoseAndPoints(const std::vector<std::vector<std::shared_ptr<K
                     const Eigen::Vector3d &aTranslation,
                     const std::vector<Eigen::Vector3d> &aPoints,
                     const Eigen::Matrix3d &aIntrinsics) {
+    ZoneScoped;
     if (aKeyPoints.size() != 2 || aKeyPoints[0].size() != aPoints.size() ||
         aKeyPoints[1].size() != aPoints.size()) {
         throw std::invalid_argument("Joint optimization requires two observations per map point");
@@ -225,6 +227,7 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
                                  const Eigen::Vector3d& aTranslation,
                                  const std::vector<Eigen::Vector3d>& aPoints,
                                  const Eigen::Matrix3d& aIntrinsics) {
+    ZoneScoped;
     if (aKeyPoints.size() != aPoints.size()) {
         throw std::invalid_argument("Pose optimization requires one observation per map point");
     }
@@ -294,8 +297,6 @@ Optimizer::optimizePoseWithInliers(const std::vector<std::shared_ptr<KeyPoint>>&
     }
 
     if (inlierCount >= 3 && optimizer.initializeOptimization(0)) {
-        std::cout << "Optimizing again with " << (projectionEdges.size() - inlierCount)
-                  << " outliers removed" << std::endl;
         for (std::size_t j = 0; j < projectionEdges.size(); ++j) {
             if (inliers[j]) projectionEdges[j]->setRobustKernel(nullptr);
         }
@@ -321,6 +322,7 @@ Optimizer::optimizePose(const std::vector<std::shared_ptr<KeyPoint>>& keyPoints,
                         const Eigen::Vector3d& translation,
                         const std::vector<Eigen::Vector3d>& points,
                         const Eigen::Matrix3d& intrinsics) {
+    ZoneScoped;
     auto result = optimizePoseWithInliers(keyPoints, rotation, translation, points, intrinsics);
     return {result.rotation, result.translation};
 }
@@ -472,6 +474,7 @@ bool Optimizer::optimizeFullMap(Map* map, bool removeOutlierPoints) {
 
 
 bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::size_t maxNumVariable, std::size_t maxNumFixed) {
+    ZoneScoped;
     if (!map || maxNumVariable == 0 || maxNumFixed < 2 ||
         !map->mKeyFrames.contains(keyframe.mId)) return false;
 

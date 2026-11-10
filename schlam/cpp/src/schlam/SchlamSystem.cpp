@@ -8,6 +8,7 @@
 
 #include <thread>
 #include <spdlog/common.h>
+#include <tracy/Tracy.hpp>
 
 #include "Frame.h"
 #include "KeyFrame.h"
@@ -76,6 +77,7 @@ SchlamResult SchlamSystem::run() {
 
         }
 
+        FrameMarkNamed("Frame");
         const double frameMilliseconds = frameTimer.finish();
         processingMilliseconds += frameMilliseconds;
         ++processedFrames;
@@ -142,6 +144,7 @@ SynchronizedData SchlamSystem::getNextSynchronizedData() {
 }
 
 void SchlamSystem::initialize(const SynchronizedData& data) {
+    ZoneScoped;
     auto frame = std::make_shared<Frame>(data.imageData);
 
     featureDetector_->detectFeatures(*frame);
@@ -159,9 +162,11 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
                                  settings_.initialization.matchHammingDistance,
                                  settings_.initialization.matchWindowPixels);
     plotter_->plotMatches(oldFrame->mImage, frame->mImage, matches);
+    TracyPlot("Matches", static_cast<int64_t>(matches.size()));
 
     if (matches[0].size() < settings_.initialization.minimumMatches) {
         setFrameAsReference(frame, data.cameraToWorld);
+        TracyPlot("New reference", data.imageData->mTimestamp.time_since_epoch().count());
         std::cout << "Selecting new reference" << std::endl;
         return;
     }
@@ -173,6 +178,7 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
         auto filtered_pts = filterByInlierMask(pts, inliers);
         auto pts2D_1 = filterByInlierMask(matches[0], inliers);
         auto pts2D_2 = filterByInlierMask(matches[1], inliers);
+        TracyPlot("Inliers", static_cast<int64_t>(filtered_pts.size()));
 
         auto [R_opt, t_opt, pts_opt] = optimizer_->optimizePoseAndPoints(
 {pts2D_1, pts2D_2}, R, t, filtered_pts, data.imageData->mIntrinsics
@@ -208,6 +214,7 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
 }
 
 void SchlamSystem::track(const SynchronizedData& data) {
+    ZoneScoped;
      // TODO Try if polynomic estimator works better
     auto estimatedPose = motionModel_.estimateLinearAt(data.imageData->mTimestamp);
     plotter_->updateFrustum(data.imageData, estimatedPose);
@@ -220,9 +227,10 @@ void SchlamSystem::track(const SynchronizedData& data) {
 
     // TODO Match only with features in predicted scale
     TrackingSnapshot trackingSnapshot = map_->getTrackingSnapshot();
+    TracyPlot("MapPoints", static_cast<int64_t>(trackingSnapshot.mapPoints.size()));
     const auto matches = matchMapPointsByProjection(trackingSnapshot, frame, estimatedPose, transformer_,
         settings_.tracking.matchHammingDistance, settings_.tracking.projectionWindowPixels);
-    std::cout << "Matched " << matches.size() << " out of " <<trackingSnapshot.mapPoints.size() << " map points" << std::endl;
+    TracyPlot("Matches", static_cast<int64_t>(matches.size()));
     std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchedFeatures;
     std::vector<Eigen::Vector3d> matchedMapPoints;
     matchedMapPoints.reserve(matches.size());
@@ -245,7 +253,7 @@ void SchlamSystem::track(const SynchronizedData& data) {
             inliers[j] = false;
     }
     const auto inlierCount = std::count(inliers.begin(), inliers.end(), true);
-    std::cout << "Retained " << inlierCount << " pose inliers" << std::endl;
+    TracyPlot("Inliers", inlierCount);
     if (inlierCount >= settings_.tracking.minimumPoseInliers) {
         frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
             trackingSnapshot.frame, estimatedPose->mSource, rotation, translation);
@@ -294,6 +302,7 @@ void SchlamSystem::localMapping() {
         }
         auto frameId = localMappingQueue_.pull_front();
         localMappingIdle_ = false;
+        ZoneScoped;
 
         auto frame = map_->mKeyFrames.at(frameId);
         map_->cullMapPoints();

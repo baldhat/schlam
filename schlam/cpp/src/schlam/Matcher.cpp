@@ -11,6 +11,7 @@
 #include "tft/transformer.hpp"
 
 #include <unordered_set>
+#include <tracy/Tracy.hpp>
 
 #include "KeyFrame.h"
 
@@ -54,6 +55,7 @@ std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::s
 std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::vector<std::shared_ptr<KeyPoint>>& keypoints1,
                                                      const std::vector<std::shared_ptr<KeyPoint>>& keypoints2,
                                                      const double aMaxDistance) {
+    ZoneScoped;
     std::vector<std::array<std::uint32_t, 2> > matches;
     std::vector<bool> matchedIndices2(keypoints2.size(), false);
 
@@ -95,6 +97,7 @@ std::tuple<std::array<std::vector<std::shared_ptr<KeyPoint>>, 2>, std::vector<bo
 matchWindow(const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints,
             const std::shared_ptr<QuadTreeNode>& aTree2,
             const double aMaxDistance, const double aWindowSize) {
+    ZoneScoped;
     std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matches;
     std::vector<bool> matched(aKeypoints.size());
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
@@ -153,6 +156,7 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
                           const std::shared_ptr<tft::RigidTransform3D>& estimatedPose,
                           const std::shared_ptr<tft::Transformer>& aTransformer,
                           const double aMaxDistance, const double aWindowSize) {
+    ZoneScoped;
     const auto mapToCamera = aTransformer->findTransform(snapshot.frame, estimatedPose->mSource);
     std::vector<MapPointMatch> matches;
     matches.reserve(snapshot.mapPoints.size());
@@ -195,6 +199,7 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
 }
 
 std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(KeyFrame& frame1, KeyFrame& frame2, const double aMaxDistance) {
+    ZoneScoped;
     auto unmatched1 = frame1.getUnmatchedFeatures();
     auto unmatched2 = frame2.getUnmatchedFeatures();
     auto matches = matchGlobally(unmatched1, unmatched2, aMaxDistance);

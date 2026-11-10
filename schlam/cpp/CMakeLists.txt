@@ -11,6 +11,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DSPDLOG_FMT_EXTERNAL)
 
+set(TRACY_ENABLED OFF)
+
 add_compile_options(-fno-omit-frame-pointer)
 
 find_package(OpenCV REQUIRED)
@@ -23,6 +25,7 @@ find_package(yaml-cpp REQUIRED)
 find_package(fast-cpp-csv-parser REQUIRED)
 find_package(TBB REQUIRED)
 find_package(spdlog REQUIRED)
+find_package(Tracy REQUIRED)
 
 find_package(Pangolin REQUIRED CONFIG)
 find_package(g2o REQUIRED CONFIG)
@@ -116,6 +119,7 @@ target_link_libraries(${PROJECT_NAME}
     fast-cpp-csv-parser::fast-cpp-csv-parser
     TBB::tbb
     g2o::core g2o::solver_dense g2o::solver_eigen g2o::types_sim3 g2o::types_slam3d
+    Tracy::TracyClient
 )
 
 

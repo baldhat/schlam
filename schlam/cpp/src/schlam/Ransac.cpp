@@ -43,11 +43,14 @@ Reconstructor::reconstructInitial(
     Eigen::Matrix3d homography;
     double sigma = 1.0 / aIntrinsics(0, 0);
 
-    findEssential({points1, points2}, candidates, inliersEssential,
-                  scoreEssential, essential, sigma);
+    auto essentialThread = std::thread([&]() {
+        findEssential({points1, points2}, candidates, inliersEssential,
+    scoreEssential, essential, sigma);
+    });
 
     findHomography({points1, points2}, candidates, inliersHomography,
                    scoreHomography, homography, sigma);
+    if (essentialThread.joinable()) essentialThread.join();
 
     const double totalScore = scoreHomography + scoreEssential;
     if (totalScore <= 0.0 || !std::isfinite(totalScore))
@@ -362,39 +365,6 @@ void Reconstructor::findEssential(
     aScore = 0;
     aInliers.assign(numCandidates, false);
     aEssentialMatrix.setZero();
-
-#if SCHLAM_USE_OPENCV_RECONSTRUCTION
-    if (numCandidates < 5 || aAllPoints[1].size() != numCandidates || aCandidates.empty() ||
-        !std::isfinite(aSigma) || aSigma <= 0) {
-        return;
-    }
-    std::array<std::vector<cv::Point2d>, 2> points;
-    for (std::size_t camera = 0; camera < points.size(); ++camera) {
-        points[camera].reserve(numCandidates);
-        for (const auto& point : aAllPoints[camera]) {
-            points[camera].emplace_back(point.x(), point.y());
-        }
-    }
-    // Coordinates are already normalized by K^-1, so use unit focal length.
-    // Match the existing symmetric epipolar test's normalized distance threshold.
-    const cv::Mat models = cv::findEssentialMat(points[0], points[1], 1.0, cv::Point2d(0, 0),
-        cv::RANSAC, mSettings.opencvRansacConfidence,
-        std::sqrt(mSettings.essentialChi2) * aSigma, static_cast<int>(aCandidates.size()));
-    if (models.empty() || models.cols != 3 || models.rows % 3 != 0) {
-        return;
-    }
-    for (int row = 0; row < models.rows; row += 3) {
-        Eigen::Matrix3d essentialMatrix;
-        cv::cv2eigen(models.rowRange(row, row + 3), essentialMatrix);
-        // Preserve the score and mask convention used to compare against homography.
-        const double score = checkEssential(essentialMatrix, aAllPoints, inliers, aSigma);
-        if (score > aScore) {
-            aEssentialMatrix = essentialMatrix;
-            aInliers = inliers;
-            aScore = score;
-        }
-    }
-#else
     for (std::uint32_t iter = 0; iter < aCandidates.size(); iter++) {
         auto candidates = aCandidates[iter];
         Eigen::Matrix3d essentialMatrix = computeEssential(candidates);
@@ -405,7 +375,6 @@ void Reconstructor::findEssential(
             aScore = score;
         }
     }
-#endif
 }
 
 Eigen::Matrix3d
@@ -659,17 +628,6 @@ std::array<Eigen::Vector3d, 2> triangulate(const Eigen::Vector3d &aP1, const Eig
     P2.block<3, 3>(0, 0) = aTransform.block<3, 3>(0, 0);
     P2.block<3, 1>(0, 3) = aTransform.block<3, 1>(0, 3);
 
-#if SCHLAM_USE_OPENCV_RECONSTRUCTION
-    cv::Mat projection1, projection2;
-    cv::eigen2cv(P1, projection1);
-    cv::eigen2cv(P2, projection2);
-    const cv::Mat point1 = (cv::Mat_<double>(2, 1) << aP1.x(), aP1.y());
-    const cv::Mat point2 = (cv::Mat_<double>(2, 1) << aP2.x(), aP2.y());
-    cv::Mat homogeneous;
-    cv::triangulatePoints(projection1, projection2, point1, point2, homogeneous);
-    Eigen::Vector4d pt1_3d;
-    cv::cv2eigen(homogeneous, pt1_3d);
-#else
     Eigen::Matrix4d A;
     A.row(0) = aP1.x() * P1.row(2) - P1.row(0);
     A.row(1) = aP1.y() * P1.row(2) - P1.row(1);
@@ -678,7 +636,7 @@ std::array<Eigen::Vector3d, 2> triangulate(const Eigen::Vector3d &aP1, const Eig
 
     auto svd = A.jacobiSvd(Eigen::ComputeFullV);
     auto pt1_3d = svd.matrixV().col(3);
-#endif
+
     auto pt2_3d = aTransform * pt1_3d;
 
     Eigen::Vector3d pt1 = pt1_3d.head(3) / pt1_3d(3);

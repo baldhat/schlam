@@ -45,7 +45,6 @@ struct Reconstruction {
     double minimumParallaxDegrees = 1.0;
     int essentialParallaxRank = 30;
     int homographyParallaxRank = 50;
-    double opencvRansacConfidence = 0.99;
 };
 
 struct Initialization {

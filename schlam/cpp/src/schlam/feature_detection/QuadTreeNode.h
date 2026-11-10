@@ -35,6 +35,7 @@ public:
     // Full retrieval assigns indices in the root's feature array; window queries preserve them.
     std::vector<std::shared_ptr<KeyPoint>> getFeatures() const;
     std::vector<std::shared_ptr<KeyPoint>> getFeatures(double xMin, double xMax, double yMin, double yMax) const;
+    void getFeatures(double xMin, double xMax, double yMin, double yMax, std::vector<std::shared_ptr<KeyPoint>>& result) const;
 
     void removeChild(const QuadTreeNode* aChild);
 
