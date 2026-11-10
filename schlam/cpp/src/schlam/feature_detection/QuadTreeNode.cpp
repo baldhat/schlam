@@ -123,8 +123,8 @@ void QuadTreeNode::getFeatures(double xMin, double xMax, double yMin, double yMa
             }
         }
     } else {
-        for (const auto &child: getChildren()) {
-            if (child->overlaps(xMin, xMax, yMin, yMax)) {
+        for (const auto* child : {mTL.get(), mTR.get(), mBL.get(), mBR.get()}) {
+            if (child && child->overlaps(xMin, xMax, yMin, yMax)) {
                 child->getFeatures(xMin, xMax, yMin, yMax, result);
             }
         }

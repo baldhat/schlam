@@ -161,15 +161,17 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
     std::vector<MapPointMatch> matches;
     matches.reserve(snapshot.mapPoints.size());
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
+    std::vector<std::shared_ptr<KeyPoint>> candidates;
     const auto center = cameraCenter(*mapToCamera);
     for (const auto [pointId, mapPoint] : snapshot.mapPoints) {
         if (!mapPoint.isViewDirectionCompatible(center)) continue;
         const auto projected = projectIntoFrame(mapPoint, *frame, *mapToCamera);
         if (!projected) continue;
 
-        const auto candidates = frame->mKeypointTree->getFeatures(
+        candidates.clear();
+        frame->mKeypointTree->getFeatures(
             projected->x() - aWindowSize, projected->x() + aWindowSize,
-            projected->y() - aWindowSize, projected->y() + aWindowSize);
+            projected->y() - aWindowSize, projected->y() + aWindowSize, candidates);
         const auto findMatch = [&](const MapPoint::Descriptor& descriptor) {
             std::shared_ptr<KeyPoint> bestMatch;
             double bestDistance = aMaxDistance;
