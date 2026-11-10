@@ -42,7 +42,7 @@ initialization:
 
 tracking:
   matchHammingDistance: 50
-  projectionWindowPixels: 50.0
+  projectionWindowPixels: 20.0
   minimumPoseInliers: 12
   minimumMatchesBeforeLost: 12
 

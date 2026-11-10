@@ -74,12 +74,10 @@ std::unique_ptr<QuadTreeNode> ORBFeatureDetector::calcFeatures(const std::vector
         const auto levelImageHeight{aPyramid[level].rows}, levelImageWidth{aPyramid[level].cols};
         auto levelFeatures = mFastFeatureDetector.calculateFastFeatures(aPyramid[level]);
         levelFeatures = removeAtImageBorder(levelFeatures, levelImageWidth, levelImageHeight, mSettings.border);
-        //std::cout << "Num features at level " << std::to_string(level) << ": " << levelFeatures.size() << std::endl;
         computeHarrisResponse(aPyramid[level], levelFeatures, mSettings.harrisBlockSize, mSettings.harrisK);
         auto levelTree = filterWithOctree(levelFeatures, levelImageWidth, levelImageHeight,
             mNumFeaturesPerLevel[level]);
         featuresByLevel[level] = levelTree->getFeatures();
-        //std::cout << "Num features after filtering at level " << std::to_string(level) << ": " << featuresByLevel[level].size() << std::endl;
         rescaleFeatures(featuresByLevel[level], 1.0 / mLevelFactors[level], level);
     });
     return mergeFeatureLevels(featuresByLevel, aPyramid[0]);
