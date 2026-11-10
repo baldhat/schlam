@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
 
     std::shared_ptr<DatasetInterface> dataloader;
     if (settings.dataset.type == "MAVDataset") {
-        dataloader = std::make_shared<MAVDataset>(pTransformer, settings.dataset.sequence);
+        dataloader = std::make_shared<MAVDataset>(pTransformer, settings.dataset.sequence, settings.dataset.scaleFactor);
     } else {
         dataloader = std::make_shared<KittiDataset>(pTransformer, settings.dataset.sequence);
     }

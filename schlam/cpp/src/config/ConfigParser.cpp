@@ -23,7 +23,7 @@ Config ConfigParser::load(const std::filesystem::path& path) {
     const auto root = YAML::LoadFile(path.string());
     Config c;
     auto n = section(root, "dataset");
-    read(n, "type", c.dataset.type); read(n, "sequence", c.dataset.sequence);
+    read(n, "type", c.dataset.type); read(n, "sequence", c.dataset.sequence); read(n, "scaleFactor", c.dataset.scaleFactor);
     n = section(root, "plotter");
     read(n, "type", c.plotter.type); read(n, "zUp", c.plotter.zUp);
     n = section(root, "features");

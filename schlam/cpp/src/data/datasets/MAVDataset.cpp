@@ -19,8 +19,8 @@
 
 
 
-MAVDataset::MAVDataset(std::shared_ptr<tft::Transformer> aTransformer, const std::string& sequence)
-    : mSequence(sequence), mImageQueue(3), mIMUQueue(2000), mGTQueue(2000) {
+MAVDataset::MAVDataset(std::shared_ptr<tft::Transformer> aTransformer, const std::string& sequence, const double scaleFactor)
+    : mSequence(sequence), mImageQueue(3), mIMUQueue(2000), mGTQueue(2000), mScaleFactor(scaleFactor) {
     const char *raw_val = std::getenv("MAV_PATH");
     mDatasetPath = std::filesystem::path((raw_val != nullptr) ? raw_val : "") / mSequence / "mav0";
 
@@ -118,6 +118,24 @@ void MAVDataset::loadIMUConfig() {
     );
 }
 
+void MAVDataset::preprocess(std::shared_ptr<ImageData> data) const {
+    const int oldWidth = data->mImage.cols;
+    const int oldHeight = data->mImage.rows;
+
+    cv::Size newSize(
+        cvRound(oldWidth * mScaleFactor),
+        cvRound(oldHeight * mScaleFactor)
+    );
+
+    cv::resize(data->mImage, data->mImage, newSize);
+
+    const double sx = static_cast<double>(newSize.width) / oldWidth;
+    const double sy = static_cast<double>(newSize.height) / oldHeight;
+
+    data->mIntrinsics.row(0) *= sx;
+    data->mIntrinsics.row(1) *= sy;
+}
+
 void MAVDataset::loadImageData() {
     auto imagePath = mCamera0Path / "data";
     std::vector<std::filesystem::path> filesInDirectory;
@@ -151,6 +169,7 @@ void MAVDataset::loadImageData() {
         }
         auto imageData = std::make_shared<ImageData>(
             timestamp, image, mCamera0Intrinsics, mCamera0CF);
+        preprocess(imageData);
         while (!mStop && mImageQueue.try_push_back(imageData) != boost::queue_op_status::success);
     }
     mAllImagesRead = true;

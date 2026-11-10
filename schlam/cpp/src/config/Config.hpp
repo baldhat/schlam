@@ -9,6 +9,7 @@ namespace schlam::config {
 struct Dataset {
     std::string type = "MAVDataset";
     std::string sequence = "V1_02_medium";
+    double scaleFactor = 1.0;
 };
 
 struct Plotter {

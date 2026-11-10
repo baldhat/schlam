@@ -1,6 +1,7 @@
 dataset:
   type: MAVDataset
   sequence: V1_02_medium
+  scaleFactor: 1.0
 
 plotter:
   type: DummyPlotter
@@ -19,7 +20,7 @@ features:
   descriptorBlurSigma: 2.0
 
 reconstruction:
-  randomSeed: 12344321
+  randomSeed: 1234
   ransacCandidates: 500
   homographySelectionRatio: 0.45
   homographyChi2: 5.991

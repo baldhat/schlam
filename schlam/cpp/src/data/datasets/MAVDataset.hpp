@@ -17,7 +17,7 @@
 class MAVDataset : public DatasetInterface {
 
 public:
-  MAVDataset(std::shared_ptr<tft::Transformer> aTransformer, const std::string& sequence);
+  MAVDataset(std::shared_ptr<tft::Transformer> aTransformer, const std::string& sequence, const double scaleFactor = 1.0);
 
   ~MAVDataset();
 
@@ -37,6 +37,7 @@ public:
   float percentageRead() override;
 
 private:
+  void preprocess(std::shared_ptr<ImageData> data) const;
   void loadImageData();
   void loadIMUData();
 
@@ -72,6 +73,7 @@ private:
   cv::Mat mCamera0DistortionCoefficients;
   Eigen::Matrix3d mCamera0Rotation;
   Eigen::Vector3d mCamera0Translation;
+  double mScaleFactor{1.0};
 
   std::atomic_bool mAllImagesRead{false};
   std::atomic_bool mAllIMURead{false};

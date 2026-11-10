@@ -14,6 +14,6 @@ public:
 
   const utils::TTimestamp mTimestamp;
   cv::Mat mImage;
-  const Eigen::Matrix3d mIntrinsics;
+  Eigen::Matrix3d mIntrinsics;
   const std::string mCoordinateFrame;
 };
