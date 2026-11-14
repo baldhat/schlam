@@ -4,7 +4,6 @@ dataset:
 
 plotter:
   type: DummyPlotter
-
 features:
   count: 1000
   levels: 6
@@ -41,13 +40,14 @@ initialization:
 
 tracking:
   matchHammingDistance: 50
-  projectionWindowPixels: 20.0
-  minimumPoseInliers: 12
-  minimumMatchesBeforeLost: 12
-  lostAfterNFrames: 50
+  projectionWindowPixels: 25.0
+  minimumPoseInliers: 25
+  recoveryTimeoutSeconds: 0.5
 
 mapPoints:
   maximumViewingAngleDegrees: 60.0
+  observationDistanceFactor: 10.0
+  cullingWindowSeconds: 10.0
   descriptorHistorySize: 10
   minimumVisibilityCount: 8
   minimumTrackingSuccessRate: 0.25
@@ -74,4 +74,5 @@ optimizer:
   fullMapMinimumInlierRatio: 0.8
 
 motion:
+  predictionModel: linear
   maximumExtrapolationIntervals: 2.0

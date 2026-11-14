@@ -155,6 +155,7 @@ enable_testing()
 find_package(GTest REQUIRED CONFIG)
 
 add_executable(unit_tests
+    tests/test_config_parser.cpp
     tests/test_ransac.cpp
     tests/test_reconstruction.cpp
     tests/test_features.cpp

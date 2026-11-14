@@ -10,17 +10,27 @@
 #include <limits>
 #include <numbers>
 #include <vector>
+#include <stdexcept>
 
 
 MapPoint::MapPoint(const Eigen::Vector3d& position, const DescriptorPtr& descriptor, const MapPointId id, const KeyFrameId creatorId,
+                   const utils::TTimestamp& creationTimestamp,
                    schlam::config::MapPoints settings)
     : mPosition(position), mDescriptor(descriptor), mLastInlierDescriptor(descriptor),
-      mId(id), mCreatorId(creatorId), mSettings(settings), mDescriptorHistory{descriptor} {
+      mId(id), mCreatorId(creatorId), mCreationTimestamp(creationTimestamp),
+      mSettings(settings), mDescriptorHistory{descriptor} {
+    if (!std::isfinite(settings.observationDistanceFactor) || settings.observationDistanceFactor < 1.0) {
+        throw std::invalid_argument("mapPoints.observationDistanceFactor must be finite and at least one");
+    }
 }
 
 void MapPoint::addInlierObservation(const DescriptorPtr& descriptor, const Eigen::Vector3d& cameraCenter) {
     mNumInlierObservations++;
     addViewingObservation(cameraCenter);
+    const double distance = (cameraCenter - mPosition).stableNorm();
+    if (std::isfinite(distance) && distance > 1e-9) {
+        mObservationDistances.insert(std::lower_bound(mObservationDistances.begin(), mObservationDistances.end(), distance), distance);
+    }
     updateDescriptor(descriptor);
 }
 
@@ -35,13 +45,19 @@ void MapPoint::addViewingObservation(const Eigen::Vector3d& cameraCenter) {
         mViewingDirectionSum += direction / length;
 }
 
-bool MapPoint::isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const {
+bool MapPoint::isViewCompatible(const Eigen::Vector3d& cameraCenter) const {
+    const Eigen::Vector3d direction = cameraCenter - mPosition;
+    const double length = direction.stableNorm();
+    if (!std::isfinite(length) || length <= 1e-9) return false;
+    if (!mObservationDistances.empty()) {
+        const auto middle = mObservationDistances.size() / 2;
+        const double median = mObservationDistances.size() % 2 ? mObservationDistances[middle] :
+            mObservationDistances[middle - 1] / 2.0 + mObservationDistances[middle] / 2.0;
+        const double factor = mSettings.observationDistanceFactor;
+        if (length < median / factor || length / factor > median) return false;
+    }
     const double meanLength = mViewingDirectionSum.norm();
     if (!std::isfinite(meanLength) || meanLength <= 1e-9) return true;
-
-    const Eigen::Vector3d direction = cameraCenter - mPosition;
-    const double length = direction.norm();
-    if (!std::isfinite(length) || length <= 1e-9) return false;
     const double cosMaxViewingAngle = std::cos(mSettings.maximumViewingAngleDegrees * std::numbers::pi / 180.0);
     return direction.dot(mViewingDirectionSum) >=
            cosMaxViewingAngle * length * meanLength;

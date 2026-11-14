@@ -44,11 +44,12 @@ tracking:
   matchHammingDistance: 50
   projectionWindowPixels: 50.0
   minimumPoseInliers: 12
-  minimumMatchesBeforeLost: 12
-  lostAfterNFrames: 50
+  recoveryTimeoutSeconds: 0.5
 
 mapPoints:
   maximumViewingAngleDegrees: 60.0
+  observationDistanceFactor: 2.0
+  cullingWindowSeconds: 3.0
   descriptorHistorySize: 10
   minimumVisibilityCount: 8
   minimumTrackingSuccessRate: 0.25
@@ -75,4 +76,5 @@ optimizer:
   fullMapMinimumInlierRatio: 0.8
 
 motion:
+  predictionModel: linear
   maximumExtrapolationIntervals: 2.0

@@ -57,12 +57,15 @@ struct Tracking {
     int matchHammingDistance = 50;
     double projectionWindowPixels = 50.0;
     std::size_t minimumPoseInliers = 12;
-    std::size_t minimumMatchesBeforeLost = 12;
-    std::size_t lostAfterNFrames = 50;
+    // Seconds since the last accepted pose; zero disables recovery.
+    double recoveryTimeoutSeconds = 0.5;
 };
 
 struct MapPoints {
     double maximumViewingAngleDegrees = 60.0;
+    double observationDistanceFactor = 2.0;
+    // Quality culling only applies within this dataset-time window after creation.
+    double cullingWindowSeconds = 3.0;
     std::size_t descriptorHistorySize = 10;
     std::uint64_t minimumVisibilityCount = 8;
     double minimumTrackingSuccessRate = 0.25;
@@ -91,7 +94,10 @@ struct Optimizer {
     double fullMapMinimumInlierRatio = 0.8;
 };
 
+enum class MotionPredictionModel { NONE, LINEAR, FOURTH_ORDER };
+
 struct Motion {
+    MotionPredictionModel predictionModel = MotionPredictionModel::FOURTH_ORDER;
     double maximumExtrapolationIntervals = 2.0;
 };
 

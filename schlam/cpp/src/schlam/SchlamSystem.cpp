@@ -7,6 +7,9 @@
 #include "MotionModel.h"
 
 #include <thread>
+#include <cmath>
+#include <stdexcept>
+#include <utility>
 #include <spdlog/common.h>
 #include <tracy/Tracy.hpp>
 
@@ -41,6 +44,14 @@ SchlamSystem::SchlamSystem(
     , reconstructor_(settings_.reconstruction)
     , localMappingQueue_(settings_.mapping.queueCapacity) {
 
+    if (!std::isfinite(settings_.tracking.recoveryTimeoutSeconds) || settings_.tracking.recoveryTimeoutSeconds < 0.0) {
+        throw std::invalid_argument("tracking.recoveryTimeoutSeconds must be nonnegative and finite");
+    }
+    if (settings_.motion.predictionModel != schlam::config::MotionPredictionModel::NONE &&
+        settings_.motion.predictionModel != schlam::config::MotionPredictionModel::LINEAR &&
+        settings_.motion.predictionModel != schlam::config::MotionPredictionModel::FOURTH_ORDER) {
+        throw std::invalid_argument("Invalid motion prediction model");
+    }
     cameraToIMU_ = transformer_->findTransform("gt/cam0", "gt/body");
 }
 
@@ -68,6 +79,7 @@ SchlamResult SchlamSystem::run() {
                 initialize(data);
                 break;
             case TrackingState::TRACKING:
+            case TrackingState::RECOVERING:
                 track(data);
                 break;
             case TrackingState::LOST:
@@ -210,8 +222,31 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
 
 void SchlamSystem::track(const SynchronizedData& data) {
     ZoneScoped;
-     // TODO Try if polynomic estimator works better
-    auto estimatedPose = motionModel_.estimateLinearAt(data.imageData->mTimestamp);
+    map_->advanceTimestamp(data.imageData->mTimestamp);
+    const std::chrono::duration<double> recoveryTimeout(settings_.tracking.recoveryTimeoutSeconds);
+    const auto sinceLastAccepted = data.imageData->mTimestamp - predictedPath_.back().timestamp;
+    if (state_ == TrackingState::RECOVERING && sinceLastAccepted > recoveryTimeout) {
+        state_ = TrackingState::LOST;
+        std::cout << "Lost tracking: recovery timeout exceeded!" << std::endl;
+        return;
+    }
+    const std::optional<std::chrono::duration<double>> predictionHorizon =
+        state_ == TrackingState::RECOVERING ? std::make_optional(recoveryTimeout) : std::nullopt;
+    std::shared_ptr<tft::RigidTransform3D> estimatedPose;
+    switch (settings_.motion.predictionModel) {
+        case schlam::config::MotionPredictionModel::NONE: {
+            const auto& accepted = predictedPath_.back();
+            estimatedPose = std::make_shared<tft::RigidTransform3D>(
+                "pred/cam0", "world", accepted.rotation, accepted.position);
+            break;
+        }
+        case schlam::config::MotionPredictionModel::LINEAR:
+            estimatedPose = motionModel_.estimateLinearAt(data.imageData->mTimestamp, predictionHorizon);
+            break;
+        case schlam::config::MotionPredictionModel::FOURTH_ORDER:
+            estimatedPose = motionModel_.estimateFourthOrderAt(data.imageData->mTimestamp, predictionHorizon);
+            break;
+    }
     plotter_->updateFrustum(data.imageData, estimatedPose);
     plotter_->addGroundTruthCameraPosition(data.cameraToWorld->mTranslation);
 
@@ -223,31 +258,60 @@ void SchlamSystem::track(const SynchronizedData& data) {
     // TODO Match only with features in predicted scale
     TrackingSnapshot trackingSnapshot = map_->getTrackingSnapshot();
     TracyPlot("MapPoints", static_cast<int64_t>(trackingSnapshot.mapPoints.size()));
-    const auto matches = matchMapPointsByProjection(trackingSnapshot, frame, estimatedPose, transformer_,
-        settings_.tracking.matchHammingDistance, settings_.tracking.projectionWindowPixels);
-    TracyPlot("Matches", static_cast<int64_t>(matches.size()));
+    const auto tryPose = [&](const std::shared_ptr<tft::RigidTransform3D>& guess) {
+        transformer_->registerTransform(guess);
+        auto matches = matchMapPointsByProjection(trackingSnapshot, frame, guess, transformer_,
+            settings_.tracking.matchHammingDistance, settings_.tracking.projectionWindowPixels);
+        std::vector<Eigen::Vector3d> points;
+        std::vector<std::shared_ptr<KeyPoint>> features;
+        points.reserve(matches.size());
+        features.reserve(matches.size());
+        for (const auto& match : matches) {
+            points.push_back(trackingSnapshot.mapPoints.at(match.mapPointId).mPosition);
+            features.push_back(match.feature);
+        }
+        const auto mapToCamera = transformer_->findTransform(trackingSnapshot.frame, guess->mSource);
+        auto optimized = optimizer_->optimizePoseWithInliers(features, mapToCamera->mRotation,
+            mapToCamera->mTranslation, points, data.imageData->mIntrinsics);
+        const Eigen::Vector3d center = -optimized.rotation.transpose() * optimized.translation;
+        for (std::size_t j = 0; j < matches.size(); ++j) {
+            if (optimized.inliers[j] && !trackingSnapshot.mapPoints.at(matches[j].mapPointId).isViewCompatible(center))
+                optimized.inliers[j] = false;
+        }
+        return std::pair{std::move(matches), std::move(optimized)};
+    };
+    auto [matches, optimized] = tryPose(estimatedPose);
+    auto inlierCount = std::count(optimized.inliers.begin(), optimized.inliers.end(), true);
+    if (inlierCount < settings_.tracking.minimumPoseInliers &&
+        settings_.motion.predictionModel == schlam::config::MotionPredictionModel::FOURTH_ORDER) {
+        const auto linear = motionModel_.estimateLinearAt(data.imageData->mTimestamp, predictionHorizon);
+        if (!linear->matrix().isApprox(estimatedPose->matrix(), 0.0)) {
+            // A higher-order guess must not lose a frame that linear matching
+            // can recover. Reuse the extracted features and unchanged snapshot;
+            // neither attempt commits observations before pose acceptance.
+            auto [linearMatches, linearOptimized] = tryPose(linear);
+            const auto linearInliers = std::count(linearOptimized.inliers.begin(), linearOptimized.inliers.end(), true);
+            if (linearInliers > inlierCount) {
+                estimatedPose = linear;
+                matches = std::move(linearMatches);
+                optimized = std::move(linearOptimized);
+                inlierCount = linearInliers;
+            }
+            transformer_->registerTransform(estimatedPose);
+            plotter_->updateFrustum(data.imageData, estimatedPose);
+        }
+    }
     std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchedFeatures;
-    std::vector<Eigen::Vector3d> matchedMapPoints;
-    matchedMapPoints.reserve(matches.size());
     matchedFeatures[0].reserve(matches.size());
     matchedFeatures[1].reserve(matches.size());
     for (const auto& match : matches) {
-        matchedMapPoints.push_back(trackingSnapshot.mapPoints.at(match.mapPointId).mPosition);
         matchedFeatures[0].push_back(match.projectedFeature);
         matchedFeatures[1].push_back(match.feature);
     }
     plotter_->plotMatches(frame->mImage, frame->mImage, matchedFeatures);
-
-    const auto mapToCamera = transformer_->findTransform(trackingSnapshot.frame, estimatedPose->mSource);
-    auto [rotation, translation, inliers] = optimizer_->optimizePoseWithInliers(matchedFeatures[1],
-        mapToCamera->mRotation, mapToCamera->mTranslation,
-        matchedMapPoints, data.imageData->mIntrinsics);
+    const auto& [rotation, translation, inliers] = optimized;
     const Eigen::Vector3d acceptedCameraCenter = -rotation.transpose() * translation;
-    for (std::size_t j = 0; j < matches.size(); ++j) {
-        if (inliers[j] && !trackingSnapshot.mapPoints.at(matches[j].mapPointId).isViewDirectionCompatible(acceptedCameraCenter))
-            inliers[j] = false;
-    }
-    const auto inlierCount = std::count(inliers.begin(), inliers.end(), true);
+    TracyPlot("Matches", static_cast<int64_t>(matches.size()));
     TracyPlot("Inliers", inlierCount);
     if (inlierCount >= settings_.tracking.minimumPoseInliers) {
         frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
@@ -278,19 +342,19 @@ void SchlamSystem::track(const SynchronizedData& data) {
         predictedPath_.push_back({data.imageData->mTimestamp,
             cameratoworld->mRotation, cameratoworld->mTranslation});
         plotter_->addPredictedCameraPosition(cameratoworld->mTranslation);
+        if (state_ == TrackingState::RECOVERING) std::cout << "Tracking recovered!" << std::endl;
+        state_ = TrackingState::TRACKING;
+    } else {
+        if (sinceLastAccepted > recoveryTimeout) {
+            state_ = TrackingState::LOST;
+            std::cout << "Lost tracking: recovery timeout exceeded!" << std::endl;
+        } else {
+            if (state_ != TrackingState::RECOVERING) std::cout << "Recovering tracking..." << std::endl;
+            state_ = TrackingState::RECOVERING;
+        }
     }
 
     framesSinceLastKeyframe_++;
-    if (matchedMapPoints.size() < settings_.tracking.minimumMatchesBeforeLost) {
-        lostCounter_++; // Continue motion model for up to N frames without enough matches
-    } else {
-        lostCounter_ = 0;
-    }
-
-    if (lostCounter_ > settings_.tracking.lostAfterNFrames) {
-        std::cout << "Lost tracking!" << std::endl;
-        state_ = TrackingState::LOST;
-    }
 }
 
 void SchlamSystem::localMapping() {
@@ -345,7 +409,7 @@ void SchlamSystem::buildMap(std::string prevFrameName,
     map_ = std::make_unique<Map>(prevFrameName, settings_.mapping, settings_.mapPoints);
     const auto referenceKeyFrameId = map_->addKeyFrame(referenceFrame);
     const auto initialKeyFrameId = map_->addKeyFrame(frame);
-    const auto pointIds = map_->addMapPoints(pts_opt, pts2D_2, initialKeyFrameId);
+    const auto pointIds = map_->addMapPoints(pts_opt, pts2D_2, initialKeyFrameId, frame->mTimestamp);
     for (std::size_t pointIndex = 0; pointIndex < pointIds.size(); ++pointIndex) {
         const auto referenceFeatureIndex = pts2D_1[pointIndex]->getIndex().value();
         const auto initialFeatureIndex = pts2D_2[pointIndex]->getIndex().value();
@@ -374,7 +438,7 @@ void SchlamSystem::triangulateUnmatchedFeatures() {
                 if (inliers[i]) {
                     numInliers++;
                     const auto pointInMap = it->second.mMapToCamera->inverse()->apply(pts[i]);
-                    const auto pointId = map_->addMapPoint(pointInMap, matches[0][i], latest->second.mId);
+                    const auto pointId = map_->addMapPoint(pointInMap, matches[0][i], latest->second.mId, latest->second.mTimestamp);
                     map_->mPoints.at(pointId).addTriangulationObservation(matches[1][i]->getDescriptor());
                     newMapPointIds.push_back(pointId);
                     map_->addObservation(it->second.mId, matches[0][i]->getIndex().value(), pointId);

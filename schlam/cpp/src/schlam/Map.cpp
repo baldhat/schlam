@@ -11,6 +11,7 @@
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
+#include <cmath>
 #include <tracy/Tracy.hpp>
 
 #include "KeyFrame.h"
@@ -19,25 +20,35 @@
 
 Map::Map(const std::string& frameName, schlam::config::Mapping mapping,
          schlam::config::MapPoints mapPoints)
-    : mFrame(frameName), mMappingSettings(mapping), mMapPointSettings(mapPoints) {}
+    : mFrame(frameName), mMappingSettings(mapping), mMapPointSettings(mapPoints) {
+    if (!std::isfinite(mapPoints.cullingWindowSeconds) || mapPoints.cullingWindowSeconds < 0.0) {
+        throw std::invalid_argument("mapPoints.cullingWindowSeconds must be nonnegative and finite");
+    }
+    if (!std::isfinite(mapPoints.observationDistanceFactor) || mapPoints.observationDistanceFactor < 1.0) {
+        throw std::invalid_argument("mapPoints.observationDistanceFactor must be finite and at least one");
+    }
+}
 
 std::vector<MapPointId> Map::addMapPoints(const std::vector<Eigen::Vector3d>& points3d,
-        const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId) {
+        const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId,
+        const utils::TTimestamp& creationTimestamp) {
     if (points3d.size() != keyPoints.size() ) {
         throw std::runtime_error("[Map::addMapPoints] 3D points and Keypoints need to be the same number!");
     }
     std::vector<MapPointId> pointIds;
     pointIds.reserve(points3d.size());
     for (std::size_t i = 0; i < points3d.size(); ++i) {
-        pointIds.push_back(addMapPoint(points3d[i], keyPoints[i], creatorId));
+        pointIds.push_back(addMapPoint(points3d[i], keyPoints[i], creatorId, creationTimestamp));
     }
     return pointIds;
 }
-MapPointId Map::addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId) {
+MapPointId Map::addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId,
+                          const utils::TTimestamp& creationTimestamp) {
     auto descriptor = keyPoint->getDescriptor();
     std::lock_guard guard(mMutex);
     const auto pointId = nextMapPointId;
-    mPoints.insert({pointId, MapPoint(point, descriptor, pointId, creatorId, mMapPointSettings)});
+    mPoints.insert({pointId, MapPoint(point, descriptor, pointId, creatorId, creationTimestamp, mMapPointSettings)});
+    if (!mLatestTimestamp || creationTimestamp > *mLatestTimestamp) mLatestTimestamp = creationTimestamp;
     nextMapPointId++;
     return pointId;
 }
@@ -60,6 +71,7 @@ KeyFrameId Map::addKeyFrame(const std::shared_ptr<Frame> &frame) {
     std::lock_guard guard(mMutex);
     const auto keyFrameId = nextKeyFrameId;
     mKeyFrames.insert({keyFrameId, KeyFrame(keyFrameId, *frame)});
+    if (!mLatestTimestamp || frame->mTimestamp > *mLatestTimestamp) mLatestTimestamp = frame->mTimestamp;
     nextKeyFrameId++;
     return keyFrameId;
 }
@@ -116,7 +128,11 @@ void Map::applyTrackingSnapshot(const TrackingSnapshot& snapshot) {
 void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId) {
     std::lock_guard guard(mMutex);
     auto& keyframe = mKeyFrames.at(keyFrameId);
-    auto& point = mPoints.at(pointId);
+    // Tracking matches come from a snapshot. Mapping may cull a point before
+    // those matches are attached to a new keyframe.
+    const auto pointIt = mPoints.find(pointId);
+    if (pointIt == mPoints.end()) return;
+    auto& point = pointIt->second;
     const auto& feature = keyframe.mKeyPoints.at(featureIndex);
     const auto& existingPoint = keyframe.mObservedPointByFeature.at(featureIndex);
     const auto existingObservation = point.mObservations.find(keyFrameId);
@@ -150,6 +166,10 @@ void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPoi
 
 bool Map::removePoint(MapPointId pointId) {
     std::lock_guard guard(mMutex);
+    return removePointUnlocked(pointId);
+}
+
+bool Map::removePointUnlocked(MapPointId pointId) {
     const auto pointIt = mPoints.find(pointId);
     if (pointIt == mPoints.end()) return false;
 
@@ -192,17 +212,26 @@ bool Map::decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t 
     return hasMinimumInliers && hasMinimumVisibleChange && localMappingCanProcess;
 }
 
+void Map::advanceTimestamp(const utils::TTimestamp& timestamp) {
+    std::lock_guard guard(mMutex);
+    if (!mLatestTimestamp || timestamp > *mLatestTimestamp) mLatestTimestamp = timestamp;
+}
+
+bool Map::isCullable(const MapPoint& point) const {
+    if (!mLatestTimestamp || *mLatestTimestamp < point.mCreationTimestamp) return false;
+    const auto age = std::chrono::duration<double>(*mLatestTimestamp - point.mCreationTimestamp);
+    return age.count() < mMapPointSettings.cullingWindowSeconds;
+}
+
 void Map::cullMapPoints() {
     ZoneScoped;
+    std::lock_guard guard(mMutex);
     std::vector<MapPointId> toRemove;
-    {
-        std::lock_guard guard(mMutex);
-        for (const auto& [id, point] : mPoints) {
-            if (point.mVisibleInTracking >= mMapPointSettings.minimumVisibilityCount &&
-                static_cast<double>(point.mNumInlierObservations) / static_cast<double>(point.mVisibleInTracking) < mMapPointSettings.minimumTrackingSuccessRate) {
-                toRemove.push_back(id);
-            }
+    for (const auto& [id, point] : mPoints) {
+        if (isCullable(point) && point.mVisibleInTracking >= mMapPointSettings.minimumVisibilityCount &&
+            static_cast<double>(point.mNumInlierObservations) / static_cast<double>(point.mVisibleInTracking) < mMapPointSettings.minimumTrackingSuccessRate) {
+            toRemove.push_back(id);
         }
     }
-    for (const auto pointId : toRemove) removePoint(pointId);
+    for (const auto pointId : toRemove) removePointUnlocked(pointId);
 }

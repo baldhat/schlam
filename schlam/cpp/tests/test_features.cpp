@@ -208,14 +208,78 @@ TEST(MatcherTest, GlobalMatchesOwnFeaturesAndUseEachTargetOnce) {
 
 TEST(MapPointTest, ViewingAngleUsesSixtyDegreeLimit) {
     const auto descriptor = std::make_shared<OrbDescriptor>(TDescriptor{});
-    MapPoint point(Eigen::Vector3d::Zero(), descriptor, 0, 0);
+    MapPoint point(Eigen::Vector3d::Zero(), descriptor, 0, 0, utils::TTimestamp{});
     point.addInlierObservation(descriptor, Eigen::Vector3d::UnitZ());
     EXPECT_EQ(point.mNumInlierObservations, 1);
     const double radians = std::numbers::pi / 180.0;
-    EXPECT_TRUE(point.isViewDirectionCompatible(Eigen::Vector3d(
+    EXPECT_TRUE(point.isViewCompatible(Eigen::Vector3d(
         std::sin(59.0 * radians), 0, std::cos(59.0 * radians))));
-    EXPECT_FALSE(point.isViewDirectionCompatible(Eigen::Vector3d(
+    EXPECT_FALSE(point.isViewCompatible(Eigen::Vector3d(
         std::sin(61.0 * radians), 0, std::cos(61.0 * radians))));
+}
+
+TEST(MapPointTest, DistanceRangeUsesTheMedianAcceptedTrackingDistanceAndInclusiveLimits) {
+    const auto descriptor = std::make_shared<OrbDescriptor>(TDescriptor{});
+    MapPoint point(Eigen::Vector3d::Zero(), descriptor, 0, 0, utils::TTimestamp{});
+    for (double distance : {2.0, 4.0, 40.0}) {
+        point.addInlierObservation(descriptor, Eigen::Vector3d(0, 0, distance));
+    }
+    // Median=4 rather than mean=15.33. Default factor=2 allows [2,8].
+    EXPECT_TRUE(point.isViewCompatible(Eigen::Vector3d(0, 0, 2.0)));
+    EXPECT_TRUE(point.isViewCompatible(Eigen::Vector3d(0, 0, 8.0)));
+    EXPECT_FALSE(point.isViewCompatible(Eigen::Vector3d(0, 0, 1.99)));
+    EXPECT_FALSE(point.isViewCompatible(Eigen::Vector3d(0, 0, 8.01)));
+}
+
+TEST(MapPointTest, DistanceRangeUsesTheEvenMedianAndConfiguredFactor) {
+    const auto descriptor = std::make_shared<OrbDescriptor>(TDescriptor{});
+    schlam::config::MapPoints settings;
+    settings.observationDistanceFactor = 3.0;
+    MapPoint point(Eigen::Vector3d::Zero(), descriptor, 0, 0, utils::TTimestamp{}, settings);
+    for (double distance : {2.0, 4.0, 8.0, 20.0}) {
+        point.addInlierObservation(descriptor, Eigen::Vector3d(0, 0, distance));
+    }
+    // Median=6; factor=3 allows [2,18].
+    EXPECT_TRUE(point.isViewCompatible(Eigen::Vector3d(0, 0, 2.0)));
+    EXPECT_TRUE(point.isViewCompatible(Eigen::Vector3d(0, 0, 18.0)));
+    EXPECT_FALSE(point.isViewCompatible(Eigen::Vector3d(0, 0, 1.99)));
+    EXPECT_FALSE(point.isViewCompatible(Eigen::Vector3d(0, 0, 18.01)));
+    EXPECT_FALSE(point.isViewCompatible(Eigen::Vector3d(0, 0, -6.0)));
+}
+
+TEST(MapPointTest, TriangulationDoesNotEstablishATrackingDistanceRange) {
+    const auto descriptor = std::make_shared<OrbDescriptor>(TDescriptor{});
+    MapPoint point(Eigen::Vector3d::Zero(), descriptor, 0, 0, utils::TTimestamp{});
+    point.addViewingObservation(Eigen::Vector3d::UnitZ());
+    point.addTriangulationObservation(descriptor);
+    EXPECT_TRUE(point.isViewCompatible(Eigen::Vector3d(0, 0, 100.0)));
+    point.addInlierObservation(descriptor, Eigen::Vector3d(0, 0, 4.0));
+    EXPECT_FALSE(point.isViewCompatible(Eigen::Vector3d(0, 0, 9.0)));
+    EXPECT_TRUE(point.isViewCompatible(Eigen::Vector3d(3, 0, 4)));
+}
+
+TEST(MatcherTest, DistanceRangeGatesBothProjectionMatchingAndAcceptedVisibility) {
+    cv::Mat image(100, 100, CV_8UC1, cv::Scalar(0));
+    Eigen::Matrix3d intrinsics;
+    intrinsics << 100, 0, 50, 0, 100, 50, 0, 0, 1;
+    auto imageData = std::make_shared<ImageData>(utils::TTimestamp{}, image, intrinsics, "current");
+    auto frame = std::make_shared<Frame>(imageData);
+    frame->mKeypointTree = std::make_shared<QuadTreeNode>(
+        0, 100, 0, 100, std::vector<KeyPoint>{describedKeyPoint(50, 50)});
+    Map map("world");
+    auto source = std::make_shared<KeyPoint>(describedKeyPoint(50, 50));
+    const auto id = map.addMapPoint(Eigen::Vector3d(0, 0, 5), source, 0, utils::TTimestamp{});
+    map.mPoints.at(id).addInlierObservation(source->getDescriptor(), Eigen::Vector3d::Zero());
+    for (const auto [cameraZ, expectedMatches] : {std::pair{-6.0, 0u}, {-5.0, 1u}, {2.5, 1u}, {3.0, 0u}}) {
+        auto pose = std::make_shared<tft::RigidTransform3D>(
+            "current", "world", Eigen::Matrix3d::Identity(), Eigen::Vector3d(0, 0, cameraZ));
+        auto transformer = std::make_shared<tft::Transformer>();
+        transformer->registerTransform(pose);
+        auto snapshot = map.getTrackingSnapshot();
+        EXPECT_EQ(matchMapPointsByProjection(snapshot, frame, pose, transformer, 20, 2).size(), expectedMatches);
+        recordMapPointVisibility(snapshot, *frame, *pose->inverse());
+        EXPECT_EQ(snapshot.visibleInTracking.size(), expectedMatches);
+    }
 }
 
 TEST(MatcherTest, ViewingAngleGatesMatchesAndAcceptedVisibility) {
@@ -229,7 +293,7 @@ TEST(MatcherTest, ViewingAngleGatesMatchesAndAcceptedVisibility) {
 
     Map map("world");
     auto source = std::make_shared<KeyPoint>(describedKeyPoint(50, 50));
-    const auto pointId = map.addMapPoint(Eigen::Vector3d(0, 0, 5), source, 0);
+    const auto pointId = map.addMapPoint(Eigen::Vector3d(0, 0, 5), source, 0, utils::TTimestamp{});
     auto& point = map.mPoints.at(pointId);
     point.addViewingObservation(Eigen::Vector3d::Zero());
 

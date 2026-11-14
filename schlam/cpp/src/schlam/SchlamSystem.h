@@ -45,6 +45,7 @@ struct SynchronizedData {
 enum class TrackingState {
     INITIALIZING,
     TRACKING,
+    RECOVERING,
     LOST
 };
 
@@ -101,7 +102,6 @@ private:
     std::atomic_bool localMappingIdle_{false};
     std::atomic_bool stopLocalMapping_{false};
     boost::sync_bounded_queue<KeyFrameId> localMappingQueue_;
-    std::uint32_t lostCounter_{0};
 
     // Reference frame
     std::shared_ptr<tft::RigidTransform3D> referenceCameraToWorld_;

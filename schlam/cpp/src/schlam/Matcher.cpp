@@ -134,7 +134,7 @@ void recordMapPointVisibility(TrackingSnapshot& snapshot, const Frame& frame,
                               const tft::RigidTransform3D& mapToCamera) {
     const auto center = cameraCenter(mapToCamera);
     for (auto& [pointId, point] : snapshot.mapPoints) {
-        if (point.isViewDirectionCompatible(center) &&
+        if (point.isViewCompatible(center) &&
             projectIntoFrame(point, frame, mapToCamera))
             snapshot.visibleInTracking.insert_or_assign(pointId, ++point.mVisibleInTracking);
     }
@@ -153,8 +153,8 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
     std::vector<std::shared_ptr<KeyPoint>> candidates;
     const auto center = cameraCenter(*mapToCamera);
-    for (const auto [pointId, mapPoint] : snapshot.mapPoints) {
-        if (!mapPoint.isViewDirectionCompatible(center)) continue;
+    for (const auto& [pointId, mapPoint] : snapshot.mapPoints) {
+        if (!mapPoint.isViewCompatible(center)) continue;
         const auto projected = projectIntoFrame(mapPoint, *frame, *mapToCamera);
         if (!projected) continue;
 

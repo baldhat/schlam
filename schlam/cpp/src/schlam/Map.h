@@ -6,6 +6,7 @@
 #define SCHLAM_MAP_H
 
 #include "MapTypes.h"
+#include "utils.hpp"
 #include "config/Config.hpp"
 
 #include <memory>
@@ -13,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <optional>
 
 #include <Eigen/Core>
 #include <opencv2/core/core.hpp>
@@ -55,8 +57,10 @@ public:
     Map(const std::string& frameName, schlam::config::Mapping mapping = {},
         schlam::config::MapPoints mapPoints = {});
     std::vector<MapPointId> addMapPoints(const std::vector<Eigen::Vector3d>& points3d,
-        const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId);
-    MapPointId addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId);
+        const std::vector<std::shared_ptr<KeyPoint>>& keyPoints, const KeyFrameId creatorId,
+        const utils::TTimestamp& creationTimestamp);
+    MapPointId addMapPoint(const Eigen::Vector3d& point, const std::shared_ptr<KeyPoint>& keyPoint, const KeyFrameId creatorId,
+                          const utils::TTimestamp& creationTimestamp);
 
     KeyFrameId addKeyFrame(const std::shared_ptr<Frame>& frame,
         const std::vector<MapPointMatch> matches,
@@ -68,8 +72,11 @@ public:
     void updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position);
     void updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D& mapToCamera);
     void applyTrackingSnapshot(const TrackingSnapshot& snapshot);
+    // Ignore stale snapshot observations if their point has already been removed.
     void addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId);
     bool removePoint(MapPointId pointId);
+    // Monotonic dataset clock, including frames without an accepted pose.
+    void advanceTimestamp(const utils::TTimestamp& timestamp);
 
     bool decideNewKeyframe(const std::uint32_t numInliers, const std::uint32_t framesSinceLastKeyframe, const bool localMappingIdle);
     void cullMapPoints();
@@ -82,6 +89,10 @@ public:
     KeyFrameId nextKeyFrameId{0};
 
 private:
+    // Caller holds mMutex. Applies only to periodic quality culling.
+    bool isCullable(const MapPoint& point) const;
+    bool removePointUnlocked(MapPointId pointId);
+    std::optional<utils::TTimestamp> mLatestTimestamp;
     schlam::config::Mapping mMappingSettings;
     schlam::config::MapPoints mMapPointSettings;
     mutable std::mutex mMutex;

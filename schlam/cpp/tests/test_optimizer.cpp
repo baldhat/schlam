@@ -3,6 +3,7 @@
 #include "schlam/KeyPoint.h"
 #include "schlam/KeyFrame.h"
 #include "schlam/MapPoint.hpp"
+#include "schlam/Matcher.h"
 #include "tft/transformer.hpp"
 
 #include <gtest/gtest.h>
@@ -472,7 +473,7 @@ protected:
 
         const auto& features = map.mKeyFrames.at(frameIds[0]).mKeyPoints;
         for (std::size_t i = 0; i < positions.size(); ++i) {
-            const auto pointId = map.addMapPoint(positions[i], features[i], frameIds[0]);
+            const auto pointId = map.addMapPoint(positions[i], features[i], frameIds[0], map.mKeyFrames.at(frameIds[0]).mTimestamp);
             pointIds.push_back(pointId);
             for (const auto frameId : frameIds) map.addObservation(frameId, i, pointId);
         }
@@ -494,7 +495,7 @@ TEST_F(CovisibilityOptimizerTest, SharedCountsAreSymmetricAndDuplicateObservatio
     EXPECT_EQ(map.mKeyFrames.at(frameIds[3]).mSharedPointCount.at(frameIds[0]), pointIds.size());
 
     const auto otherPoint = map.addMapPoint(Eigen::Vector3d(0, 0, 5),
-                                            map.mKeyFrames.at(frameIds[3]).mKeyPoints[0], frameIds[3]);
+                                            map.mKeyFrames.at(frameIds[3]).mKeyPoints[0], frameIds[3], map.mKeyFrames.at(frameIds[3]).mTimestamp);
     EXPECT_THROW(map.addObservation(frameIds[3], 0, otherPoint), std::invalid_argument);
     EXPECT_TRUE(map.mPoints.at(otherPoint).mObservations.empty());
 }
@@ -502,8 +503,8 @@ TEST_F(CovisibilityOptimizerTest, SharedCountsAreSymmetricAndDuplicateObservatio
 TEST_F(CovisibilityOptimizerTest, InitialObservationsSeedViewingDirection) {
     const auto& point = map.mPoints.at(pointIds[0]);
     const Eigen::Vector3d firstCameraCenter = Eigen::Vector3d::Zero();
-    EXPECT_TRUE(point.isViewDirectionCompatible(firstCameraCenter));
-    EXPECT_FALSE(point.isViewDirectionCompatible(2.0 * point.mPosition - firstCameraCenter));
+    EXPECT_TRUE(point.isViewCompatible(firstCameraCenter));
+    EXPECT_FALSE(point.isViewCompatible(2.0 * point.mPosition - firstCameraCenter));
 }
 
 TEST_F(CovisibilityOptimizerTest, RemovingPointClearsFeaturesAndSharedCounts) {
@@ -523,7 +524,7 @@ TEST_F(CovisibilityOptimizerTest, RemovingPointClearsFeaturesAndSharedCounts) {
     }
 
     const auto replacementId = map.addMapPoint(Eigen::Vector3d(0, 0, 5),
-                                                map.mKeyFrames.at(frameIds[0]).mKeyPoints[0], frameIds[3]);
+                                                map.mKeyFrames.at(frameIds[0]).mKeyPoints[0], frameIds[3], map.mKeyFrames.at(frameIds[3]).mTimestamp);
     for (const auto frameId : frameIds) map.addObservation(frameId, 0, replacementId);
     for (const auto frameId : frameIds) {
         const auto& frame = map.mKeyFrames.at(frameId);
@@ -531,6 +532,24 @@ TEST_F(CovisibilityOptimizerTest, RemovingPointClearsFeaturesAndSharedCounts) {
         EXPECT_EQ(frame.mObservedPointByFeature[0], replacementId);
         EXPECT_EQ(frame.mObservedPoints.size(), pointIds.size());
     }
+}
+
+TEST_F(CovisibilityOptimizerTest, CulledPointInATrackingSnapshotDoesNotPreventNewKeyframe) {
+    cv::Mat image(480, 640, CV_8UC1, cv::Scalar(0));
+    auto imageData = std::make_shared<ImageData>(utils::TTimestamp(std::chrono::milliseconds(4)), image, intrinsics, "camera");
+    auto frame = std::make_shared<Frame>(imageData);
+    frame->mMapToCamera = std::make_shared<tft::RigidTransform3D>(
+        "map", "camera", Eigen::Matrix3d::Identity(), Eigen::Vector3d(-1.2, 0, 0));
+    const auto descriptor = map.mPoints.at(pointIds[0]).mDescriptor;
+    frame->mKeypointTree = std::make_shared<QuadTreeNode>(0, 640, 0, 480,
+        std::vector<KeyPoint>{KeyPoint(320, 240, 0, 0, 0, descriptor)});
+    const auto feature = frame->mKeypointTree->getFeatures().front();
+    const std::vector<MapPointMatch> staleMatches{{pointIds[0], feature, feature}};
+    ASSERT_TRUE(map.removePoint(pointIds[0]));
+    const auto id = map.nextKeyFrameId;
+    EXPECT_NO_THROW(map.addKeyFrame(frame, staleMatches, {true}));
+    EXPECT_TRUE(map.mKeyFrames.at(id).mObservedPoints.empty());
+    EXPECT_FALSE(map.mKeyFrames.at(id).mObservedPointByFeature[0].has_value());
 }
 
 TEST_F(CovisibilityOptimizerTest, CullingUsesPointRemovalWithoutInvalidatingIteration) {
@@ -541,7 +560,7 @@ TEST_F(CovisibilityOptimizerTest, CullingUsesPointRemovalWithoutInvalidatingIter
     EXPECT_EQ(map.mKeyFrames.at(frameIds[0]).mSharedPointCount.at(frameIds[1]), pointIds.size() - 1);
 }
 
-TEST_F(CovisibilityOptimizerTest, CullsOldPointWithoutLaterTrackingInliers) {
+TEST_F(CovisibilityOptimizerTest, CullsYoungPointWithoutLaterTrackingInliers) {
     for (int camera = 4; camera < 6; ++camera) {
         cv::Mat image(480, 640, CV_8UC1, cv::Scalar(0));
         auto imageData = std::make_shared<ImageData>(
@@ -580,6 +599,52 @@ TEST_F(CovisibilityOptimizerTest, CullingWaitsForOpportunitiesAndKeepsSuccessful
     point.mVisibleInTracking = 9;
     map.cullMapPoints();
     EXPECT_FALSE(map.mPoints.contains(pointIds[0]));
+}
+
+TEST_F(CovisibilityOptimizerTest, CullingStopsAtTheAgeBoundaryAndDatasetTimeCannotRewind) {
+    const auto birth = map.mPoints.at(pointIds[0]).mCreationTimestamp;
+    EXPECT_EQ(birth, map.mKeyFrames.at(frameIds[0]).mTimestamp);
+    map.mPoints.at(pointIds[0]).mVisibleInTracking = 8;
+    map.advanceTimestamp(birth + std::chrono::seconds(3) - std::chrono::nanoseconds(1));
+    map.cullMapPoints();
+    EXPECT_FALSE(map.mPoints.contains(pointIds[0]));
+
+    map.mPoints.at(pointIds[1]).mVisibleInTracking = 8;
+    map.advanceTimestamp(birth + std::chrono::seconds(3));
+    map.cullMapPoints();
+    EXPECT_TRUE(map.mPoints.contains(pointIds[1]));
+    map.advanceTimestamp(birth + std::chrono::hours(1));
+    map.cullMapPoints();
+    EXPECT_TRUE(map.mPoints.contains(pointIds[1]));
+    map.advanceTimestamp(birth + std::chrono::seconds(1));
+    map.cullMapPoints();
+    EXPECT_TRUE(map.mPoints.contains(pointIds[1]));
+}
+
+TEST_F(CovisibilityOptimizerTest, CullingUsesEachPointsCreationTimeRatherThanItsCreatorsTimestamp) {
+    const utils::TTimestamp later(std::chrono::seconds(10));
+    map.advanceTimestamp(later);
+    const auto pointId = map.addMapPoint(Eigen::Vector3d(0, 0, 5),
+        map.mKeyFrames.at(frameIds[0]).mKeyPoints[0], frameIds[0], later);
+    EXPECT_EQ(map.mPoints.at(pointId).mCreationTimestamp, later);
+    map.mPoints.at(pointId).mVisibleInTracking = 8;
+    map.mPoints.at(pointIds[0]).mVisibleInTracking = 8;
+    map.cullMapPoints();
+    EXPECT_FALSE(map.mPoints.contains(pointId));
+    EXPECT_TRUE(map.mPoints.contains(pointIds[0]));
+}
+
+TEST_F(CovisibilityOptimizerTest, ZeroCullingWindowDisablesQualityCulling) {
+    schlam::config::MapPoints settings;
+    settings.cullingWindowSeconds = 0.0;
+    Map permanent("map", {}, settings);
+    const auto id = permanent.addMapPoint(Eigen::Vector3d(0, 0, 5),
+        map.mKeyFrames.at(frameIds[0]).mKeyPoints[0], frameIds[0], utils::TTimestamp{});
+    permanent.mPoints.at(id).mVisibleInTracking = 100;
+    permanent.cullMapPoints();
+    EXPECT_TRUE(permanent.mPoints.contains(id));
+    // Explicit removal, including optimizer outlier removal, remains available.
+    EXPECT_TRUE(permanent.removePoint(id));
 }
 
 TEST_F(CovisibilityOptimizerTest, RemovingLastSharedPointErasesCovisibilityEdges) {
@@ -625,7 +690,7 @@ TEST_F(CovisibilityOptimizerTest, SelectedReferenceNeighborRemainsFixed) {
     EXPECT_TRUE(map.mKeyFrames.at(frameIds[2]).mMapToCamera->matrix().isApprox(fixed2, 0));
 }
 
-TEST_F(CovisibilityOptimizerTest, FinalFullMapPassRemovesOutlierPointsAndTheirObservations) {
+TEST_F(CovisibilityOptimizerTest, FinalFullMapPassStillRemovesMatureOutliersAndTheirObservations) {
     cv::Mat image(480, 640, CV_8UC1, cv::Scalar(0));
     auto imageData = std::make_shared<ImageData>(
         utils::TTimestamp(std::chrono::milliseconds(4)), image, intrinsics, "camera");
@@ -649,6 +714,7 @@ TEST_F(CovisibilityOptimizerTest, FinalFullMapPassRemovesOutlierPointsAndTheirOb
     map.mKeyFrames.at(frameIds[3]).mKeyPoints.at(0)->scaleBy(1.7, 1.0);
     map.mKeyFrames.at(frameIds[3]).mKeyPoints.at(1)->scaleBy(1.5, 1.0);
 
+    map.advanceTimestamp(utils::TTimestamp(std::chrono::seconds(10)));
     ASSERT_TRUE(optimizer.optimizeFullMap(&map, true));
     EXPECT_FALSE(map.mPoints.contains(pointIds[0]));
     EXPECT_TRUE(map.mPoints.contains(pointIds[1]));
