@@ -108,7 +108,6 @@ add_library(${PROJECT_NAME} SHARED
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     SCHLAM_USE_OPENCV_RECONSTRUCTION=$<BOOL:${SCHLAM_USE_OPENCV_RECONSTRUCTION}>)
-target_compile_definitions(${PROJECT_NAME} PRIVATE TRACY_TIMER_FALLBACK)
 
 target_link_libraries(${PROJECT_NAME} 
     fmt::fmt
@@ -130,6 +129,7 @@ add_executable(app
 )
 target_link_libraries(app ${PROJECT_NAME})
 target_compile_definitions(app PRIVATE SCHLAM_DEFAULT_CONFIG_PATH="${PROJECT_SOURCE_DIR}/config/mav.yaml")
+target_compile_definitions(app PRIVATE TRACY_TIMER_FALLBACK)
 
 add_executable(tft 
     src/tft/main.cpp

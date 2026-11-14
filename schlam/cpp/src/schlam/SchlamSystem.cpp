@@ -381,7 +381,7 @@ void SchlamSystem::setFrameAsReference(std::shared_ptr<Frame> frame,
     plotter_->resetCameraPaths(referenceGTCameraPose_->mTranslation);
 };
 
-SchlamResult&& SchlamSystem::buildResult(std::size_t processedFrames, double processingMilliseconds) const {
+SchlamResult SchlamSystem::buildResult(std::size_t processedFrames, double processingMilliseconds) const {
     SchlamResult result;
     if (map_) {
         const auto snapshot = map_->getSnapshot();
@@ -395,7 +395,7 @@ SchlamResult&& SchlamSystem::buildResult(std::size_t processedFrames, double pro
     if (processingMilliseconds > 0.0) {
         result.averageFrameRate = 1000.0 * processedFrames / processingMilliseconds;
     }
-    return std::move(result);
+    return result;
 }
 
 void SchlamSystem::finishLocalMapping() {
