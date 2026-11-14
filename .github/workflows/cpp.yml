@@ -47,7 +47,7 @@ jobs:
         run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2 -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Install application dependencies
-        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing --build="tracy/*" -c tools.build:jobs=2 -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
+        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=2 -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Configure
         run: |
@@ -99,7 +99,7 @@ jobs:
         run: conan create recipes/pangolin -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc) -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Install application dependencies
-        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing --build="tracy/*" -c tools.build:jobs=$(nproc) -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
+        run: conan install . -s build_type=${{ matrix.build_type }} -s compiler.cppstd=23 --lockfile=conan.lock --build=missing -c tools.build:jobs=$(nproc) -c tools.files.download:retry=5 -c tools.files.download:retry_wait=10
 
       - name: Configure
         run: |
