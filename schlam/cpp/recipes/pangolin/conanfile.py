@@ -11,7 +11,7 @@ class PangolinConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
 
     def requirements(self):
-        self.requires("eigen/3.4.0")
+        self.requires("eigen/5.0.1")
 
     def source(self):
         get(

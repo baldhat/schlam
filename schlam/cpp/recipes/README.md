@@ -9,6 +9,22 @@ The application requires two packages built from pinned upstream source:
 
 The recipes verify SHA-256 checksums of both source archives. They build shared libraries and install each project's native CMake package config. The g2o recipe keeps logging support but disables unused solver families and GUI support. The Pangolin recipe keeps its OpenGL viewer and disables optional image and video backends. `conan.lock` pins the Conan recipe revisions of the application dependency graph.
 
+Application dependencies are declared in `conanfile.py`. Eigen is pinned to 5.0.1
+in the application and both local recipes, and ONNX Runtime 1.24.4 is supplied by
+ConanCenter. OpenCV 4.12 still requests Eigen 3.4 and Protobuf 3.21, so the application
+forces a consistent Eigen 5.0.1 and Protobuf 6.33.5 across the graph. cpuinfo is also
+unified at `cci.20251210` for ONNX Runtime and the video codec dependency. The
+Python recipe is needed to express these overrides; it replaces `conanfile.txt`.
+Dependent libraries must be rebuilt with the new headers and Protobuf ABI.
+When reusing an existing CMake build directory after the upgrade, add
+`-U g2o_DIR -U Pangolin_DIR` to the configure command below so cached native
+package paths are rediscovered, or use `cmake --fresh` with CMake 3.24 or newer.
+
+The pretrained [XFeat model](../models/xfeat/README.md) is included in the source
+tree with its license, provenance and export checksums. C++ model loading and
+inference tests run as part of `unit_tests`. Python/PyTorch is required only to
+regenerate the model using `recipes/export-xfeat.py`.
+
 See the [main build instructions](../../../README.md#building) for Conan installation. Install the complete Ubuntu 24.04 package list from the repository root:
 
 ```sh

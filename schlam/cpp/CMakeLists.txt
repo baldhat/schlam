@@ -15,6 +15,7 @@ add_compile_options(-fno-omit-frame-pointer)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(onnxruntime REQUIRED CONFIG)
 find_package(fmt REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(OpenGL REQUIRED COMPONENTS OpenGL EGL)
@@ -64,17 +65,17 @@ add_library(${PROJECT_NAME} SHARED
     src/data/datasets/MAVDataset.hpp
     src/data/gt_data.hpp
 
-        src/schlam/feature_detection/orb/FastFeatureDetector.cpp
-        src/schlam/feature_detection/orb/FastFeatureDetector.h
-        src/schlam/feature_detection/orb/ORBFeatureDetector.cpp
-        src/schlam/feature_detection/orb/ORBFeatureDetector.h
+    src/schlam/feature_detection/orb/FastFeatureDetector.cpp
+    src/schlam/feature_detection/orb/FastFeatureDetector.h
+    src/schlam/feature_detection/orb/ORBFeatureDetector.cpp
+    src/schlam/feature_detection/orb/ORBFeatureDetector.h
     src/schlam/KeyPoint.cpp
     src/schlam/KeyPoint.h
     src/schlam/helpers/utils.cpp
     src/schlam/helpers/utils.h
-        src/schlam/feature_detection/orb/QuadTreeNode.cpp
-        src/schlam/feature_detection/orb/QuadTreeNode.h
-        src/schlam/feature_detection/orb/orb_pattern.h
+    src/schlam/feature_detection/orb/QuadTreeNode.cpp
+    src/schlam/feature_detection/orb/QuadTreeNode.h
+    src/schlam/feature_detection/orb/orb_pattern.h
     src/schlam/Matcher.cpp
     src/schlam/Matcher.h
     src/schlam/Ransac.cpp
@@ -103,10 +104,12 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/helpers/Profiler.h
     src/schlam/optimization/CovisibilityHelpers.cpp
     src/schlam/optimization/CovisibilityHelpers.h
-        src/schlam/feature_detection/IFeatureExtractor.h
-        src/schlam/feature_detection/IDescriptor.h
-        src/schlam/feature_detection/orb/OrbDescriptor.cpp
-        src/schlam/feature_detection/orb/OrbDescriptor.h
+    src/schlam/feature_detection/IFeatureExtractor.h
+    src/schlam/feature_detection/IDescriptor.h
+    src/schlam/feature_detection/orb/OrbDescriptor.cpp
+    src/schlam/feature_detection/orb/OrbDescriptor.h
+    src/schlam/feature_detection/xfeat/XFeatModel.cpp
+    src/schlam/feature_detection/xfeat/XFeatModel.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -117,6 +120,7 @@ target_link_libraries(${PROJECT_NAME}
     spdlog::spdlog
     ${OpenCV_LIBS} 
     Eigen3::Eigen 
+    onnxruntime::onnxruntime
     pango_core pango_display pango_plot pango_image pango_geometry pango_opengl pango_video
     yaml-cpp::yaml-cpp
     Boost::boost Boost::thread
@@ -139,6 +143,11 @@ add_executable(tft
 )
 target_link_libraries(tft ${PROJECT_NAME})
 
+add_executable(xfeat_model src/xfeat_model.cpp)
+target_link_libraries(xfeat_model ${PROJECT_NAME})
+target_compile_definitions(xfeat_model PRIVATE
+    SCHLAM_DEFAULT_XFEAT_MODEL_PATH="${PROJECT_SOURCE_DIR}/models/xfeat/xfeat.onnx")
+
 # ----------------------------------------
 # -------------- TESTING -----------------
 # ----------------------------------------
@@ -154,14 +163,18 @@ add_executable(unit_tests
     tests/test_optimizer.cpp
     tests/test_schlam_system.cpp
     tests/test_schlam_validator.cpp
+    tests/test_xfeat_model.cpp
 )
 
 # Ensure GTest targets are linked correctly
 target_link_libraries(unit_tests PRIVATE 
-    ${PROJECT_NAME}
+    # Resolve the test entry point before transitive Boost.Test archives.
     GTest::gtest_main
     GTest::gtest
+    ${PROJECT_NAME}
 )
+target_compile_definitions(unit_tests PRIVATE
+    SCHLAM_XFEAT_ASSET_DIR="${PROJECT_SOURCE_DIR}/models/xfeat")
 
 include(GoogleTest)
 # Discovery runs during the build and requires the Conan runtime environment.

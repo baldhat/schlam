@@ -44,6 +44,7 @@ tracking:
   projectionWindowPixels: 50.0
   minimumPoseInliers: 12
   minimumMatchesBeforeLost: 12
+  lostAfterNFrames: 50
 
 mapPoints:
   maximumViewingAngleDegrees: 60.0

@@ -46,6 +46,7 @@ Config ConfigParser::load(const std::filesystem::path& path) {
     n = section(root, "tracking");
     read(n, "matchHammingDistance", c.tracking.matchHammingDistance); read(n, "projectionWindowPixels", c.tracking.projectionWindowPixels);
     read(n, "minimumPoseInliers", c.tracking.minimumPoseInliers); read(n, "minimumMatchesBeforeLost", c.tracking.minimumMatchesBeforeLost);
+    read(n, "lostAfterNFrames", c.tracking.lostAfterNFrames);
     n = section(root, "mapPoints");
     read(n, "maximumViewingAngleDegrees", c.mapPoints.maximumViewingAngleDegrees); read(n, "descriptorHistorySize", c.mapPoints.descriptorHistorySize);
     read(n, "minimumVisibilityCount", c.mapPoints.minimumVisibilityCount); read(n, "minimumTrackingSuccessRate", c.mapPoints.minimumTrackingSuccessRate);

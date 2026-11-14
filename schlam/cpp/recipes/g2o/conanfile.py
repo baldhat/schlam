@@ -10,7 +10,7 @@ class G2OConan(ConanFile):
     settings = "os", "arch", "compiler", "build_type"
 
     def requirements(self):
-        self.requires("eigen/3.4.0")
+        self.requires("eigen/5.0.1")
         self.requires("spdlog/1.13.0")
 
     def source(self):

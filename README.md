@@ -80,6 +80,8 @@ export KITTI_PATH=/path/to/kitti
 build/Release/app config/kitti.yaml
 ```
 
+The pretrained XFeat ONNX backbone is available through `XFeatModel`. After building, run `build/Release/xfeat_model` to load it and perform CPU inference on a synthetic image. See the [model documentation](schlam/cpp/models/xfeat/README.md) for C++ usage, input/output shapes, provenance and reproducible export. The dependency graph uses Eigen 5.0.1 and ONNX Runtime 1.24.4; `conanfile.py` keeps OpenCV and the runtime on compatible dependency versions.
+
 With no argument, `app` uses `config/mav.yaml`. Edit `dataset.sequence` in the selected config to run another sequence. The `tft` executable runs the transform-tree visualization on its own.
 
 ### Run results
@@ -150,7 +152,7 @@ schlam/
 │   ├── tests/          # GTest unit tests
 │   ├── config/         # MAV, KITTI, and headless YAML configs
 │   ├── recipes/        # Pinned g2o and Pangolin Conan recipes
-│   ├── conanfile.txt    # Conan dependencies
+│   ├── conanfile.py     # Conan dependencies and version overrides
 │   └── conan.lock       # Dependency recipe revisions
 └── python/             # PyTorch/pyceres prototype pipeline
 ```

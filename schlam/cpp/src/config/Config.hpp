@@ -58,6 +58,7 @@ struct Tracking {
     double projectionWindowPixels = 50.0;
     std::size_t minimumPoseInliers = 12;
     std::size_t minimumMatchesBeforeLost = 12;
+    std::size_t lostAfterNFrames = 50;
 };
 
 struct MapPoints {

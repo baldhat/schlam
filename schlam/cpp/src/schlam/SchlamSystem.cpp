@@ -282,6 +282,12 @@ void SchlamSystem::track(const SynchronizedData& data) {
 
     framesSinceLastKeyframe_++;
     if (matchedMapPoints.size() < settings_.tracking.minimumMatchesBeforeLost) {
+        lostCounter_++; // Continue motion model for up to N frames without enough matches
+    } else {
+        lostCounter_ = 0;
+    }
+
+    if (lostCounter_ > settings_.tracking.lostAfterNFrames) {
         std::cout << "Lost tracking!" << std::endl;
         state_ = TrackingState::LOST;
     }

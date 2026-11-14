@@ -1,0 +1,61 @@
+{
+  "upstream": "https://github.com/verlab/accelerated_features",
+  "revision": "e92685f57f8318b18725c5c8c0bd28c7fe188d9a",
+  "source_sha256": {
+    "modules/model.py": "d9a665f18fcea5eaf3e278925e1a92103afcba9051e05b2334f3daa29f411964",
+    "weights/xfeat.pt": "0f5187fd7bedd26c7fe6acc9685444493a165a35ecc087b33c2db3627f3ea10b",
+    "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  },
+  "model_sha256": "48ef4fd173b8d155f3343ce4f76b79cede1526a9c9732d11f806061e21177998",
+  "opset": 17,
+  "torch_version": "2.6.0+cpu",
+  "onnx_version": "1.17.0",
+  "onnxruntime_version": "1.24.4",
+  "parity": [
+    {
+      "input_shape": [
+        1,
+        1,
+        32,
+        32
+      ],
+      "maximum_absolute_errors": {
+        "features": 1.430511474609375e-06,
+        "keypoint_logits": 1.049041748046875e-05,
+        "reliability": 5.774199962615967e-08
+      }
+    },
+    {
+      "input_shape": [
+        1,
+        1,
+        64,
+        96
+      ],
+      "maximum_absolute_errors": {
+        "features": 6.4373016357421875e-06,
+        "keypoint_logits": 8.58306884765625e-06,
+        "reliability": 1.9371509552001953e-07
+      }
+    },
+    {
+      "input_shape": [
+        1,
+        1,
+        96,
+        128
+      ],
+      "maximum_absolute_errors": {
+        "features": 4.0531158447265625e-06,
+        "keypoint_logits": 1.3589859008789062e-05,
+        "reliability": 1.2665987014770508e-07
+      }
+    }
+  ],
+  "reference": {
+    "file": "reference-32x32.txt",
+    "sha256": "635a5d5b9177f156c23d9acd38fb49756a94a9a77eb1ed7f0d51ddd82387e4e6",
+    "input": "uint8 image[y,x] = (13*y + 7*x) % 256; shape 32x32; /255 before inference",
+    "layout": "flattened NCHW features, keypoint_logits, reliability, in that order"
+  }
+}
