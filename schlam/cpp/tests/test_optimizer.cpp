@@ -6,6 +6,7 @@
 #include "tft/transformer.hpp"
 
 #include <gtest/gtest.h>
+#include "schlam/feature_detection/orb/OrbDescriptor.h"
 #include <Eigen/Geometry>
 
 #include <algorithm>
@@ -444,6 +445,7 @@ protected:
         500, 0, 320, 0, 500, 240, 0, 0, 1).finished();
 
     void SetUp() override {
+        const auto descriptor = std::make_shared<OrbDescriptor>(TDescriptor{});
         std::vector<Eigen::Vector3d> positions;
         for (int i = 0; i < 20; ++i) {
             positions.emplace_back(-0.6 + 0.3 * (i % 5), -0.4 + 0.25 * (i / 5), 4.0 + 0.1 * i);
@@ -461,7 +463,8 @@ protected:
             for (const auto& position : positions) {
                 const auto cameraPoint = frame->mMapToCamera->apply(position);
                 features.emplace_back(500 * cameraPoint.x() / cameraPoint.z() + 320,
-                                      500 * cameraPoint.y() / cameraPoint.z() + 240);
+                                      500 * cameraPoint.y() / cameraPoint.z() + 240,
+                                      0, 0, 0, descriptor);
             }
             frame->mKeypointTree = std::make_shared<QuadTreeNode>(0, 640, 0, 480, features);
             frameIds[camera] = map.addKeyFrame(frame);

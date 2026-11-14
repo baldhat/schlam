@@ -18,6 +18,12 @@
 
 #include "schlam/feature_detection/orb/OrbDescriptor.h"
 
+namespace {
+KeyPoint describedKeyPoint(double x, double y) {
+    return KeyPoint(x, y, 0, 0, 0, std::make_shared<OrbDescriptor>(TDescriptor{}));
+}
+}
+
 class ORBFeatureDetectorTest : public ::testing::Test {
 protected:
     ORBFeatureDetector detector{1000, nullptr, 1};
@@ -135,9 +141,9 @@ TEST(QuadTreeTest, FeatureIdentityAndLifetimeSurviveSubdivision) {
 
 TEST(MatcherTest, WindowMatchingCanBeRepeatedAndUsesEachTargetOnce) {
     auto source = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(25, 25), KeyPoint(26, 26)});
+        std::vector<KeyPoint>{describedKeyPoint(25, 25), describedKeyPoint(26, 26)});
     auto target = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(25, 25)});
+        std::vector<KeyPoint>{describedKeyPoint(25, 25)});
     // Persistent state from another operation must not affect this matching call.
     target->getFeatures()[0]->setObservation(42);
     const auto [first, firstMask] = matchWindow(source, target, 20, 5);
@@ -150,9 +156,9 @@ TEST(MatcherTest, WindowMatchingCanBeRepeatedAndUsesEachTargetOnce) {
 
 TEST(MatcherTest, IdenticalFeaturesMatchThroughDividedTree) {
     auto source = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(25, 25)});
+        std::vector<KeyPoint>{describedKeyPoint(25, 25)});
     auto target = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(25, 25), KeyPoint(75, 75)});
+        std::vector<KeyPoint>{describedKeyPoint(25, 25), describedKeyPoint(75, 75)});
     target->divide();
     const auto [matches, matched] = matchWindow(source, target, 20, 5);
     EXPECT_EQ(matches[0].size(), 1);
@@ -161,9 +167,9 @@ TEST(MatcherTest, IdenticalFeaturesMatchThroughDividedTree) {
 
 TEST(MatcherTest, WindowMatchesOwnFeaturesAfterTreesAreDestroyed) {
     auto source = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(25, 25)});
+        std::vector<KeyPoint>{describedKeyPoint(25, 25)});
     auto target = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(26, 25), KeyPoint(75, 75)});
+        std::vector<KeyPoint>{describedKeyPoint(26, 25), describedKeyPoint(75, 75)});
     target->divide();
     std::weak_ptr<KeyPoint> sourceFeature = source->getFeatures()[0];
     std::weak_ptr<KeyPoint> targetFeature = target->getFeatures(20, 30, 20, 30)[0];
@@ -185,9 +191,9 @@ TEST(MatcherTest, WindowMatchesOwnFeaturesAfterTreesAreDestroyed) {
 
 TEST(MatcherTest, GlobalMatchesOwnFeaturesAndUseEachTargetOnce) {
     auto source = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(25, 25), KeyPoint(26, 25)});
+        std::vector<KeyPoint>{describedKeyPoint(25, 25), describedKeyPoint(26, 25)});
     auto target = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(75, 75)});
+        std::vector<KeyPoint>{describedKeyPoint(75, 75)});
     auto matches = matchGlobally(source, target, 20);
     ASSERT_EQ(matches[0].size(), 1);
     ASSERT_EQ(matches[1].size(), 1);
@@ -201,8 +207,9 @@ TEST(MatcherTest, GlobalMatchesOwnFeaturesAndUseEachTargetOnce) {
 }
 
 TEST(MapPointTest, ViewingAngleUsesSixtyDegreeLimit) {
-    MapPoint point(Eigen::Vector3d::Zero(), DescriptorPtr{}, 0, 0);
-    point.addInlierObservation(DescriptorPtr{}, Eigen::Vector3d::UnitZ());
+    const auto descriptor = std::make_shared<OrbDescriptor>(TDescriptor{});
+    MapPoint point(Eigen::Vector3d::Zero(), descriptor, 0, 0);
+    point.addInlierObservation(descriptor, Eigen::Vector3d::UnitZ());
     EXPECT_EQ(point.mNumInlierObservations, 1);
     const double radians = std::numbers::pi / 180.0;
     EXPECT_TRUE(point.isViewDirectionCompatible(Eigen::Vector3d(
@@ -218,10 +225,10 @@ TEST(MatcherTest, ViewingAngleGatesMatchesAndAcceptedVisibility) {
     auto imageData = std::make_shared<ImageData>(utils::TTimestamp{}, image, intrinsics, "current");
     auto frame = std::make_shared<Frame>(imageData);
     frame->mKeypointTree = std::make_shared<QuadTreeNode>(
-        0, 100, 0, 100, std::vector<KeyPoint>{KeyPoint(50, 50)});
+        0, 100, 0, 100, std::vector<KeyPoint>{describedKeyPoint(50, 50)});
 
     Map map("world");
-    auto source = std::make_shared<KeyPoint>(50, 50);
+    auto source = std::make_shared<KeyPoint>(describedKeyPoint(50, 50));
     const auto pointId = map.addMapPoint(Eigen::Vector3d(0, 0, 5), source, 0);
     auto& point = map.mPoints.at(pointId);
     point.addViewingObservation(Eigen::Vector3d::Zero());
@@ -252,11 +259,11 @@ TEST(MatcherTest, ViewingAngleGatesMatchesAndAcceptedVisibility) {
 
 TEST(MatcherTest, WindowMaskIncludesUnmatchedSourcesAtTheirOriginalIndices) {
     std::vector<std::shared_ptr<KeyPoint>> source{
-        std::make_shared<KeyPoint>(80, 80),
-        std::make_shared<KeyPoint>(25, 25),
-        std::make_shared<KeyPoint>(26, 25)};
+        std::make_shared<KeyPoint>(describedKeyPoint(80, 80)),
+        std::make_shared<KeyPoint>(describedKeyPoint(25, 25)),
+        std::make_shared<KeyPoint>(describedKeyPoint(26, 25))};
     auto target = std::make_shared<QuadTreeNode>(0, 100, 0, 100,
-        std::vector<KeyPoint>{KeyPoint(25, 25)});
+        std::vector<KeyPoint>{describedKeyPoint(25, 25)});
     const auto [matches, matched] = matchWindow(source, target, 20, 2);
     ASSERT_EQ(matches[0].size(), 1);
     EXPECT_EQ(matches[0][0], source[1]);
@@ -321,7 +328,11 @@ TEST_F(ORBFeatureDetectorTest, PyramidRescalingPreservesOrientationAndDescriptor
         SCOPED_TRACE(static_cast<int>(level));
         const auto [actual, expected] = describeRescaledCorner(image, level);
         EXPECT_NEAR(actual->getAngle(), expected->getAngle(), 1e-12);
-        EXPECT_EQ(actual->getDescriptor(), expected->getDescriptor());
+        const auto actualDescriptor = std::dynamic_pointer_cast<const OrbDescriptor>(actual->getDescriptor());
+        const auto expectedDescriptor = std::dynamic_pointer_cast<const OrbDescriptor>(expected->getDescriptor());
+        ASSERT_NE(actualDescriptor, nullptr);
+        ASSERT_NE(expectedDescriptor, nullptr);
+        EXPECT_EQ(actualDescriptor->mDescriptor, expectedDescriptor->mDescriptor);
     }
 }
 
@@ -489,7 +500,9 @@ TEST_F(ORBFeatureDetectorTest, DescriptorUsesNegativeOffsetsAtZeroRotation) {
     }
     QuadTreeNode tree(0, 64, 0, 64, {KeyPoint(32, 32)});
     describe(image, tree);
-    EXPECT_EQ(dynamic_cast<OrbDescriptor*>(tree.getFeatures()[0]->getDescriptor().get())->mDescriptor[0] & 1, 0);
+    const auto descriptor = std::dynamic_pointer_cast<const OrbDescriptor>(tree.getFeatures()[0]->getDescriptor());
+    ASSERT_NE(descriptor, nullptr);
+    EXPECT_EQ(descriptor->mDescriptor[0] & 1, 0);
 }
 
 TEST_F(ORBFeatureDetectorTest, RotatedDescriptorsStayInsideImageAtRetainedBorder) {
