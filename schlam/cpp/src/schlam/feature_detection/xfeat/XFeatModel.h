@@ -24,6 +24,8 @@ public:
     // CV_8UC1 grayscale, H/W >= 32 and divisible by 32. Converts pixels to [0,1].
     // Resizing and coordinate remapping remain explicit responsibilities of the extractor.
     [[nodiscard]] Output run(const cv::Mat& image) const;
+    // Preprocessed CV_32FC1 pixels in [0,1], with the same dimension requirements.
+    [[nodiscard]] Output runNormalized(const cv::Mat& image) const;
 
 private:
     struct Impl;

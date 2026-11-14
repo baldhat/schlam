@@ -31,7 +31,7 @@ public:
     bool isViewCompatible(const Eigen::Vector3d& cameraCenter) const;
 
     Eigen::Vector3d mPosition;
-    // descriptor with the lowest median Hamming distance to the history
+    // Descriptor with the lowest median distance to the history.
     DescriptorPtr mDescriptor;
     DescriptorPtr mLastInlierDescriptor;
     MapPointId mId;

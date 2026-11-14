@@ -5,17 +5,27 @@ dataset:
 plotter:
   type: DummyPlotter
 features:
+  type: orb # orb or xfeat
   count: 1000
-  levels: 6
-  scaleFactor: 1.2
-  fastThreshold: 7
-  fastArcLength: 9
-  orientationRadius: 15
-  border: 19
-  harrisBlockSize: 7
-  harrisK: 0.04
-  descriptorBlurSize: 7
-  descriptorBlurSigma: 2.0
+  orb:
+    levels: 6
+    scaleFactor: 1.2
+    fastThreshold: 7
+    fastArcLength: 9
+    orientationRadius: 15
+    border: 19
+    harrisBlockSize: 7
+    harrisK: 0.04
+    descriptorBlurSize: 7
+    descriptorBlurSigma: 2.0
+    initializationMatchDistance: 20
+    trackingMatchDistance: 50
+    triangulationMatchDistance: 30
+  xfeat:
+    imageSizing: resize # resize or pad; coordinates remain in the original image
+    detectionThreshold: 0.05
+    inferenceThreads: 4
+    matchDistance: 0.18
 
 reconstruction:
   randomSeed: 12344321
@@ -34,12 +44,10 @@ reconstruction:
   homographyParallaxRank: 50
 
 initialization:
-  matchHammingDistance: 20
   matchWindowPixels: 50.0
   minimumMatches: 50
 
 tracking:
-  matchHammingDistance: 50
   projectionWindowPixels: 25.0
   minimumPoseInliers: 25
   recoveryTimeoutSeconds: 0.5
@@ -57,7 +65,6 @@ mapping:
   keyframeMaximumInliers: 100
   keyframeMinimumFrameGapWhenBusy: 5
   triangulationPreviousKeyframes: 5
-  triangulationMatchHammingDistance: 30
   queueCapacity: 1
 
 optimizer:

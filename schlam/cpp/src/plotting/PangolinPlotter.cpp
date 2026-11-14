@@ -700,7 +700,7 @@ void PangolinPlotter::plotFeatures(const cv::Mat &aImage, const std::vector<std:
         const int x = static_cast<int>(point->getImgX());
         const int y = static_cast<int>(point->getImgY());
         if (x >= 0 && x < colorResult.cols && y >= 0 && y < colorResult.rows) {
-            cv::circle(colorResult, cv::Point(x, y), 0, toBgr(mTheme.featureMarker), -1);
+            cv::circle(colorResult, cv::Point(x, y), 2, toBgr(mTheme.featureMarker), -1);
             cv::circle(treeResult, cv::Point(x, y), 2, toBgr(mTheme.featureMarker), -1);
         }
     }

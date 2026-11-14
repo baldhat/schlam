@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <cmath>
+#include <opencv2/core.hpp>
 
 namespace {
 constexpr std::array<const char*, 3> outputNames{"features", "keypoint_logits", "reliability"};
@@ -75,6 +77,16 @@ XFeatModel::Output XFeatModel::run(const cv::Mat& image) const {
     }
     cv::Mat pixels;
     image.convertTo(pixels, CV_32FC1, 1.0 / 255.0);
+    return runNormalized(pixels);
+}
+
+XFeatModel::Output XFeatModel::runNormalized(const cv::Mat& image) const {
+    if (image.empty() || image.dims != 2 || image.type() != CV_32FC1 ||
+        image.rows < 32 || image.cols < 32 || image.rows % 32 || image.cols % 32 ||
+        !cv::checkRange(image, true, nullptr, 0.0, std::nextafter(1.0f, 2.0f))) {
+        throw std::invalid_argument("Normalized XFeat input must be CV_32FC1 in [0,1] with H/W >= 32 and divisible by 32");
+    }
+    cv::Mat pixels = image.isContinuous() ? image : image.clone();
     const std::array<std::int64_t, 4> inputShape{1, 1, image.rows, image.cols};
     const auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     auto input = Ort::Value::CreateTensor<float>(memory, pixels.ptr<float>(), pixels.total(),

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <fstream>
 #include <stdexcept>
+#include <limits>
 #include <utility>
 #include <opencv2/core.hpp>
 
@@ -79,6 +80,17 @@ TEST(XFeatModelTest, RejectsInvalidImagesBeforeInference) {
              cv::Mat(), cv::Mat(16, 32, CV_8UC1), cv::Mat(33, 32, CV_8UC1),
              cv::Mat(32, 33, CV_8UC1), cv::Mat(32, 32, CV_8UC3), cv::Mat(32, 32, CV_32FC1)}) {
         EXPECT_THROW(static_cast<void>(model.run(image)), std::invalid_argument);
+    }
+}
+
+TEST(XFeatModelTest, NormalizedFloatInputMatchesBytesAndRejectsInvalidRanges) {
+    XFeatModel model(assets / "xfeat.onnx", 1);
+    cv::Mat normalized;
+    referenceImage().convertTo(normalized, CV_32FC1, 1.0 / 255.0);
+    EXPECT_DOUBLE_EQ(cv::norm(model.runNormalized(normalized).features, model.run(referenceImage()).features, cv::NORM_INF), 0.0);
+    for (const auto value : {-0.1f, 1.1f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+        cv::Mat invalid(32, 32, CV_32FC1, cv::Scalar(value));
+        EXPECT_THROW(model.runNormalized(invalid), std::invalid_argument);
     }
 }
 }

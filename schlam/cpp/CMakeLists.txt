@@ -80,6 +80,8 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/Matcher.h
     src/schlam/Ransac.cpp
     src/schlam/Ransac.h
+    src/schlam/feature_detection/xfeat/XFeatMatcher.cpp
+    src/schlam/feature_detection/xfeat/XFeatMatcher.h
     src/schlam/optimization/Optimizer.cpp
     src/schlam/optimization/Optimizer.h
     src/schlam/Frame.cpp
@@ -105,15 +107,22 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/optimization/CovisibilityHelpers.cpp
     src/schlam/optimization/CovisibilityHelpers.h
     src/schlam/feature_detection/IFeatureExtractor.h
+    src/schlam/feature_detection/FeatureExtractorFactory.cpp
+    src/schlam/feature_detection/FeatureExtractorFactory.h
     src/schlam/feature_detection/IDescriptor.h
     src/schlam/feature_detection/orb/OrbDescriptor.cpp
     src/schlam/feature_detection/orb/OrbDescriptor.h
     src/schlam/feature_detection/xfeat/XFeatModel.cpp
     src/schlam/feature_detection/xfeat/XFeatModel.h
+    src/schlam/feature_detection/xfeat/XFeatDescriptor.cpp
+    src/schlam/feature_detection/xfeat/XFeatDescriptor.h
+    src/schlam/feature_detection/xfeat/XFeatFeatureExtractor.cpp
+    src/schlam/feature_detection/xfeat/XFeatFeatureExtractor.h
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    SCHLAM_USE_OPENCV_RECONSTRUCTION=$<BOOL:${SCHLAM_USE_OPENCV_RECONSTRUCTION}>)
+    SCHLAM_USE_OPENCV_RECONSTRUCTION=$<BOOL:${SCHLAM_USE_OPENCV_RECONSTRUCTION}>
+    SCHLAM_DEFAULT_XFEAT_MODEL_PATH="${PROJECT_SOURCE_DIR}/models/xfeat/xfeat.onnx")
 
 target_link_libraries(${PROJECT_NAME} 
     fmt::fmt
@@ -165,6 +174,8 @@ add_executable(unit_tests
     tests/test_schlam_system.cpp
     tests/test_schlam_validator.cpp
     tests/test_xfeat_model.cpp
+    tests/test_xfeat_extractor.cpp
+    tests/test_xfeat_matcher.cpp
 )
 
 # Ensure GTest targets are linked correctly

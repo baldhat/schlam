@@ -24,7 +24,7 @@ namespace tft {
 struct MapPointMatch;
 class IMUData;
 class GTData;
-class ORBFeatureDetector;
+class IFeatureExtractor;
 class IPlotter;
 class DatasetInterface;
 class ImageData;
@@ -75,7 +75,7 @@ public:
         std::shared_ptr<DatasetInterface> dataset,
         std::shared_ptr<tft::Transformer> transformer,
         std::shared_ptr<IPlotter> plotter,
-        std::shared_ptr<ORBFeatureDetector> featureDetector,
+        std::shared_ptr<IFeatureExtractor> featureDetector,
         std::shared_ptr<Optimizer> optimizer,
         MotionModel& motionModel,
         schlam::config::Config settings = {});
@@ -86,7 +86,7 @@ private:
     std::shared_ptr<DatasetInterface> dataset_;
     std::shared_ptr<tft::Transformer> transformer_;
     std::shared_ptr<IPlotter> plotter_;
-    std::shared_ptr<ORBFeatureDetector> featureDetector_;
+    std::shared_ptr<IFeatureExtractor> featureDetector_;
     std::shared_ptr<Optimizer> optimizer_;
     MotionModel& motionModel_;
     schlam::config::Config settings_;

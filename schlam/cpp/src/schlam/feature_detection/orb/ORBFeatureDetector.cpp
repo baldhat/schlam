@@ -26,7 +26,6 @@ ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
                                        const std::uint8_t aNumLevels,
                                        const double aLevelFactor) : mNumFeatures(aNumFeatures), mNumLevels(aNumLevels),
                                                                     mLevelFactor(aLevelFactor), mpPlotter(apPlotter) {
-    mSettings.count = aNumFeatures;
     mSettings.levels = aNumLevels;
     mSettings.scaleFactor = 1.0 / aLevelFactor;
     for (std::uint32_t i = 0; i < mNumLevels; i++) {
@@ -39,10 +38,10 @@ ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
 
 ORBFeatureDetector::ORBFeatureDetector(const schlam::config::Features& settings,
                                        std::shared_ptr<IPlotter> plotter)
-    : ORBFeatureDetector(settings.count, std::move(plotter), settings.levels, 1.0 / settings.scaleFactor) {
-    mSettings = settings;
-    mFastFeatureDetector = schlam::FastFeatureDetector(settings.fastThreshold, settings.fastArcLength);
-    mOrientationRadius = settings.orientationRadius;
+    : ORBFeatureDetector(settings.count, std::move(plotter), settings.orb.levels, 1.0 / settings.orb.scaleFactor) {
+    mSettings = settings.orb;
+    mFastFeatureDetector = schlam::FastFeatureDetector(settings.orb.fastThreshold, settings.orb.fastArcLength);
+    mOrientationRadius = settings.orb.orientationRadius;
     mOrientationIndices = getPointsInRadius(mOrientationRadius);
 }
 

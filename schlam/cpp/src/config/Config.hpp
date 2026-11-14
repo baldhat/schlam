@@ -16,8 +16,20 @@ struct Plotter {
     bool zUp = true;
 };
 
-struct Features {
-    std::uint32_t count = 1000;
+enum class FeatureType { ORB, XFEAT };
+enum class XFeatImageSizing { RESIZE, PAD };
+
+struct XFeat {
+    XFeatImageSizing imageSizing = XFeatImageSizing::RESIZE;
+    // Empty selects the bundled model; explicit YAML paths are config-relative.
+    std::string modelPath;
+    int inferenceThreads = 4;
+    double detectionThreshold = 0.05;
+    // Cosine distance 1-dot(unit descriptors); 0.18 means similarity > 0.82.
+    double matchDistance = 0.18;
+};
+
+struct Orb {
     std::uint8_t levels = 6;
     double scaleFactor = 1.2;
     int fastThreshold = 7;
@@ -28,6 +40,16 @@ struct Features {
     double harrisK = 0.04;
     int descriptorBlurSize = 7;
     double descriptorBlurSigma = 2.0;
+    double initializationMatchDistance = 20.0;
+    double trackingMatchDistance = 50.0;
+    double triangulationMatchDistance = 30.0;
+};
+
+struct Features {
+    FeatureType type = FeatureType::ORB;
+    std::uint32_t count = 1000;
+    Orb orb;
+    XFeat xfeat;
 };
 
 struct Reconstruction {
@@ -48,13 +70,13 @@ struct Reconstruction {
 };
 
 struct Initialization {
-    int matchHammingDistance = 20;
+    double matchDistance = 20;
     double matchWindowPixels = 100.0;
     std::size_t minimumMatches = 50;
 };
 
 struct Tracking {
-    int matchHammingDistance = 50;
+    double matchDistance = 50;
     double projectionWindowPixels = 50.0;
     std::size_t minimumPoseInliers = 12;
     // Seconds since the last accepted pose; zero disables recovery.
@@ -76,7 +98,7 @@ struct Mapping {
     std::size_t keyframeMaximumInliers = 100;
     std::size_t keyframeMinimumFrameGapWhenBusy = 5;
     std::size_t triangulationPreviousKeyframes = 5;
-    int triangulationMatchHammingDistance = 30;
+    double triangulationMatchDistance = 30;
     std::size_t queueCapacity = 1;
 };
 

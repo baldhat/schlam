@@ -9,6 +9,8 @@
 #include "tft/rigid_transform_3d.hpp"
 #include "Map.h"
 #include "tft/transformer.hpp"
+#include "feature_detection/xfeat/XFeatDescriptor.h"
+#include "feature_detection/xfeat/XFeatMatcher.h"
 
 #include <unordered_set>
 #include <tracy/Tracy.hpp>
@@ -17,6 +19,21 @@
 
 
 namespace {
+
+bool usesXFeat(const std::vector<std::shared_ptr<KeyPoint>>& first,
+              const std::vector<std::shared_ptr<KeyPoint>>& second) {
+    return (!first.empty() && std::dynamic_pointer_cast<XFeatDescriptor>(first.front()->getDescriptor())) ||
+           (!second.empty() && std::dynamic_pointer_cast<XFeatDescriptor>(second.front()->getDescriptor()));
+}
+
+auto xfeatIndices(const std::vector<std::shared_ptr<KeyPoint>>& first,
+                  const std::vector<std::shared_ptr<KeyPoint>>& second, double maximumDistance) {
+    std::vector<DescriptorPtr> a, b;
+    a.reserve(first.size()); b.reserve(second.size());
+    for (const auto& feature : first) a.push_back(feature->getDescriptor());
+    for (const auto& feature : second) b.push_back(feature->getDescriptor());
+    return matchXFeat(a, b, maximumDistance);
+}
 
 Eigen::Vector3d cameraCenter(const tft::RigidTransform3D& mapToCamera) {
     return -mapToCamera.mRotation.transpose() * mapToCamera.mTranslation;
@@ -46,6 +63,13 @@ std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::v
                                                      const std::vector<std::shared_ptr<KeyPoint>>& keypoints2,
                                                      const double aMaxDistance) {
     ZoneScoped;
+    if (usesXFeat(keypoints1, keypoints2)) {
+        std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> result;
+        for (const auto& [i,j] : xfeatIndices(keypoints1, keypoints2, aMaxDistance)) {
+            result[0].push_back(keypoints1[i]); result[1].push_back(keypoints2[j]);
+        }
+        return result;
+    }
     std::vector<std::array<std::uint32_t, 2> > matches;
     std::vector<bool> matchedIndices2(keypoints2.size(), false);
 
@@ -90,6 +114,14 @@ matchWindow(const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints,
     ZoneScoped;
     std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matches;
     std::vector<bool> matched(aKeypoints.size());
+    const auto targets = aTree2->getFeatures();
+    if (usesXFeat(aKeypoints, targets)) {
+        for (const auto& [i,j] : xfeatIndices(aKeypoints, targets, aMaxDistance)) {
+            matches[0].push_back(aKeypoints[i]); matches[1].push_back(targets[j]);
+            matched[i] = true;
+        }
+        return {matches, matched};
+    }
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
 
     for (std::size_t featureIndex = 0; featureIndex < aKeypoints.size(); ++featureIndex) {
@@ -153,6 +185,22 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
     std::vector<std::shared_ptr<KeyPoint>> candidates;
     const auto center = cameraCenter(*mapToCamera);
+    const auto frameFeatures = frame->mKeypointTree->getFeatures();
+    if (usesXFeat({}, frameFeatures)) {
+        std::vector<std::shared_ptr<KeyPoint>> projectedFeatures;
+        std::vector<MapPointId> pointIds;
+        for (const auto& [pointId, point] : snapshot.mapPoints) {
+            if (!point.isViewCompatible(center)) continue;
+            const auto projected = projectIntoFrame(point, *frame, *mapToCamera);
+            if (!projected) continue;
+            const auto descriptor = point.mLastInlierDescriptor ? point.mLastInlierDescriptor : point.mDescriptor;
+            projectedFeatures.push_back(std::make_shared<KeyPoint>(projected->x(), projected->y(), 0, 0, 0, descriptor));
+            pointIds.push_back(pointId);
+        }
+        for (const auto& [i,j] : xfeatIndices(projectedFeatures, frameFeatures, aMaxDistance))
+            matches.push_back({pointIds[i], frameFeatures[j], projectedFeatures[i]});
+        return matches;
+    }
     for (const auto& [pointId, mapPoint] : snapshot.mapPoints) {
         if (!mapPoint.isViewCompatible(center)) continue;
         const auto projected = projectIntoFrame(mapPoint, *frame, *mapToCamera);

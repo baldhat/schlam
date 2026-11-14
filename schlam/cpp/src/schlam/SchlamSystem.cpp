@@ -18,7 +18,7 @@
 #include "Map.h"
 #include "MapPoint.hpp"
 #include "Matcher.h"
-#include "feature_detection/orb/ORBFeatureDetector.h"
+#include "feature_detection/IFeatureExtractor.h"
 #include "helpers/Profiler.h"
 #include "Ransac.h"
 #include "helpers/utils.h"
@@ -30,7 +30,7 @@ SchlamSystem::SchlamSystem(
         std::shared_ptr<DatasetInterface> dataset,
         std::shared_ptr<tft::Transformer> transformer,
         std::shared_ptr<IPlotter> plotter,
-        std::shared_ptr<ORBFeatureDetector> featureDetector,
+        std::shared_ptr<IFeatureExtractor> featureDetector,
         std::shared_ptr<Optimizer> optimizer,
         MotionModel& motionModel,
         schlam::config::Config settings)
@@ -166,7 +166,7 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
     auto oldFrame = referenceFrame_.get();
     auto [matches, _] = matchWindow(oldFrame->mKeypointTree,
                                  frame->mKeypointTree,
-                                 settings_.initialization.matchHammingDistance,
+                                 settings_.initialization.matchDistance,
                                  settings_.initialization.matchWindowPixels);
     plotter_->plotMatches(oldFrame->mImage, frame->mImage, matches);
     TracyPlot("Matches", static_cast<int64_t>(matches.size()));
@@ -261,7 +261,7 @@ void SchlamSystem::track(const SynchronizedData& data) {
     const auto tryPose = [&](const std::shared_ptr<tft::RigidTransform3D>& guess) {
         transformer_->registerTransform(guess);
         auto matches = matchMapPointsByProjection(trackingSnapshot, frame, guess, transformer_,
-            settings_.tracking.matchHammingDistance, settings_.tracking.projectionWindowPixels);
+            settings_.tracking.matchDistance, settings_.tracking.projectionWindowPixels);
         std::vector<Eigen::Vector3d> points;
         std::vector<std::shared_ptr<KeyPoint>> features;
         points.reserve(matches.size());
@@ -426,7 +426,7 @@ void SchlamSystem::triangulateUnmatchedFeatures() {
 
     for (auto it = start; it != latest; ++it) {
         auto matches = matchUnmatchedFeatures(it->second, latest->second,
-            settings_.mapping.triangulationMatchHammingDistance);
+            settings_.mapping.triangulationMatchDistance);
         auto transform = latest->second.mMapToCamera * it->second.mMapToCamera->inverse();
         auto optionalResult = reconstructor_.triangulate(matches[0], matches[1], latest->second.mIntrinsics, transform);
         if (optionalResult.has_value()) {

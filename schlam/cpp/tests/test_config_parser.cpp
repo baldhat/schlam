@@ -84,3 +84,43 @@ TEST_F(MotionConfigTest, RejectsInvalidMapPointCullingWindowsAndDistanceFactors)
         EXPECT_THROW(load(std::string("mapPoints:\n  observationDistanceFactor: ") + value + "\n"), std::invalid_argument);
     }
 }
+
+TEST_F(MotionConfigTest, LoadsSeparateOrbAndXFeatProfilesWithSharedFeatureCount) {
+    const auto config = load("features:\n  type: orb\n  count: 123\n  orb:\n    levels: 4\n    scaleFactor: 1.3\n"
+        "    fastThreshold: 12\n    border: 22\n    initializationMatchDistance: 17\n    trackingMatchDistance: 47\n"
+        "    triangulationMatchDistance: 27\n  xfeat:\n    detectionThreshold: 0.03\n    inferenceThreads: 2\n    matchDistance: 0.2\n");
+    EXPECT_EQ(config.features.type, schlam::config::FeatureType::ORB);
+    EXPECT_EQ(config.features.count, 123);
+    EXPECT_EQ(config.features.orb.levels, 4);
+    EXPECT_EQ(config.features.orb.fastThreshold, 12);
+    EXPECT_EQ(config.features.orb.border, 22);
+    EXPECT_DOUBLE_EQ(config.features.orb.scaleFactor, 1.3);
+    EXPECT_DOUBLE_EQ(config.initialization.matchDistance, 17);
+    EXPECT_DOUBLE_EQ(config.tracking.matchDistance, 47);
+    EXPECT_DOUBLE_EQ(config.mapping.triangulationMatchDistance, 27);
+    EXPECT_EQ(config.features.xfeat.inferenceThreads, 2);
+}
+
+TEST_F(MotionConfigTest, XFeatSelectionUsesCosineThresholdsAndResolvesConfigRelativeModelPaths) {
+    const auto config = load("features:\n  type: xfeat\n  xfeat:\n    modelPath: assets/model.onnx\n    imageSizing: pad\n"
+        "initialization:\n  matchHammingDistance: 20\ntracking:\n  matchHammingDistance: 50\nmapping:\n  triangulationMatchHammingDistance: 30\n");
+    EXPECT_EQ(config.features.type, schlam::config::FeatureType::XFEAT);
+    EXPECT_EQ(config.features.xfeat.imageSizing, schlam::config::XFeatImageSizing::PAD);
+    EXPECT_EQ(config.features.xfeat.modelPath, (directory / "assets/model.onnx").string());
+    EXPECT_DOUBLE_EQ(config.initialization.matchDistance, 0.18);
+    EXPECT_DOUBLE_EQ(config.tracking.matchDistance, 0.18);
+    EXPECT_DOUBLE_EQ(config.mapping.triangulationMatchDistance, 0.18);
+    const auto overrides = load("features:\n  type: xfeat\n  xfeat:\n    matchDistance: 0.2\n"
+        "tracking:\n  matchDistance: 0.15\n");
+    EXPECT_DOUBLE_EQ(overrides.initialization.matchDistance, 0.2);
+    EXPECT_DOUBLE_EQ(overrides.tracking.matchDistance, 0.15);
+    EXPECT_DOUBLE_EQ(overrides.mapping.triangulationMatchDistance, 0.2);
+}
+
+TEST_F(MotionConfigTest, RejectsUnknownExtractorsAndInvalidXFeatOptions) {
+    EXPECT_THROW(load("features:\n  type: sift\n"), std::invalid_argument);
+    for (const auto* option : {"inferenceThreads: 0", "detectionThreshold: -0.1", "detectionThreshold: 1.1",
+                              "detectionThreshold: .nan", "matchDistance: 0", "matchDistance: 2.1", "matchDistance: .inf", "imageSizing: crop"}) {
+        EXPECT_THROW(load(std::string("features:\n  type: xfeat\n  xfeat:\n    ") + option + "\n"), std::invalid_argument);
+    }
+}

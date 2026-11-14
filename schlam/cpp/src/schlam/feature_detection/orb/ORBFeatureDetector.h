@@ -30,7 +30,7 @@ private:
     std::uint32_t mNumFeatures{0};
     std::uint8_t mNumLevels{0};
     std::uint32_t mOrientationRadius{15};
-    schlam::config::Features mSettings;
+    schlam::config::Orb mSettings;
     double mLevelFactor{0};
     std::vector<double> mLevelFactors;
     std::vector<Point> mOrientationIndices;

@@ -4,7 +4,7 @@
 #include "plotting/PangolinPlotter.hpp"
 #include "plotting/DummyPlotter.h"
 
-#include "schlam/feature_detection/orb/ORBFeatureDetector.h"
+#include "schlam/feature_detection/FeatureExtractorFactory.h"
 #include "schlam/optimization/Optimizer.h"
 #include "schlam/MotionModel.h"
 #include "schlam/SchlamSystem.h"
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
         plotter = std::make_shared<DummyPlotter>();
     }
 
-    auto featureDetector = std::make_shared<ORBFeatureDetector>(settings.features, plotter);
+    auto featureDetector = createFeatureExtractor(settings.features, plotter);
 
     auto optimizer = std::make_shared<Optimizer>(settings.optimizer);
 

@@ -32,11 +32,51 @@ Config ConfigParser::load(const std::filesystem::path& path) {
     n.reset(section(root, "plotter"));
     read(n, "type", c.plotter.type); read(n, "zUp", c.plotter.zUp);
     n.reset(section(root, "features"));
-    read(n, "count", c.features.count); read(n, "levels", c.features.levels); read(n, "scaleFactor", c.features.scaleFactor);
-    read(n, "fastThreshold", c.features.fastThreshold); read(n, "fastArcLength", c.features.fastArcLength);
-    read(n, "orientationRadius", c.features.orientationRadius); read(n, "border", c.features.border);
-    read(n, "harrisBlockSize", c.features.harrisBlockSize); read(n, "harrisK", c.features.harrisK);
-    read(n, "descriptorBlurSize", c.features.descriptorBlurSize); read(n, "descriptorBlurSigma", c.features.descriptorBlurSigma);
+    std::string featureType = "orb";
+    read(n, "type", featureType);
+    if (featureType == "orb") c.features.type = FeatureType::ORB;
+    else if (featureType == "xfeat") c.features.type = FeatureType::XFEAT;
+    else throw std::invalid_argument("features.type must be orb or xfeat");
+    const auto xfeat = n ? section(n, "xfeat") : YAML::Node(YAML::NodeType::Undefined);
+    std::string imageSizing = "resize";
+    read(xfeat, "imageSizing", imageSizing);
+    if (imageSizing == "resize") c.features.xfeat.imageSizing = XFeatImageSizing::RESIZE;
+    else if (imageSizing == "pad") c.features.xfeat.imageSizing = XFeatImageSizing::PAD;
+    else throw std::invalid_argument("features.xfeat.imageSizing must be resize or pad");
+    read(xfeat, "modelPath", c.features.xfeat.modelPath);
+    read(xfeat, "inferenceThreads", c.features.xfeat.inferenceThreads);
+    read(xfeat, "detectionThreshold", c.features.xfeat.detectionThreshold);
+    read(xfeat, "matchDistance", c.features.xfeat.matchDistance);
+    if (!c.features.xfeat.modelPath.empty()) {
+        const std::filesystem::path modelPath(c.features.xfeat.modelPath);
+        c.features.xfeat.modelPath = std::filesystem::absolute(path.parent_path() / modelPath).lexically_normal().string();
+    }
+    if (c.features.type == FeatureType::XFEAT) {
+        if (c.features.xfeat.inferenceThreads < 1 || !std::isfinite(c.features.xfeat.detectionThreshold) ||
+            c.features.xfeat.detectionThreshold < 0.0 || c.features.xfeat.detectionThreshold > 1.0 ||
+            !std::isfinite(c.features.xfeat.matchDistance) || c.features.xfeat.matchDistance <= 0.0 ||
+            c.features.xfeat.matchDistance > 2.0) {
+            throw std::invalid_argument("Invalid XFeat settings: threads >= 1, detectionThreshold in [0,1], matchDistance in (0,2]");
+        }
+        c.initialization.matchDistance = c.features.xfeat.matchDistance;
+        c.tracking.matchDistance = c.features.xfeat.matchDistance;
+        c.mapping.triangulationMatchDistance = c.features.xfeat.matchDistance;
+    }
+    read(n, "count", c.features.count);
+    const auto orb = n ? section(n, "orb") : YAML::Node(YAML::NodeType::Undefined);
+    read(orb, "levels", c.features.orb.levels); read(orb, "scaleFactor", c.features.orb.scaleFactor);
+    read(orb, "fastThreshold", c.features.orb.fastThreshold); read(orb, "fastArcLength", c.features.orb.fastArcLength);
+    read(orb, "orientationRadius", c.features.orb.orientationRadius); read(orb, "border", c.features.orb.border);
+    read(orb, "harrisBlockSize", c.features.orb.harrisBlockSize); read(orb, "harrisK", c.features.orb.harrisK);
+    read(orb, "descriptorBlurSize", c.features.orb.descriptorBlurSize); read(orb, "descriptorBlurSigma", c.features.orb.descriptorBlurSigma);
+    read(orb, "initializationMatchDistance", c.features.orb.initializationMatchDistance);
+    read(orb, "trackingMatchDistance", c.features.orb.trackingMatchDistance);
+    read(orb, "triangulationMatchDistance", c.features.orb.triangulationMatchDistance);
+    if (c.features.type == FeatureType::ORB) {
+        c.initialization.matchDistance = c.features.orb.initializationMatchDistance;
+        c.tracking.matchDistance = c.features.orb.trackingMatchDistance;
+        c.mapping.triangulationMatchDistance = c.features.orb.triangulationMatchDistance;
+    }
     n.reset(section(root, "reconstruction"));
     read(n, "randomSeed", c.reconstruction.randomSeed); read(n, "ransacCandidates", c.reconstruction.ransacCandidates);
     read(n, "homographySelectionRatio", c.reconstruction.homographySelectionRatio);
@@ -47,9 +87,13 @@ Config ConfigParser::load(const std::filesystem::path& path) {
     read(n, "minimumParallaxDegrees", c.reconstruction.minimumParallaxDegrees); read(n, "essentialParallaxRank", c.reconstruction.essentialParallaxRank);
     read(n, "homographyParallaxRank", c.reconstruction.homographyParallaxRank);
     n.reset(section(root, "initialization"));
-    read(n, "matchHammingDistance", c.initialization.matchHammingDistance); read(n, "matchWindowPixels", c.initialization.matchWindowPixels); read(n, "minimumMatches", c.initialization.minimumMatches);
+    if (c.features.type == FeatureType::ORB) read(n, "matchHammingDistance", c.initialization.matchDistance);
+    read(n, "matchDistance", c.initialization.matchDistance);
+    read(n, "matchWindowPixels", c.initialization.matchWindowPixels); read(n, "minimumMatches", c.initialization.minimumMatches);
     n.reset(section(root, "tracking"));
-    read(n, "matchHammingDistance", c.tracking.matchHammingDistance); read(n, "projectionWindowPixels", c.tracking.projectionWindowPixels);
+    if (c.features.type == FeatureType::ORB) read(n, "matchHammingDistance", c.tracking.matchDistance);
+    read(n, "matchDistance", c.tracking.matchDistance);
+    read(n, "projectionWindowPixels", c.tracking.projectionWindowPixels);
     read(n, "minimumPoseInliers", c.tracking.minimumPoseInliers);
     read(n, "recoveryTimeoutSeconds", c.tracking.recoveryTimeoutSeconds);
     if (!std::isfinite(c.tracking.recoveryTimeoutSeconds) || c.tracking.recoveryTimeoutSeconds < 0.0) {
@@ -69,7 +113,14 @@ Config ConfigParser::load(const std::filesystem::path& path) {
     n.reset(section(root, "mapping"));
     read(n, "keyframeMinimumInliers", c.mapping.keyframeMinimumInliers); read(n, "keyframeMaximumInliers", c.mapping.keyframeMaximumInliers);
     read(n, "keyframeMinimumFrameGapWhenBusy", c.mapping.keyframeMinimumFrameGapWhenBusy); read(n, "triangulationPreviousKeyframes", c.mapping.triangulationPreviousKeyframes);
-    read(n, "triangulationMatchHammingDistance", c.mapping.triangulationMatchHammingDistance); read(n, "queueCapacity", c.mapping.queueCapacity);
+    if (c.features.type == FeatureType::ORB) read(n, "triangulationMatchHammingDistance", c.mapping.triangulationMatchDistance);
+    read(n, "triangulationMatchDistance", c.mapping.triangulationMatchDistance);
+    read(n, "queueCapacity", c.mapping.queueCapacity);
+    for (const auto distance : {c.initialization.matchDistance, c.tracking.matchDistance, c.mapping.triangulationMatchDistance}) {
+        if (!std::isfinite(distance) || distance <= 0.0 ||
+            (c.features.type == FeatureType::XFEAT && distance > 2.0))
+            throw std::invalid_argument("Descriptor match distances must be positive and finite (at most 2 for XFeat)");
+    }
     n.reset(section(root, "optimizer"));
     read(n, "pyramidScaleFactor", c.optimizer.pyramidScaleFactor); read(n, "monocularChi2Threshold", c.optimizer.monocularChi2Threshold);
     read(n, "initialIterations", c.optimizer.initialIterations); read(n, "poseIterations", c.optimizer.poseIterations);

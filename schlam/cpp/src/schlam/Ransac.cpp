@@ -544,7 +544,6 @@ Reconstructor::recoverPoseFromEssential(
     if (secondBstNumPositive < mSettings.solutionAmbiguityRatio * bestNumPositive &&
         bestNumPositive > mSettings.minimumTriangulatedRatio * numInliers &&
         bestParallax > mSettings.minimumParallaxDegrees) {
-        // std::cout << "Best solution is valid" << std::endl;
         return std::optional<std::tuple<Eigen::Matrix3d, Eigen::Vector3d, std::vector<Eigen::Vector3d>, std::vector<
             bool> > >({
             bestRot, bestTrans, reconstructedPts, triangulated

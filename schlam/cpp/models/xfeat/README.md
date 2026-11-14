@@ -45,11 +45,24 @@ The first command uses a synthetic 96x128 image; the optional image must meet th
 dimension requirements above. Pass an explicit model path when deploying outside
 the source checkout. The standalone executable's default points at this checkout.
 
-This is the backbone/model-loading layer. Sparse extraction still needs the
-upstream heatmap decoding, nonmaximum suppression, reliability ranking, descriptor
-sampling and L2 normalization. An extractor should resize images to dimensions
-divisible by 32 and map selected coordinates back to the original image. Existing
-SLAM configs continue to use ORB.
+`XFeatFeatureExtractor` implements sparse extraction: heatmap decoding, 5x5
+nonmaximum suppression, reliability ranking, bicubic descriptor sampling and
+L2 normalization. Set `features.type: xfeat` to use it in SLAM. Image dimensions
+are handled automatically; the frame image and camera intrinsics remain in their
+original coordinate system. See [feature configuration](../../docs/features.md)
+for the separate ORB/XFeat profiles and descriptor distance thresholds.
+
+The implementation follows the pinned upstream
+[sparse inference code](https://github.com/verlab/accelerated_features/blob/e92685f57f8318b18725c5c8c0bd28c7fe188d9a/modules/xfeat.py)
+and [sparse interpolator](https://github.com/verlab/accelerated_features/blob/e92685f57f8318b18725c5c8c0bd28c7fe188d9a/modules/interpolator.py).
+`reference-sparse.txt` contains full sparse keypoints, scores and descriptors from
+that implementation on deterministic 96x128 and 97x131 images. C++ tests check
+preprocessing, coordinate remapping and sparse output against those fixtures.
+Regenerate them with the export environment:
+
+```sh
+build/xfeat-export-venv/bin/python recipes/generate-xfeat-sparse-reference.py
+```
 
 ## Reproduce the model
 
