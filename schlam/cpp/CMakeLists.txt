@@ -43,8 +43,8 @@ add_library(${PROJECT_NAME} SHARED
     src/random.cpp
     src/random.hpp
 
-        src/plotting/PangolinPlotter.hpp
-        src/plotting/PangolinPlotter.cpp
+    src/plotting/PangolinPlotter.hpp
+    src/plotting/PangolinPlotter.cpp
 
     src/tft/rigid_transform_3d.cpp
     src/tft/transformable_3d.cpp
@@ -67,26 +67,26 @@ add_library(${PROJECT_NAME} SHARED
     src/data/datasets/MAVDataset.hpp
     src/data/gt_data.hpp
 
-        src/schlam/feature_detection/FastFeatureDetector.cpp
-        src/schlam/feature_detection/FastFeatureDetector.h
-        src/schlam/feature_detection/ORBFeatureDetector.cpp
-        src/schlam/feature_detection/ORBFeatureDetector.h
+    src/schlam/feature_detection/FastFeatureDetector.cpp
+    src/schlam/feature_detection/FastFeatureDetector.h
+    src/schlam/feature_detection/ORBFeatureDetector.cpp
+    src/schlam/feature_detection/ORBFeatureDetector.h
     src/schlam/KeyPoint.cpp
     src/schlam/KeyPoint.h
-        src/schlam/helpers/utils.cpp
-        src/schlam/helpers/utils.h
-        src/schlam/feature_detection/QuadTreeNode.cpp
-        src/schlam/feature_detection/QuadTreeNode.h
-        src/schlam/feature_detection/orb_pattern.h
+    src/schlam/helpers/utils.cpp
+    src/schlam/helpers/utils.h
+    src/schlam/feature_detection/QuadTreeNode.cpp
+    src/schlam/feature_detection/QuadTreeNode.h
+    src/schlam/feature_detection/orb_pattern.h
     src/schlam/Matcher.cpp
     src/schlam/Matcher.h
     src/schlam/Ransac.cpp
     src/schlam/Ransac.h
-        src/schlam/optimization/Optimizer.cpp
-        src/schlam/optimization/Optimizer.h
+    src/schlam/optimization/Optimizer.cpp
+    src/schlam/optimization/Optimizer.h
     src/schlam/Frame.cpp
     src/schlam/Frame.h
-        src/schlam/optimization/Optimizer.cpp
+    src/schlam/optimization/Optimizer.cpp
     src/schlam/MapPoint.cpp
     src/schlam/MapPoint.hpp
     src/schlam/Map.cpp
@@ -100,10 +100,11 @@ add_library(${PROJECT_NAME} SHARED
     src/plotting/DummyPlotter.h
     src/schlam/SchlamSystem.cpp
     src/schlam/SchlamSystem.h
-        src/schlam/helpers/Profiler.cpp
-        src/schlam/helpers/Profiler.h
-        src/schlam/optimization/CovisibilityHelpers.cpp
-        src/schlam/optimization/CovisibilityHelpers.h
+    src/schlam/helpers/Profiler.cpp
+    src/schlam/helpers/Profiler.h
+    src/schlam/optimization/CovisibilityHelpers.cpp
+    src/schlam/optimization/CovisibilityHelpers.h
+    src/tracy_setup.cpp
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -124,7 +125,7 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 
-add_executable(app 
+add_executable(app
     src/main.cpp
 )
 target_link_libraries(app ${PROJECT_NAME})

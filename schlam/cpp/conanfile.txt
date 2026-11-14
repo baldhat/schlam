@@ -21,3 +21,7 @@ VirtualRunEnv
 
 [layout]
 cmake_layout
+
+[options]
+  tracy/*:timer_fallback=True
+

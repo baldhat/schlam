@@ -14,6 +14,8 @@
 #include <thread>
 #include <opencv2/core.hpp>
 
+#include "tracy_setup.cpp"
+
 
 int main(int argc, char** argv) {
     const auto settings = schlam::config::ConfigParser::load(
