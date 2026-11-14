@@ -6,10 +6,14 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <array>
+#include <numbers>
 #include <optional>
 
 #include "data/data_helper.hpp"
 #include "tft/transformer.hpp"
+#include "schlam/SchlamValidator.h"
 
 class MAVDatasetTest : public ::testing::Test {
 protected:
@@ -125,4 +129,60 @@ TEST_F(MAVDatasetTest, CorrectionMapsFollowImageResolution) {
     MAVDataset loader(std::make_shared<tft::Transformer>(), "ci_smoke");
     EXPECT_EQ(loader.getNextImageData()->mImage.size(), cv::Size(64, 64));
     EXPECT_EQ(loader.getNextImageData()->mImage.size(), cv::Size(72, 60));
+}
+
+TEST_F(MAVDatasetTest, NormalizesGroundTruthQuaternionsBeforeCameraTrajectoryEvaluation) {
+    calibration("");
+    image("1000000000");
+    const Eigen::Quaterniond orientation(Eigen::AngleAxisd(std::numbers::pi / 2, Eigen::Vector3d::UnitZ()));
+    const std::array<double, 4> scales{1.0, 1.00001, 1.00005, -1.0001};
+    const std::array<Eigen::Vector3d, 4> positions{
+        Eigen::Vector3d(0, 0, 0), Eigen::Vector3d(1, 0, 0),
+        Eigen::Vector3d(0, 1, 0), Eigen::Vector3d(0, 0, 1)};
+    SchlamResult result;
+    {
+        std::ofstream imu(dataset / "imu0/data.csv");
+        imu << "#timestamp [ns],w_RS_S_x [rad s^-1],w_RS_S_y [rad s^-1],w_RS_S_z [rad s^-1],"
+               "a_RS_S_x [m s^-2],a_RS_S_y [m s^-2],a_RS_S_z [m s^-2]\n";
+        std::ofstream gt(dataset / "state_groundtruth_estimate0/data.csv");
+        gt << std::setprecision(17)
+           << "#timestamp,p_RS_R_x [m],p_RS_R_y [m],p_RS_R_z [m],q_RS_w [],q_RS_x [],"
+              "q_RS_y [],q_RS_z [],v_RS_R_x [m s^-1],v_RS_R_y [m s^-1],v_RS_R_z [m s^-1]\n";
+        for (std::size_t i = 0; i < scales.size(); ++i) {
+            const auto timestamp = 1000000000ULL + 5000000ULL * i;
+            auto quaternion = orientation;
+            quaternion.coeffs() *= scales[i];
+            if (i == 2) {
+                const auto rawRotation = quaternion.toRotationMatrix();
+                ASSERT_GT((rawRotation.transpose() * rawRotation - Eigen::Matrix3d::Identity()).norm(), 1e-4);
+            }
+            imu << timestamp << ",0,0,0,0,0,0\n";
+            gt << timestamp << ',' << positions[i].x() << ',' << positions[i].y() << ',' << positions[i].z()
+               << ',' << quaternion.w() << ',' << quaternion.x() << ',' << quaternion.y() << ',' << quaternion.z()
+               << ",0,0,0\n";
+            result.predictedPath.push_back({helpers::longNanoToTimePoint(timestamp),
+                orientation.toRotationMatrix(), positions[i]});
+        }
+    }
+    auto transformer = std::make_shared<tft::Transformer>();
+    MAVDataset loader(transformer, "ci_smoke");
+    const auto cameraToBody = transformer->findTransform("gt/cam0", "gt/body");
+    for (std::size_t i = 0; i < scales.size(); ++i) {
+        const auto gt = loader.getNextGTData();
+        EXPECT_EQ(gt->mTimestamp, result.predictedPath[i].timestamp);
+        EXPECT_TRUE(gt->mPosition.isApprox(positions[i]));
+        EXPECT_TRUE(gt->mRotation.isApprox(orientation.toRotationMatrix(), 1e-12));
+        EXPECT_TRUE((gt->mRotation.transpose() * gt->mRotation).isApprox(Eigen::Matrix3d::Identity(), 1e-12));
+        EXPECT_NEAR(gt->mRotation.determinant(), 1.0, 1e-12);
+        const auto bodyToWorld = std::make_shared<tft::RigidTransform3D>(
+            "gt/body", "world", gt->mRotation, gt->mPosition);
+        const auto cameraToWorld = bodyToWorld * cameraToBody;
+        result.groundTruthPath.push_back({gt->mTimestamp, cameraToWorld->mRotation, cameraToWorld->mTranslation});
+    }
+    const auto validation = SchlamValidator().validate(result);
+    ASSERT_EQ(validation.status, SchlamValidator::Status::SUCCESS);
+    EXPECT_EQ(validation.matchedPoses, scales.size());
+    EXPECT_NEAR(validation.absoluteTranslation->rmse, 0.0, 1e-12);
+    EXPECT_NEAR(validation.relativeTranslation->rmse, 0.0, 1e-12);
+    EXPECT_NEAR(validation.relativeRotationRadians->rmse, 0.0, 1e-12);
 }

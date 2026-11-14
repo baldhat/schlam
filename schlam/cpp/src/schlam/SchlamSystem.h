@@ -61,6 +61,11 @@ struct SchlamResult {
     std::vector<PredictedPose> predictedPath;
     // Processed frames / total processing seconds, excluding viewer pauses.
     double averageFrameRate{0.0};
+    // Camera-to-world GT poses, at their original sensor timestamps (not image timestamps).
+    // Includes samples consumed during initialization and synchronization.
+    std::vector<PredictedPose> groundTruthPath;
+    std::size_t processedFrames{0};
+    TrackingState finalTrackingState{TrackingState::INITIALIZING};
 };
 
 class SchlamSystem {
@@ -88,6 +93,7 @@ private:
 
     std::unique_ptr<Map> map_;
     std::vector<PredictedPose> predictedPath_;
+    std::vector<PredictedPose> groundTruthPath_;
     std::shared_ptr<tft::RigidTransform3D> cameraToIMU_;
     std::uint32_t framesSinceLastKeyframe_{0};
     TrackingState state_{TrackingState::INITIALIZING};

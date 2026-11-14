@@ -92,9 +92,18 @@ SchlamResult SchlamSystem::run() {
 }
 
 SynchronizedData SchlamSystem::getNextSynchronizedData() {
+    const auto recordGroundTruth = [this](const std::shared_ptr<GTData>& gt) {
+        if (!gt) return;
+        const auto bodyToWorld = std::make_shared<tft::RigidTransform3D>(
+            "gt/body", "world", gt->mRotation, gt->mPosition);
+        const auto cameraToWorld = bodyToWorld * cameraToIMU_;
+        groundTruthPath_.push_back({gt->mTimestamp,
+            cameraToWorld->mRotation, cameraToWorld->mTranslation});
+    };
     auto imageData = dataset_->getNextImageData();
     auto imuData = dataset_->getNextIMUData();
     auto gtData = dataset_->getNextGTData();
+    recordGroundTruth(gtData);
 
     auto imuBegin = imuData ? imuData->mTimestamp.time_since_epoch() : std::chrono::nanoseconds(0);
     auto gtBegin = gtData ? gtData->mTimestamp.time_since_epoch() : std::chrono::nanoseconds(0);
@@ -113,6 +122,7 @@ SynchronizedData SchlamSystem::getNextSynchronizedData() {
 
     while (gtData && gtData->mTimestamp.time_since_epoch() < highestTimestamp && !dataset_->empty()) {
         gtData = dataset_->getNextGTData();
+        recordGroundTruth(gtData);
     }
 
     plotter_->updateTimestamp(imageData->mTimestamp);
@@ -392,6 +402,9 @@ SchlamResult SchlamSystem::buildResult(std::size_t processedFrames, double proce
         }
     }
     result.predictedPath = predictedPath_;
+    result.groundTruthPath = groundTruthPath_;
+    result.processedFrames = processedFrames;
+    result.finalTrackingState = state_;
     if (processingMilliseconds > 0.0) {
         result.averageFrameRate = 1000.0 * processedFrames / processingMilliseconds;
     }

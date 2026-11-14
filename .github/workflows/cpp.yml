@@ -70,7 +70,8 @@ jobs:
     env:
       CC: gcc-14
       CXX: g++-14
-      MAV_PATH: /home/baldhat/data/mav/vicon_room1
+      MAV_PATH: ${{ vars.MAV_PATH || '/home/baldhat/data/mav/vicon_room1' }}
+      KITTI_PATH: ${{ vars.KITTI_PATH || '/home/baldhat/data/kitti' }}
     defaults:
       run:
         working-directory: schlam/cpp
@@ -117,11 +118,11 @@ jobs:
           source build/${{ matrix.build_type }}/generators/conanrun.sh
           ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
 
-      - name: Run headless config
+      - name: Run MAV and KITTI headless validation
         if: matrix.build_type == 'Release'
         run: |
           source build/${{ matrix.build_type }}/generators/conanrun.sh
-          timeout 30m build/${{ matrix.build_type }}/app config/mav_headless.yaml
+          bash recipes/run-headless-validation.sh
 
   memory_profile:
     name: Release memory profile (Heaptrack)

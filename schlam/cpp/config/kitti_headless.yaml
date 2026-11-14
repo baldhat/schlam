@@ -1,0 +1,76 @@
+dataset:
+  type: KittiDataset
+  sequence: "00"
+
+plotter:
+  type: DummyPlotter
+
+features:
+  count: 1000
+  levels: 6
+  scaleFactor: 1.2
+  fastThreshold: 7
+  fastArcLength: 9
+  orientationRadius: 15
+  border: 19
+  harrisBlockSize: 7
+  harrisK: 0.04
+  descriptorBlurSize: 7
+  descriptorBlurSigma: 2.0
+
+reconstruction:
+  randomSeed: 12344321
+  ransacCandidates: 500
+  homographySelectionRatio: 0.45
+  homographyChi2: 5.991
+  essentialChi2: 3.841
+  scoreChi2: 5.991
+  reprojectionErrorSquared: 4.0
+  triangulationCosParallax: 0.99998
+  homographyTriangulationCosParallax: 0.9999
+  solutionAmbiguityRatio: 0.75
+  minimumTriangulatedRatio: 0.9
+  minimumParallaxDegrees: 1.0
+  essentialParallaxRank: 30
+  homographyParallaxRank: 50
+
+initialization:
+  matchHammingDistance: 20
+  matchWindowPixels: 100.0
+  minimumMatches: 25
+
+tracking:
+  matchHammingDistance: 50
+  projectionWindowPixels: 50.0
+  minimumPoseInliers: 12
+  minimumMatchesBeforeLost: 12
+
+mapPoints:
+  maximumViewingAngleDegrees: 60.0
+  descriptorHistorySize: 10
+  minimumVisibilityCount: 8
+  minimumTrackingSuccessRate: 0.25
+
+mapping:
+  keyframeMinimumInliers: 20
+  keyframeMaximumInliers: 100
+  keyframeMinimumFrameGapWhenBusy: 3
+  triangulationPreviousKeyframes: 5
+  triangulationMatchHammingDistance: 30
+  queueCapacity: 1
+
+optimizer:
+  pyramidScaleFactor: 1.2
+  monocularChi2Threshold: 5.991
+  initialIterations: 50
+  poseIterations: 50
+  localIterations: 50
+  fullMapIterations: 50
+  localMaxVariableKeyframes: 20
+  localMaxFixedKeyframes: 40
+  localMinimumSharedPoints: 15
+  fullMapMinimumInlierObservations: 2
+  fullMapMinimumInlierRatio: 0.8
+
+motion:
+  maximumExtrapolationIntervals: 2.0

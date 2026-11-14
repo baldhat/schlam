@@ -97,6 +97,8 @@ add_library(${PROJECT_NAME} SHARED
     src/plotting/DummyPlotter.h
     src/schlam/SchlamSystem.cpp
     src/schlam/SchlamSystem.h
+    src/schlam/SchlamValidator.cpp
+    src/schlam/SchlamValidator.h
     src/schlam/helpers/Profiler.cpp
     src/schlam/helpers/Profiler.h
     src/schlam/optimization/CovisibilityHelpers.cpp
@@ -147,6 +149,7 @@ add_executable(unit_tests
     tests/test_motion_model.cpp
     tests/test_optimizer.cpp
     tests/test_schlam_system.cpp
+    tests/test_schlam_validator.cpp
 )
 
 # Ensure GTest targets are linked correctly

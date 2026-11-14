@@ -164,11 +164,15 @@ void MAVDataset::loadIMUData() {
         Eigen::Vector3d acceleration(ax, ay, az);
         Eigen::Vector3d angularVelocity(wx, wy, wz);
 
-        mGTCSVReader->read_row(gt_ts, gt_px, gt_py, gt_pz, gt_qw, gt_qx, gt_qy,
-                               gt_qz, gt_vx, gt_vy, gt_vz);
+        if (!mGTCSVReader->read_row(gt_ts, gt_px, gt_py, gt_pz, gt_qw, gt_qx, gt_qy,
+                                   gt_qz, gt_vx, gt_vy, gt_vz)) break;
         Eigen::Vector3d gtPos(gt_px, gt_py, gt_pz);
         Eigen::Vector3d gtVel(gt_vx, gt_vy, gt_vz);
         Eigen::Quaterniond gtQuat(gt_qw, gt_qx, gt_qy, gt_qz);
+        // The CSV quaternion can have norm drift. Eigen's conversion assumes a
+        // unit quaternion; otherwise the matrix includes scale/shear and is not
+        // a valid rotation for either tracking or trajectory evaluation.
+        gtQuat.normalize();
 
         auto imuData = std::make_shared<IMUData>(
             helpers::longNanoToTimePoint(ts), acceleration, angularVelocity, mGTCF,

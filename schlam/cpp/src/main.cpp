@@ -8,10 +8,12 @@
 #include "schlam/optimization/Optimizer.h"
 #include "schlam/MotionModel.h"
 #include "schlam/SchlamSystem.h"
+#include "schlam/SchlamValidator.h"
 #include "config/ConfigParser.hpp"
 #include "random.hpp"
 
 #include <thread>
+#include <stdexcept>
 #include <opencv2/core.hpp>
 
 
@@ -48,16 +50,40 @@ int main(int argc, char** argv) {
     auto motionModel = MotionModel(settings.motion.maximumExtrapolationIntervals);
 
     SchlamSystem schlamSystem(dataloader, pTransformer, plotter, featureDetector, optimizer, motionModel, settings);
-    const auto result = schlamSystem.run(); // TODO export results to file(s) and evaluate
+    const auto result = schlamSystem.run();
 
     std::cout << "Finished with " << dataloader->percentageRead() << "% of data processed." << std::endl;
     std::cout << "Created " << result.mapPoints.size() << " map points and "
               << result.predictedPath.size() << " predicted poses at "
               << result.averageFrameRate << " FPS." << std::endl;
 
+    int exitCode = 0;
+    try {
+        const auto validation = SchlamValidator().validate(result);
+        std::cout << "Trajectory validation: " << validation.message << " ("
+                  << validation.matchedPoses << "/" << validation.estimatedPoses
+                  << " poses associated)." << std::endl;
+        if (validation.trackingCoverage) {
+            std::cout << "Tracking coverage of processed frames: "
+                      << 100.0 * *validation.trackingCoverage << "%." << std::endl;
+        }
+        if (validation.absoluteTranslation) {
+            std::cout << "Sim(3) alignment scale: " << validation.scale
+                      << "; ATE RMSE: " << validation.absoluteTranslation->rmse << " m." << std::endl;
+        }
+        if (validation.relativeTranslation) {
+            std::cout << "RPE RMSE: " << validation.relativeTranslation->rmse << " m, "
+                      << validation.relativeRotationRadians->rmse << " rad ("
+                      << validation.relativeTranslation->count << " adjacent pose pairs)." << std::endl;
+        }
+    } catch (const std::invalid_argument& error) {
+        std::cerr << "Trajectory validation failed: " << error.what() << std::endl;
+        exitCode = 1;
+    }
+
     if (render_loop.joinable()) {
         render_loop.join();
     }
     std::cout << "Plotter finished..." << std::endl;
-    return 0;
+    return exitCode;
 }

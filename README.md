@@ -62,6 +62,7 @@ Run these commands from `schlam/cpp`. In each new shell, first run `source build
 | [`config/mav.yaml`](schlam/cpp/config/mav.yaml) | EuRoC MAV, `V1_02_medium` | `PangolinPlotter` |
 | [`config/mav_headless.yaml`](schlam/cpp/config/mav_headless.yaml) | EuRoC MAV, `V1_02_medium` | `DummyPlotter` |
 | [`config/kitti.yaml`](schlam/cpp/config/kitti.yaml) | KITTI Odometry, `00` | `PangolinPlotter` |
+| [`config/kitti_headless.yaml`](schlam/cpp/config/kitti_headless.yaml) | KITTI Odometry, `00` | `DummyPlotter` |
 
 For MAV, set `MAV_PATH` to the directory containing the sequence directories. The loader reads `$MAV_PATH/<dataset.sequence>/mav0`, including `cam0/`, `imu0/`, and `state_groundtruth_estimate0/`:
 
@@ -103,10 +104,10 @@ The [C++ workflow](.github/workflows/cpp.yml) runs a Debug and Release matrix:
 
 | Trigger | Runner | Ordered stages |
 | --- | --- | --- |
-| Every push | Self hosted Linux x64 (`self-hosted`, `linux`, `x64` labels) | Debug: build → run tests; Release: build → run tests → run headless config |
+| Every push | Self hosted Linux x64 (`self-hosted`, `linux`, `x64` labels) | Debug: build → run tests; Release: build → run tests → validate MAV and KITTI headlessly |
 | Pull request | GitHub hosted Ubuntu 24.04 | Build → run tests |
 
-Install the system dependencies listed above on the self hosted runner. The workflow installs Conan and selects Python 3.12. The runner's service account must be able to read the installed MAV dataset at `/home/baldhat/data/mav/vicon_room1/V1_02_medium/mav0`. The job sets `MAV_PATH=/home/baldhat/data/mav/vicon_room1` and runs `config/mav_headless.yaml` for Release only, with a 30-minute timeout.
+Install the system dependencies listed above on the self hosted runner. The workflow installs Conan and selects Python 3.12. The runner's service account must be able to read the installed MAV dataset at `/home/baldhat/data/mav/vicon_room1/V1_02_medium/mav0` and KITTI at `/home/baldhat/data/kitti`. The job defaults to `MAV_PATH=/home/baldhat/data/mav/vicon_room1` and `KITTI_PATH=/home/baldhat/data/kitti`; Actions repository variables named `MAV_PATH` and `KITTI_PATH` override these paths. Release runs both `config/mav_headless.yaml` and `config/kitti_headless.yaml`, each with a 30-minute timeout, even if the first fails. The job summary reports validation status, coverage, scale, ATE/RPE RMSEs, FPS, and dataset percentage processed for each config. Full application output is available in the headless step's job log. Log files and config copies remain under `build/validation` on the runner. An application error, timeout, or unsuccessful/missing validation fails the step after both runs finish.
 
 Conan uses the runner account's persistent cache, normally `~/.conan2` (or `CONAN_HOME` when configured). `--build=missing` reuses matching g2o and Pangolin binaries on later pushes. Debug and Release need separate binaries; changes to recipes, dependencies, or compiler settings can require rebuilding. Separate runner machines or accounts have separate caches unless configured otherwise.
 
