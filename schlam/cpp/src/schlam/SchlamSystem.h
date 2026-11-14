@@ -129,6 +129,10 @@ private:
     void setFrameAsReference(
         std::shared_ptr<Frame> frame,
         const std::shared_ptr<tft::RigidTransform3D>& cameraToWorld);
+
+    SchlamResult&& buildResult(std::size_t processedFrames, double processingMilliseconds) const;
+
+    void finishLocalMapping();
 };
 
 #endif //SCHLAM_SCHLAMSYSTEM_H

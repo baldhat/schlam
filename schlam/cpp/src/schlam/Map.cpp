@@ -79,6 +79,7 @@ MapSnapshot Map::getSnapshot() const {
 }
 
 TrackingSnapshot Map::getTrackingSnapshot() const {
+    ZoneScoped;
     std::lock_guard guard(mMutex);
     return {mPoints, {}, {}, mFrame};
 }
@@ -97,6 +98,7 @@ void Map::updateKeyFramePose(KeyFrameId keyFrameId, const tft::RigidTransform3D&
 }
 
 void Map::applyTrackingSnapshot(const TrackingSnapshot& snapshot) {
+    ZoneScoped;
     std::lock_guard guard(mMutex);
     for (const auto& [pointId, obs] : snapshot.newObservations) {
         if (mPoints.contains(pointId)) {

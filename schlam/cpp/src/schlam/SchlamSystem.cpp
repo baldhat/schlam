@@ -45,13 +45,11 @@ SchlamSystem::SchlamSystem(
 }
 
 SchlamSystem::~SchlamSystem() {
-    stopLocalMapping_ = true;
-    if (localMappingThread_.joinable()) {
-        localMappingThread_.join();
-    }
+    finishLocalMapping();
 }
 
 SchlamResult SchlamSystem::run() {
+    tracy::SetThreadName("Main");
     std::size_t processedFrames = 0;
     double processingMilliseconds = 0.0;
 
@@ -87,22 +85,9 @@ SchlamResult SchlamSystem::run() {
         }
     }
 
-    stopLocalMapping_ = true;
-    if (localMappingThread_.joinable()) localMappingThread_.join();
+    finishLocalMapping();
 
-    SchlamResult result;
-    if (map_) {
-        const auto snapshot = map_->getSnapshot();
-        const auto mapToWorld = transformer_->findTransform(map_->mFrame, "world");
-        result.mapPoints.reserve(snapshot.points.size());
-        for (const auto& point : snapshot.points) {
-            result.mapPoints.push_back(mapToWorld->apply(point));
-        }
-    }
-    result.predictedPath = predictedPath_;
-    if (processingMilliseconds > 0.0) {
-        result.averageFrameRate = 1000.0 * processedFrames / processingMilliseconds;
-    }
+    SchlamResult result = buildResult(processedFrames, processingMilliseconds);
     return result;
 }
 
@@ -293,6 +278,7 @@ void SchlamSystem::track(const SynchronizedData& data) {
 }
 
 void SchlamSystem::localMapping() {
+    tracy::SetThreadName("Local Mapping");
     while (!stopLocalMapping_ || !localMappingQueue_.empty()) {
         localMappingIdle_ = true;
 
@@ -394,3 +380,25 @@ void SchlamSystem::setFrameAsReference(std::shared_ptr<Frame> frame,
     referenceFrame_ = std::move(frame);
     plotter_->resetCameraPaths(referenceGTCameraPose_->mTranslation);
 };
+
+SchlamResult&& SchlamSystem::buildResult(std::size_t processedFrames, double processingMilliseconds) const {
+    SchlamResult result;
+    if (map_) {
+        const auto snapshot = map_->getSnapshot();
+        const auto mapToWorld = transformer_->findTransform(map_->mFrame, "world");
+        result.mapPoints.reserve(snapshot.points.size());
+        for (const auto& point : snapshot.points) {
+            result.mapPoints.push_back(mapToWorld->apply(point));
+        }
+    }
+    result.predictedPath = predictedPath_;
+    if (processingMilliseconds > 0.0) {
+        result.averageFrameRate = 1000.0 * processedFrames / processingMilliseconds;
+    }
+    return std::move(result);
+}
+
+void SchlamSystem::finishLocalMapping() {
+    stopLocalMapping_ = true;
+    if (localMappingThread_.joinable()) localMappingThread_.join();
+}
