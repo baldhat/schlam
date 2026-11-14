@@ -7,11 +7,11 @@
 
 class Frame;
 
-class IFeatureDetector {
+class IFeatureExtractor {
 public:
-    virtual ~IFeatureDetector() = default;
+    virtual ~IFeatureExtractor() = default;
 
-    virtual void detectFeatures(Frame& frame) = 0;
+    virtual void extractFeatures(Frame& frame) = 0;
 };
 
 #endif //SCHLAM_IFEATUREDETECTOR_H

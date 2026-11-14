@@ -46,7 +46,7 @@ ORBFeatureDetector::ORBFeatureDetector(const schlam::config::Features& settings,
     mOrientationIndices = getPointsInRadius(mOrientationRadius);
 }
 
-void ORBFeatureDetector::detectFeatures(Frame &aFrame) {
+void ORBFeatureDetector::extractFeatures(Frame &aFrame) {
     ZoneScoped;
     auto pyramid = buildPyramid(aFrame.mImage, mNumLevels, mLevelFactor);
     std::unique_ptr<QuadTreeNode> tree = calcFeatures(pyramid);

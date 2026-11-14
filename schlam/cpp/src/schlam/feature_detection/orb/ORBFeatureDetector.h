@@ -9,21 +9,21 @@
 #include "FastFeatureDetector.h"
 #include "config/Config.hpp"
 #include "../../helpers/utils.h"
-#include "schlam/feature_detection/IFeatureDetector.h"
+#include "schlam/feature_detection/IFeatureExtractor.h"
 
 class Frame;
 class IPlotter;
 class QuadTreeNode;
 class KeyPoint;
 
-class ORBFeatureDetector : public IFeatureDetector {
+class ORBFeatureDetector : public IFeatureExtractor {
 public:
     ORBFeatureDetector(const std::uint32_t aNumFeatures, std::shared_ptr<IPlotter> apPlotter,
                        const std::uint8_t aNumLevels,
                        const double aLevelFactor = 1 / 1.2);
     ORBFeatureDetector(const schlam::config::Features& settings, std::shared_ptr<IPlotter> plotter);
 
-    void detectFeatures(Frame& frame) override;
+    void extractFeatures(Frame& frame) override;
 
 private:
     friend class ORBFeatureDetectorTest;

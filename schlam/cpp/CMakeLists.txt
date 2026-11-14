@@ -103,7 +103,7 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/helpers/Profiler.h
     src/schlam/optimization/CovisibilityHelpers.cpp
     src/schlam/optimization/CovisibilityHelpers.h
-        src/schlam/feature_detection/IFeatureDetector.h
+        src/schlam/feature_detection/IFeatureExtractor.h
         src/schlam/feature_detection/IDescriptor.h
         src/schlam/feature_detection/orb/OrbDescriptor.cpp
         src/schlam/feature_detection/orb/OrbDescriptor.h

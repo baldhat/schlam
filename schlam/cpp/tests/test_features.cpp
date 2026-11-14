@@ -36,7 +36,7 @@ protected:
         auto data = std::make_shared<ImageData>(utils::TTimestamp{}, image,
             Eigen::Matrix3d::Identity(), "pyramid");
         Frame frame(data);
-        multilevel.detectFeatures(frame);
+        multilevel.extractFeatures(frame);
         return std::pair(frame.mKeypointTree, multilevel.mNumFeaturesPerLevel);
     }
 

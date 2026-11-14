@@ -142,7 +142,7 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
     ZoneScoped;
     auto frame = std::make_shared<Frame>(data.imageData);
 
-    featureDetector_->detectFeatures(*frame);
+    featureDetector_->extractFeatures(*frame);
 
     if (!referenceFrame_) {
         setFrameAsReference(frame, data.cameraToWorld);
@@ -218,7 +218,7 @@ void SchlamSystem::track(const SynchronizedData& data) {
     transformer_->registerTransform(estimatedPose);
 
     auto frame = std::make_shared<Frame>(data.imageData);
-    featureDetector_->detectFeatures(*frame);
+    featureDetector_->extractFeatures(*frame);
 
     // TODO Match only with features in predicted scale
     TrackingSnapshot trackingSnapshot = map_->getTrackingSnapshot();
