@@ -43,6 +43,10 @@ Activate `conanrun.sh` in each new shell before building, testing, or running th
 
 The [GitHub Actions workflow](../../../.github/workflows/cpp.yml) builds and tests both Debug and Release on every push, then runs the installed MAV dataset headlessly for Release only. It uses a self hosted Linux x64 runner, its persistent Conan cache, and all processors reported by `nproc`. Pull requests build and test on fresh GitHub hosted runners with two build jobs; those runners build the local recipes from source. No private Conan remote or credentials are required.
 
+On pushes, the `memory_profile` job runs after the dataset jobs succeed. It builds the Release app with `-O3 -DNDEBUG -g` so Heaptrack can attribute allocations to source locations, then profiles `config/mav_headless.yaml` using the same MAV dataset. The runner must already provide `heaptrack` and `heaptrack_print`; the job does not install them. Profiling is limited to 60 minutes, and an application failure or timeout fails the job.
+
+The job summary shows Heaptrack's final statistics. The `heaptrack-release-<commit>-<attempt>` artifact contains the compressed capture, the full `heaptrack-report.txt`, the application log, the configuration, and the Heaptrack version. Artifacts are retained for 30 days; available captures and logs are uploaded even when profiling fails. Download the capture and open it with `heaptrack_gui` to inspect allocation call stacks, peak heap consumers, and temporary allocations. Heaptrack's allocation totals describe heap usage; they do not include every part of the process's resident memory.
+
 See the [runner setup](../../../README.md#github-actions) for host dependencies and the dataset path.
 
 CI allows five source download retries with ten seconds between attempts using `tools.files.download:retry` and `tools.files.download:retry_wait`. This helps with transient HTTP 504 responses from upstream source hosts. Rerunning a failed job reuses completed packages on the self hosted runner; a persistent download failure still requires the upstream URL to become reachable.
