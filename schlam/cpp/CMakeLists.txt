@@ -11,7 +11,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DSPDLOG_FMT_EXTERNAL)
 
-set(TRACY_ENABLED OFF)
+set(TRACY_ENABLED ON)
+set(TRACY_ON_DEMAND ON)
+set(TRACY_TIMER_FALLBACK ON)
 
 add_compile_options(-fno-omit-frame-pointer)
 
