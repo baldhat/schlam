@@ -5,7 +5,6 @@
 #ifndef SCHLAM_MAPPOINT_H
 #define SCHLAM_MAPPOINT_H
 
-#include <array>
 #include <cstddef>
 #include <deque>
 #include <unordered_map>
@@ -14,24 +13,23 @@
 
 #include "MapTypes.h"
 #include "config/Config.hpp"
+#include "feature_detection/IDescriptor.h"
 
 
 class MapPoint {
 public:
-    using Descriptor = std::array<std::uint8_t, 32>;
-
-    MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId,
+    MapPoint(const Eigen::Vector3d& position, const DescriptorPtr& descriptor, const MapPointId id, const KeyFrameId creatorId,
              schlam::config::MapPoints settings = {});
 
-    void addInlierObservation(const Descriptor& descriptor, const Eigen::Vector3d& cameraCenter);
-    void addTriangulationObservation(const Descriptor& descriptor);
+    void addInlierObservation(const DescriptorPtr& descriptor, const Eigen::Vector3d& cameraCenter);
+    void addTriangulationObservation(const DescriptorPtr& descriptor);
     void addViewingObservation(const Eigen::Vector3d& cameraCenter);
     bool isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const;
 
     Eigen::Vector3d mPosition;
     // descriptor with the lowest median Hamming distance to the history
-    Descriptor mDescriptor;
-    Descriptor mLastInlierDescriptor;
+    DescriptorPtr mDescriptor;
+    DescriptorPtr mLastInlierDescriptor;
     MapPointId mId;
     std::unordered_map<KeyFrameId, std::size_t> mObservations;
     KeyFrameId mCreatorId;
@@ -40,10 +38,10 @@ public:
     std::uint64_t mNumInlierObservations{0};
 
 private:
-    void updateDescriptor(const Descriptor& descriptor);
+    void updateDescriptor(const DescriptorPtr& descriptor);
     Eigen::Vector3d mViewingDirectionSum = Eigen::Vector3d::Zero();
     schlam::config::MapPoints mSettings;
-    std::deque<Descriptor> mDescriptorHistory;
+    std::deque<DescriptorPtr> mDescriptorHistory;
 };
 
 

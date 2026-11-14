@@ -8,9 +8,9 @@
 
 #include "plotting/IPlotter.hpp"
 #include "FastFeatureDetector.h"
-#include "../KeyPoint.h"
-#include "../helpers/utils.h"
-#include "../Frame.h"
+#include "../../KeyPoint.h"
+#include "../../helpers/utils.h"
+#include "../../Frame.h"
 
 #include <algorithm>
 #include <bitset>
@@ -19,6 +19,7 @@
 #include <tracy/Tracy.hpp>
 
 #include "orb_pattern.h"
+#include "OrbDescriptor.h"
 
 ORBFeatureDetector::ORBFeatureDetector(const std::uint32_t aNumFeatures,
                                        std::shared_ptr<IPlotter> apPlotter,
@@ -170,7 +171,7 @@ void ORBFeatureDetector::addDescriptors(
             desc[i >> 3] |= (p0 < p1) << (i & 7);
         }
 
-        feature->setDescriptor(std::to_array(desc));
+        feature->setDescriptor(std::make_shared<OrbDescriptor>(std::to_array(desc)));
     });
 }
 

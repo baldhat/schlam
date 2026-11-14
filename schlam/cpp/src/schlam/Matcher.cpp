@@ -34,16 +34,6 @@ std::optional<Eigen::Vector2d> projectIntoFrame(
 }
 }
 
-inline int hamming256(const uint8_t *a, const uint8_t *b) {
-    const uint64_t *a64 = reinterpret_cast<const uint64_t *>(a);
-    const uint64_t *b64 = reinterpret_cast<const uint64_t *>(b);
-
-    return __builtin_popcountll(a64[0] ^ b64[0]) +
-           __builtin_popcountll(a64[1] ^ b64[1]) +
-           __builtin_popcountll(a64[2] ^ b64[2]) +
-           __builtin_popcountll(a64[3] ^ b64[3]);
-}
-
 std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::shared_ptr<QuadTreeNode>& aTree1,
                                                      const std::shared_ptr<QuadTreeNode>& aTree2,
                                                      const double aMaxDistance) {
@@ -60,14 +50,14 @@ std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchGlobally(const std::v
     std::vector<bool> matchedIndices2(keypoints2.size(), false);
 
     for (std::uint32_t j = 0; j < keypoints1.size(); ++j) {
-        auto descriptor = keypoints1[j]->getDescriptor();
+        const auto descriptor = keypoints1[j]->getDescriptor();
         std::uint32_t bestMatchIndex = -1;
         double bestMatchValue = std::numeric_limits<double>::max();
 
         for (std::uint32_t i = 0; i < keypoints2.size(); i++) {
             if (matchedIndices2[i]) continue;
 
-            auto distance = hamming256(descriptor.data(), keypoints2[i]->getDescriptor().data());
+            auto distance = descriptor->getDistance(keypoints2[i]->getDescriptor());
             if (distance < bestMatchValue) {
                 bestMatchIndex = i;
                 bestMatchValue = distance;
@@ -115,7 +105,7 @@ matchWindow(const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints,
         for (const auto& candidate: candidates) {
             if (matchedTargets.contains(candidate)) continue;
 
-            const auto distance = hamming256(descriptor.data(), candidate->getDescriptor().data());
+            auto distance = descriptor->getDistance(candidate->getDescriptor());
             if (distance < bestMatchValue) {
                 bestMatch = candidate;
                 bestMatchValue = distance;
@@ -172,12 +162,12 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
         frame->mKeypointTree->getFeatures(
             projected->x() - aWindowSize, projected->x() + aWindowSize,
             projected->y() - aWindowSize, projected->y() + aWindowSize, candidates);
-        const auto findMatch = [&](const MapPoint::Descriptor& descriptor) {
+        const auto findMatch = [&](const DescriptorPtr& descriptor) {
             std::shared_ptr<KeyPoint> bestMatch;
             double bestDistance = aMaxDistance;
             for (const auto& candidate : candidates) {
                 if (matchedTargets.contains(candidate)) continue;
-                const auto distance = hamming256(descriptor.data(), candidate->getDescriptor().data());
+                const auto distance = descriptor->getDistance(candidate->getDescriptor());
                 if (distance < bestDistance) {
                     bestDistance = distance;
                     bestMatch = candidate;

@@ -5,7 +5,7 @@
 #include "plotting/DummyPlotter.h"
 #include "random.hpp"
 #include "schlam/MotionModel.h"
-#include "../src/schlam/feature_detection/ORBFeatureDetector.h"
+#include "../src/schlam/feature_detection/orb/ORBFeatureDetector.h"
 #include "../src/schlam/optimization/Optimizer.h"
 #include "schlam/SchlamSystem.h"
 #include "schlam/SchlamValidator.h"

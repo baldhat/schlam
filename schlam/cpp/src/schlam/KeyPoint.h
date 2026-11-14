@@ -11,13 +11,12 @@
 #include <optional>
 
 #include "MapTypes.h"
-
-using Descriptor = std::array<uint8_t, 32>;
+#include "feature_detection/IDescriptor.h"
 
 class KeyPoint {
 public:
     KeyPoint(const double aImgX, const double aImgY, const std::uint8_t aLevel = 0, double aScore = 0,
-             double aAngle = 0, const Descriptor& aDescriptor = Descriptor());
+             double aAngle = 0, const DescriptorPtr& aDescriptor = DescriptorPtr());
 
     void scaleBy(const double aXFactor, const double aYFactor);
 
@@ -25,14 +24,14 @@ public:
     double getImgY() const;
     std::uint8_t getLevel() const;
     double getScore() const;
-    Descriptor getDescriptor() const;
+    DescriptorPtr getDescriptor() const;
     std::optional<std::size_t> getIndex() const;
 
     void setAngle(const double aAngle);
     double getAngle() const;
     void setScore(const double aScore);
     void setLevel(const double aLevel);
-    void setDescriptor(const Descriptor& aDescriptor);
+    void setDescriptor(const DescriptorPtr& aDescriptor);
 
     bool getMatched() const;
     void setObservation(MapPointId pointId);
@@ -47,7 +46,7 @@ private:
     double mScore{0};
     std::uint8_t mLevel{0};
     double mAngle{0};
-    Descriptor mDescriptor;
+    DescriptorPtr mDescriptor;
     std::optional<MapPointId> mMapPointId;
     std::optional<std::size_t> mIndex;
     std::optional<KeyFrameId> mKeyFrameId;

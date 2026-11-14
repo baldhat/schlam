@@ -15,7 +15,7 @@
 #include "Map.h"
 #include "MapPoint.hpp"
 #include "Matcher.h"
-#include "feature_detection/ORBFeatureDetector.h"
+#include "feature_detection/orb/ORBFeatureDetector.h"
 #include "helpers/Profiler.h"
 #include "Ransac.h"
 #include "helpers/utils.h"

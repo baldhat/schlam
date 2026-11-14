@@ -11,7 +11,7 @@
 
 #include <opencv2/core/mat.hpp>
 
-#include "../KeyPoint.h"
+#include "../../KeyPoint.h"
 
 namespace schlam {
     class FastFeatureDetector {

@@ -8,23 +8,22 @@
 
 #include "FastFeatureDetector.h"
 #include "config/Config.hpp"
-#include "../helpers/utils.h"
+#include "../../helpers/utils.h"
+#include "schlam/feature_detection/IFeatureDetector.h"
 
 class Frame;
 class IPlotter;
 class QuadTreeNode;
 class KeyPoint;
 
-class ORBFeatureDetector {
+class ORBFeatureDetector : public IFeatureDetector {
 public:
     ORBFeatureDetector(const std::uint32_t aNumFeatures, std::shared_ptr<IPlotter> apPlotter,
                        const std::uint8_t aNumLevels,
                        const double aLevelFactor = 1 / 1.2);
     ORBFeatureDetector(const schlam::config::Features& settings, std::shared_ptr<IPlotter> plotter);
 
-    void detectFeatures(Frame& frame);
-
-    void distributeFeaturesToLevels();
+    void detectFeatures(Frame& frame) override;
 
 private:
     friend class ORBFeatureDetectorTest;
@@ -76,6 +75,8 @@ private:
                          const std::uint32_t aLevel);
 
     void retainTopN(QuadTreeNode* aTree, std::uint32_t aTopN);
+
+    void distributeFeaturesToLevels();
 };
 
 

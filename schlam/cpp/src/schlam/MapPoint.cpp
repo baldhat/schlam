@@ -11,29 +11,20 @@
 #include <numbers>
 #include <vector>
 
-namespace {
-int hammingDistance(const MapPoint::Descriptor& first, const MapPoint::Descriptor& second) {
-    int distance = 0;
-    for (std::size_t i = 0; i < first.size(); ++i) {
-        distance += std::popcount(static_cast<unsigned int>(first[i] ^ second[i]));
-    }
-    return distance;
-}
-}
 
-MapPoint::MapPoint(const Eigen::Vector3d& position, const Descriptor& descriptor, const MapPointId id, const KeyFrameId creatorId,
+MapPoint::MapPoint(const Eigen::Vector3d& position, const DescriptorPtr& descriptor, const MapPointId id, const KeyFrameId creatorId,
                    schlam::config::MapPoints settings)
     : mPosition(position), mDescriptor(descriptor), mLastInlierDescriptor(descriptor),
       mId(id), mCreatorId(creatorId), mSettings(settings), mDescriptorHistory{descriptor} {
 }
 
-void MapPoint::addInlierObservation(const Descriptor& descriptor, const Eigen::Vector3d& cameraCenter) {
+void MapPoint::addInlierObservation(const DescriptorPtr& descriptor, const Eigen::Vector3d& cameraCenter) {
     mNumInlierObservations++;
     addViewingObservation(cameraCenter);
     updateDescriptor(descriptor);
 }
 
-void MapPoint::addTriangulationObservation(const Descriptor& descriptor) {
+void MapPoint::addTriangulationObservation(const DescriptorPtr& descriptor) {
     updateDescriptor(descriptor);
 }
 
@@ -56,20 +47,20 @@ bool MapPoint::isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) co
            cosMaxViewingAngle * length * meanLength;
 }
 
-void MapPoint::updateDescriptor(const Descriptor& descriptor) {
+void MapPoint::updateDescriptor(const DescriptorPtr& descriptor) {
     mLastInlierDescriptor = descriptor;
     mDescriptorHistory.push_back(descriptor);
     if (mDescriptorHistory.size() > mSettings.descriptorHistorySize) {
         mDescriptorHistory.pop_front();
     }
 
-    int bestMedian = std::numeric_limits<int>::max();
+    double bestMedian = std::numeric_limits<double>::max();
     std::size_t bestIndex = 0;
     const auto medianIndex = (mDescriptorHistory.size() - 1) / 2;
-    std::vector<int> distances(mDescriptorHistory.size());
+    std::vector<double> distances(mDescriptorHistory.size());
     for (std::size_t i = 0; i < mDescriptorHistory.size(); ++i) {
         for (std::size_t j = 0; j < mDescriptorHistory.size(); ++j) {
-            distances[j] = hammingDistance(mDescriptorHistory[i], mDescriptorHistory[j]);
+            distances[j] = mDescriptorHistory[i]->getDistance(mDescriptorHistory[j]);
         }
         std::nth_element(distances.begin(), distances.begin() + medianIndex, distances.end());
         // Keep the earlier observation when medians tie to avoid needless changes.

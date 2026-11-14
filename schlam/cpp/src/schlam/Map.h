@@ -39,7 +39,7 @@ struct MapSnapshot {
 };
 
 struct Observation {
-    Descriptor descriptor;
+    DescriptorPtr descriptor;
     Eigen::Vector3d acceptedCameraCenter;
 };
 

@@ -6,7 +6,7 @@
 
 
 KeyPoint::KeyPoint(const double aImgX, const double aImgY, const std::uint8_t aLevel, double aScore,
-                   double aAngle,const Descriptor& apDescriptor)
+                   double aAngle,const DescriptorPtr& apDescriptor)
     : mImgX(aImgX)
       , mImgY(aImgY)
       , mScore(aScore)
@@ -34,7 +34,8 @@ double KeyPoint::getAngle() const {
 double KeyPoint::getScore() const {
     return mScore;
 }
-Descriptor KeyPoint::getDescriptor() const {
+
+DescriptorPtr KeyPoint::getDescriptor() const {
     return mDescriptor;
 }
 
@@ -44,7 +45,7 @@ void KeyPoint::setScore(const double aScore) {
 void KeyPoint::setLevel(const double aLevel) {
     mLevel = aLevel;
 }
-void KeyPoint::setDescriptor(const Descriptor& aDescriptor) {
+void KeyPoint::setDescriptor(const DescriptorPtr& aDescriptor) {
     mDescriptor = aDescriptor;
 }
 void KeyPoint::setAngle(const double aAngle) {
