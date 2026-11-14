@@ -16,6 +16,8 @@
 #include <numbers>
 #include <stdexcept>
 
+#include "schlam/feature_detection/orb/OrbDescriptor.h"
+
 class ORBFeatureDetectorTest : public ::testing::Test {
 protected:
     ORBFeatureDetector detector{1000, nullptr, 1};
@@ -199,8 +201,8 @@ TEST(MatcherTest, GlobalMatchesOwnFeaturesAndUseEachTargetOnce) {
 }
 
 TEST(MapPointTest, ViewingAngleUsesSixtyDegreeLimit) {
-    MapPoint point(Eigen::Vector3d::Zero(), MapPoint::Descriptor{}, 0, 0);
-    point.addInlierObservation(MapPoint::Descriptor{}, Eigen::Vector3d::UnitZ());
+    MapPoint point(Eigen::Vector3d::Zero(), DescriptorPtr{}, 0, 0);
+    point.addInlierObservation(DescriptorPtr{}, Eigen::Vector3d::UnitZ());
     EXPECT_EQ(point.mNumInlierObservations, 1);
     const double radians = std::numbers::pi / 180.0;
     EXPECT_TRUE(point.isViewDirectionCompatible(Eigen::Vector3d(
@@ -487,7 +489,7 @@ TEST_F(ORBFeatureDetectorTest, DescriptorUsesNegativeOffsetsAtZeroRotation) {
     }
     QuadTreeNode tree(0, 64, 0, 64, {KeyPoint(32, 32)});
     describe(image, tree);
-    EXPECT_EQ(tree.getFeatures()[0]->getDescriptor()[0] & 1, 0);
+    EXPECT_EQ(dynamic_cast<OrbDescriptor*>(tree.getFeatures()[0]->getDescriptor().get())->mDescriptor[0] & 1, 0);
 }
 
 TEST_F(ORBFeatureDetectorTest, RotatedDescriptorsStayInsideImageAtRetainedBorder) {
