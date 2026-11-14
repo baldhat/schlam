@@ -11,9 +11,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DSPDLOG_FMT_EXTERNAL)
 
-set(TRACY_ENABLED ON)
-set(TRACY_ON_DEMAND ON)
-
 add_compile_options(-fno-omit-frame-pointer)
 
 find_package(OpenCV REQUIRED)
@@ -104,7 +101,6 @@ add_library(${PROJECT_NAME} SHARED
     src/schlam/helpers/Profiler.h
     src/schlam/optimization/CovisibilityHelpers.cpp
     src/schlam/optimization/CovisibilityHelpers.h
-    src/tracy_setup.cpp
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -127,10 +123,10 @@ target_link_libraries(${PROJECT_NAME}
 
 add_executable(app
     src/main.cpp
+    src/tracy_setup.cpp
 )
 target_link_libraries(app ${PROJECT_NAME})
 target_compile_definitions(app PRIVATE SCHLAM_DEFAULT_CONFIG_PATH="${PROJECT_SOURCE_DIR}/config/mav.yaml")
-target_compile_definitions(app PRIVATE TRACY_TIMER_FALLBACK)
 
 add_executable(tft 
     src/tft/main.cpp

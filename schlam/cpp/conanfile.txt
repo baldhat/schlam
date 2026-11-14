@@ -24,4 +24,5 @@ cmake_layout
 
 [options]
   tracy/*:timer_fallback=True
+  tracy/*:on_demand=True
 
