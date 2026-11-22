@@ -14,6 +14,7 @@ add_definitions(-DSPDLOG_FMT_EXTERNAL)
 add_compile_options(-fno-omit-frame-pointer)
 
 find_package(OpenCV REQUIRED)
+find_package(ffmpeg REQUIRED CONFIG)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(GLEW REQUIRED)
@@ -57,6 +58,8 @@ add_library(${PROJECT_NAME} SHARED
     src/data/DatasetInterface.hpp
     src/data/datasets/KittiDataset.cpp
     src/data/datasets/KittiDataset.hpp
+    src/data/datasets/FFMPEGDataset.cpp
+    src/data/datasets/FFMPEGDataset.hpp
     src/data/data_helper.hpp
     src/data/data_helper.cpp
     src/data/image_data.hpp
@@ -112,7 +115,7 @@ add_library(${PROJECT_NAME} SHARED
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     SCHLAM_USE_OPENCV_RECONSTRUCTION=$<BOOL:${SCHLAM_USE_OPENCV_RECONSTRUCTION}>)
 
-target_link_libraries(${PROJECT_NAME} 
+target_link_libraries(${PROJECT_NAME} PUBLIC
     fmt::fmt
     spdlog::spdlog
     ${OpenCV_LIBS} 
@@ -124,6 +127,7 @@ target_link_libraries(${PROJECT_NAME}
     TBB::tbb
     g2o::core g2o::solver_dense g2o::solver_eigen g2o::types_sim3 g2o::types_slam3d
     Tracy::TracyClient
+    PRIVATE ffmpeg::avformat ffmpeg::avcodec ffmpeg::avutil ffmpeg::swscale
 )
 
 
@@ -131,7 +135,7 @@ add_executable(app
     src/main.cpp
     src/tracy_setup.cpp
 )
-target_link_libraries(app ${PROJECT_NAME})
+target_link_libraries(app PRIVATE ${PROJECT_NAME} ffmpeg::avutil)
 target_compile_definitions(app PRIVATE SCHLAM_DEFAULT_CONFIG_PATH="${PROJECT_SOURCE_DIR}/config/mav.yaml")
 
 add_executable(tft 

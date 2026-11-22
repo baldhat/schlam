@@ -41,7 +41,9 @@ SchlamSystem::SchlamSystem(
     , reconstructor_(settings_.reconstruction)
     , localMappingQueue_(settings_.mapping.queueCapacity) {
 
-    cameraToIMU_ = transformer_->findTransform("gt/cam0", "gt/body");
+    if (dataset_->hasGT()) {
+        cameraToIMU_ = transformer_->findTransform("gt/cam0", "gt/body");
+    }
 }
 
 SchlamSystem::~SchlamSystem() {
@@ -54,10 +56,11 @@ SchlamResult SchlamSystem::run() {
     double processingMilliseconds = 0.0;
 
     // initialization
-    while (state_ != TrackingState::LOST && !dataset_->empty()) {
+    while (state_ != TrackingState::LOST && !plotter_->shouldQuit() && !dataset_->empty()) {
         const auto frameStart = std::chrono::steady_clock::now();
 
         auto data = getNextSynchronizedData();
+        if (!data.imageData || plotter_->shouldQuit()) break;
 
         Profiler frameTimer(*plotter_, frameStart);
 
@@ -80,7 +83,7 @@ SchlamResult SchlamSystem::run() {
         processingMilliseconds += frameMilliseconds;
         ++processedFrames;
         std::cout << "Frame handling took " << frameMilliseconds << " ms" << std::endl;
-        while (plotter_->shouldPause()) {
+        while (plotter_->shouldPause() && !plotter_->shouldQuit()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
@@ -101,6 +104,7 @@ SynchronizedData SchlamSystem::getNextSynchronizedData() {
             cameraToWorld->mRotation, cameraToWorld->mTranslation});
     };
     auto imageData = dataset_->getNextImageData();
+    if (!imageData) return {};
     auto imuData = dataset_->getNextIMUData();
     auto gtData = dataset_->getNextGTData();
     recordGroundTruth(gtData);
@@ -115,6 +119,7 @@ SynchronizedData SchlamSystem::getNextSynchronizedData() {
     while (imageData && imageData->mTimestamp.time_since_epoch() < highestTimestamp && !dataset_->empty()) {
         imageData = dataset_->getNextImageData();
     }
+    if (!imageData) return {};
 
     while (imuData && imuData->mTimestamp.time_since_epoch() < highestTimestamp && !dataset_->empty()) {
         imuData = dataset_->getNextIMUData();
@@ -149,7 +154,9 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
         return;
     }
 
-    plotter_->addGroundTruthCameraPosition(data.cameraToWorld->mTranslation);
+    if (data.cameraToWorld) {
+        plotter_->addGroundTruthCameraPosition(data.cameraToWorld->mTranslation);
+    }
 
     auto oldFrame = referenceFrame_.get();
     auto [matches, _] = matchWindow(oldFrame->mKeypointTree,
@@ -179,8 +186,8 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
 {pts2D_1, pts2D_2}, R, t, filtered_pts, data.imageData->mIntrinsics
         );
 
-        // Use the GT camera baseline to put translation and points in metres.
-        if (scaleToBaseline(referenceGTCameraPose_, data.cameraToWorld, t_opt, pts_opt)) return;
+        if (referenceGTCameraPose_ && data.cameraToWorld &&
+            scaleToBaseline(referenceGTCameraPose_, data.cameraToWorld, t_opt, pts_opt)) return;
 
         const std::string frameName = "pred/cam0";
         const auto referenceToNew = std::make_shared<tft::RigidTransform3D>(
@@ -190,6 +197,9 @@ void SchlamSystem::initialize(const SynchronizedData& data) {
         transformer_->registerTransform(referenceCameraToWorld_);
         const auto newCameraToWorld = referenceCameraToWorld_ * referenceToNew->inverse();
         transformer_->registerTransform(newCameraToWorld);
+        if (!referenceGTCameraPose_) {
+            plotter_->addPredictedCameraPosition(referenceCameraToWorld_->mTranslation);
+        }
         plotter_->addPredictedCameraPosition(newCameraToWorld->mTranslation);
         plotter_->updateFrustum(data.imageData, newCameraToWorld);
 
@@ -213,7 +223,9 @@ void SchlamSystem::track(const SynchronizedData& data) {
      // TODO Try if polynomic estimator works better
     auto estimatedPose = motionModel_.estimateLinearAt(data.imageData->mTimestamp);
     plotter_->updateFrustum(data.imageData, estimatedPose);
-    plotter_->addGroundTruthCameraPosition(data.cameraToWorld->mTranslation);
+    if (data.cameraToWorld) {
+        plotter_->addGroundTruthCameraPosition(data.cameraToWorld->mTranslation);
+    }
 
     transformer_->registerTransform(estimatedPose);
 
@@ -383,12 +395,15 @@ void SchlamSystem::triangulateUnmatchedFeatures() {
 
 void SchlamSystem::setFrameAsReference(std::shared_ptr<Frame> frame,
                                        const std::shared_ptr<tft::RigidTransform3D>& cameraToWorld) {
-    referenceCameraToWorld_ = std::make_shared<tft::RigidTransform3D>(
-        referenceFrameName_, "world",
-        cameraToWorld->mRotation, cameraToWorld->mTranslation);
+    referenceCameraToWorld_ = cameraToWorld
+        ? std::make_shared<tft::RigidTransform3D>(referenceFrameName_, "world",
+                                                 cameraToWorld->mRotation, cameraToWorld->mTranslation)
+        : tft::RigidTransform3D::identity(referenceFrameName_, "world");
     referenceGTCameraPose_ = cameraToWorld;
     referenceFrame_ = std::move(frame);
-    plotter_->resetCameraPaths(referenceGTCameraPose_->mTranslation);
+    if (referenceGTCameraPose_) {
+        plotter_->resetCameraPaths(referenceGTCameraPose_->mTranslation);
+    }
 };
 
 SchlamResult SchlamSystem::buildResult(std::size_t processedFrames, double processingMilliseconds) const {

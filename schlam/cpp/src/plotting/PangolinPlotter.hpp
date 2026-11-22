@@ -16,6 +16,7 @@
 // STL
 #include <vector>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <memory>
@@ -78,6 +79,7 @@ public:
             const Theme& aTheme, const double aRatio, const bool ZUP);
 
     ~PangolinPlotter() = default;
+    bool shouldQuit() const override { return mQuit.load(); }
 
     bool shouldPause() override;
 
@@ -109,6 +111,7 @@ public:
     void run() override;
 
 private:
+    std::atomic<bool> mQuit{false};
     const Theme mTheme;
     const bool mZUP{false};
     std::atomic_bool mPause{false};

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 
 namespace schlam::config {
@@ -9,6 +10,8 @@ namespace schlam::config {
 struct Dataset {
     std::string type = "MAVDataset";
     std::string sequence = "V1_02_medium";
+    std::filesystem::path calibrationFile;
+    std::string source;
 };
 
 struct Plotter {

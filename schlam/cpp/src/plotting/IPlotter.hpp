@@ -14,6 +14,7 @@ class QuadTreeNode;
 class IPlotter {
 public:
     virtual bool shouldPause() = 0;
+    virtual bool shouldQuit() const { return false; }
     virtual void setMap(const Map* map) = 0;
     // The predicted pose maps the camera into world coordinates.
     virtual void updateFrustum(const std::shared_ptr<ImageData> aImageData,

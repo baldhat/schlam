@@ -1,5 +1,6 @@
 #include "data/datasets/MAVDataset.hpp"
 #include "data/datasets/KittiDataset.hpp"
+#include "data/datasets/FFMPEGDataset.hpp"
 
 #include "plotting/PangolinPlotter.hpp"
 #include "plotting/DummyPlotter.h"
@@ -16,8 +17,11 @@
 #include <stdexcept>
 #include <opencv2/core.hpp>
 
+extern "C" {
+#include <libavutil/log.h>
+}
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) try {
     const auto settings = schlam::config::ConfigParser::load(
         argc == 2 ? argv[1] : SCHLAM_DEFAULT_CONFIG_PATH);
     utils::randomEngine().seed(settings.reconstruction.randomSeed);
@@ -27,6 +31,9 @@ int main(int argc, char** argv) {
     std::shared_ptr<DatasetInterface> dataloader;
     if (settings.dataset.type == "MAVDataset") {
         dataloader = std::make_shared<MAVDataset>(pTransformer, settings.dataset.sequence);
+    } else if (settings.dataset.type == "FFMPEGDataset") {
+        av_log_set_level(AV_LOG_QUIET);
+        dataloader = std::make_shared<FFMPEGDataset>(settings.dataset.calibrationFile, settings.dataset.source);
     } else {
         dataloader = std::make_shared<KittiDataset>(pTransformer, settings.dataset.sequence);
     }
@@ -52,7 +59,11 @@ int main(int argc, char** argv) {
     SchlamSystem schlamSystem(dataloader, pTransformer, plotter, featureDetector, optimizer, motionModel, settings);
     const auto result = schlamSystem.run();
 
-    std::cout << "Finished with " << dataloader->percentageRead() << "% of data processed." << std::endl;
+    if (settings.dataset.type == "FFMPEGDataset") {
+        std::cout << "Processed " << result.processedFrames << " video frames." << std::endl;
+    } else {
+        std::cout << "Finished with " << dataloader->percentageRead() << "% of data processed." << std::endl;
+    }
     std::cout << "Created " << result.mapPoints.size() << " map points and "
               << result.predictedPath.size() << " predicted poses at "
               << result.averageFrameRate << " FPS." << std::endl;
@@ -60,9 +71,11 @@ int main(int argc, char** argv) {
     int exitCode = 0;
     try {
         const auto validation = SchlamValidator().validate(result);
-        std::cout << "Trajectory validation: " << validation.message << " ("
-                  << validation.matchedPoses << "/" << validation.estimatedPoses
-                  << " poses associated)." << std::endl;
+        if (dataloader->hasGT()) {
+            std::cout << "Trajectory validation: " << validation.message << " ("
+                      << validation.matchedPoses << "/" << validation.estimatedPoses
+                      << " poses associated)." << std::endl;
+        }
         if (validation.trackingCoverage) {
             std::cout << "Tracking coverage of processed frames: "
                       << 100.0 * *validation.trackingCoverage << "%." << std::endl;
@@ -86,4 +99,7 @@ int main(int argc, char** argv) {
     }
     std::cout << "Plotter finished..." << std::endl;
     return exitCode;
+} catch (const std::exception& error) {
+    std::cerr << error.what() << std::endl;
+    return 1;
 }

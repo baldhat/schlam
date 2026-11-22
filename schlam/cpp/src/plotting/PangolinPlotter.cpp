@@ -947,5 +947,6 @@ void PangolinPlotter::run() {
 
         pangolin::FinishFrame();
     }
+    mQuit = true;
     mKeyFrameTextures.clear();
 }

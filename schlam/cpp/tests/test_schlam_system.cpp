@@ -16,6 +16,8 @@ class MemoryDataset : public DatasetInterface {
 public:
     std::vector<cv::Mat> images;
     std::size_t index = 0;
+    bool provideGroundTruth = true;
+    bool streamEndsOnRead = false;
     Eigen::Vector3d origin{3, 4, 5};
     Eigen::Matrix3d orientation = Eigen::Matrix3d::Identity();
     std::chrono::nanoseconds gtTimestampOffset{0};
@@ -29,16 +31,21 @@ public:
     }
     double getImageAspectRatio() override { return 1.0; }
     bool hasIMU() override { return false; }
-    bool hasGT() override { return true; }
-    bool empty() override { return index == images.size(); }
+    bool hasGT() override { return provideGroundTruth; }
+    bool empty() override { return !streamEndsOnRead && index == images.size(); }
     Eigen::Matrix3d getCameraIntrinsics() override { return intrinsics; }
     float percentageRead() override { return images.empty() ? 100 : 100.0 * index / images.size(); }
     std::shared_ptr<ImageData> getNextImageData() override {
+        if (index == images.size()) {
+            streamEndsOnRead = false;
+            return nullptr;
+        }
         const auto current = index++;
         return std::make_shared<ImageData>(timestamp(current), images[current], intrinsics, "gt/cam0");
     }
     std::shared_ptr<IMUData> getNextIMUData() override { return nullptr; }
     std::shared_ptr<GTData> getNextGTData() override {
+        if (!provideGroundTruth) return nullptr;
         const auto gtTimestamp = groundTruthTimestamps.empty() ? timestamp(index - 1) + gtTimestampOffset :
             groundTruthTimestamps.at(groundTruthIndex++);
         return std::make_shared<GTData>(gtTimestamp,
@@ -157,6 +164,23 @@ TEST_F(SchlamSystemResultTest, InitializedRunReturnsWorldMapAndTimestampedPath) 
     ASSERT_EQ(validation.status, SchlamValidator::Status::SUCCESS);
     EXPECT_EQ(validation.matchedPoses, 3);
     EXPECT_LT(validation.absoluteTranslation->rmse, 0.01);
+}
+
+TEST_F(SchlamSystemResultTest, ImageOnlyStreamTracksFromOriginAndHandlesEndOfStream) {
+    addTranslatedTextureFrames(3);
+    dataset->provideGroundTruth = false;
+    dataset->streamEndsOnRead = true;
+    const auto result = run();
+
+    EXPECT_TRUE(result.groundTruthPath.empty());
+    EXPECT_FALSE(result.mapPoints.empty());
+    EXPECT_EQ(result.finalTrackingState, TrackingState::TRACKING);
+    EXPECT_EQ(result.processedFrames, 3);
+    EXPECT_TRUE(dataset->empty());
+    ASSERT_EQ(result.predictedPath.size(), 3);
+    EXPECT_TRUE(result.predictedPath.front().position.isZero());
+    EXPECT_TRUE(result.predictedPath.front().rotation.isIdentity());
+    EXPECT_GT(result.predictedPath.back().position.norm(), 0.0);
 }
 
 TEST_F(SchlamSystemResultTest, LostTrackingReturnsLastMapAndPathWithoutReadingAnotherFrame) {
