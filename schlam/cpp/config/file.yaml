@@ -1,7 +1,7 @@
 dataset:
   type: FFMPEGDataset
   calibrationFile: ~/dev/network/calibration.yaml
-  source: ~/dev/network/recording.avi
+  source: ~/dev/network/sequence1.avi
 
 plotter:
   type: PangolinPlotter
