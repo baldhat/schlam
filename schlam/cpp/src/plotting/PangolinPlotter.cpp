@@ -716,6 +716,7 @@ void PangolinPlotter::setFeatureTexture(const cv::Mat &aImage, const cv::Mat& aT
 }
 
 void PangolinPlotter::setMatcherTexture(const cv::Mat &aImage) {
+    std::lock_guard guard(mMatchImageMutex);
     mMatcherImage = aImage;
     mMatcherImageChanged = true;
 }
@@ -750,6 +751,7 @@ void PangolinPlotter::showMatches() {
     if (mMatcherImage.empty()) return;
 
     if (mMatcherImageChanged) {
+        std::lock_guard guard(mMatchImageMutex);
         mMatcherImageTexture = std::make_unique<pangolin::GlTexture>(
             mMatcherImage.cols,
             mMatcherImage.rows,

@@ -162,6 +162,7 @@ private:
     // Matcher Image
     mutable std::unique_ptr<pangolin::GlTexture> mMatcherImageTexture;
     cv::Mat mMatcherImage;
+    std::mutex mMatchImageMutex;
     std::atomic_bool mMatcherImageChanged{false};
 
 

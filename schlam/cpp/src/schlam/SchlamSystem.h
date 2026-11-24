@@ -126,7 +126,7 @@ private:
         std::vector<Eigen::Vector3d> pts_opt
     );
 
-    void triangulateUnmatchedFeatures();
+    void triangulateUnmatchedFeatures(const std::size_t frameId);
 
     void initialize(const SynchronizedData& data);
     void track(const SynchronizedData& data);

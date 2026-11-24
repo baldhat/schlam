@@ -20,6 +20,7 @@
 #include "Ransac.h"
 #include "helpers/utils.h"
 #include "data/DatasetInterface.hpp"
+#include "optimization/CovisibilityHelpers.h"
 #include "tft/transformer.hpp"
 #include "plotting/IPlotter.hpp"
 
@@ -315,7 +316,7 @@ void SchlamSystem::localMapping() {
         auto frame = map_->mKeyFrames.at(frameId);
         map_->cullMapPoints();
 
-        triangulateUnmatchedFeatures();
+        triangulateUnmatchedFeatures(frameId);
 
         optimizer_->optimizeCovisibilityGraph(map_.get(), std::prev(map_->mKeyFrames.end())->second,
             settings_.optimizer.localMaxVariableKeyframes, settings_.optimizer.localMaxFixedKeyframes);
@@ -360,17 +361,24 @@ void SchlamSystem::buildMap(std::string prevFrameName,
     }
 }
 
-void SchlamSystem::triangulateUnmatchedFeatures() {
-    // TODO use covisibility graph instead?
-    std::size_t lastNKeyframes = settings_.mapping.triangulationPreviousKeyframes;
-    auto start = std::prev(map_->mKeyFrames.end(), std::min(lastNKeyframes, map_->mKeyFrames.size() - 1));
-    auto latest = std::prev(map_->mKeyFrames.end());
+void SchlamSystem::triangulateUnmatchedFeatures(const std::size_t frameId) {
+    std::size_t numNeighbors = settings_.mapping.triangulationNumNeighbors;
+    std::size_t numShared = settings_.mapping.triangulationMinimumSharedObservedCount;
+    auto neighbors = getCovisibilityNeighbors(map_.get(), frameId, numNeighbors, numShared);
 
-    for (auto it = start; it != latest; ++it) {
-        auto matches = matchUnmatchedFeatures(it->second, latest->second,
+    if (neighbors.size() < numNeighbors) {
+        std::cout << "[WARN]: Could not find " << numNeighbors << " neighbors in covisibility graph! Only found "
+        << neighbors.size() << "." << std::endl;
+    }
+
+    auto& frame = map_->mKeyFrames.at(frameId);
+
+    for (auto& neighbor : neighbors) {
+        auto& neighborFrame = map_->mKeyFrames.at(neighbor.first);
+        auto matches = matchUnmatchedFeatures(neighborFrame, frame,
             settings_.mapping.triangulationMatchHammingDistance);
-        auto transform = latest->second.mMapToCamera * it->second.mMapToCamera->inverse();
-        auto optionalResult = reconstructor_.triangulate(matches[0], matches[1], latest->second.mIntrinsics, transform);
+        auto transform = frame.mMapToCamera * neighborFrame.mMapToCamera->inverse();
+        auto optionalResult = reconstructor_.triangulate(matches[0], matches[1], frame.mIntrinsics, transform);
         if (optionalResult.has_value()) {
             // add new MapPoints and observations
             auto [pts, inliers] = optionalResult.value();
@@ -379,16 +387,15 @@ void SchlamSystem::triangulateUnmatchedFeatures() {
             for (std::size_t i = 0; i < pts.size(); i++) {
                 if (inliers[i]) {
                     numInliers++;
-                    const auto pointInMap = it->second.mMapToCamera->inverse()->apply(pts[i]);
-                    const auto pointId = map_->addMapPoint(pointInMap, matches[0][i], latest->second.mId);
+                    const auto pointInMap = neighborFrame.mMapToCamera->inverse()->apply(pts[i]);
+                    const auto pointId = map_->addMapPoint(pointInMap, matches[0][i], frame.mId);
                     map_->mPoints.at(pointId).addTriangulationObservation(matches[1][i]->getDescriptor());
                     newMapPointIds.push_back(pointId);
-                    map_->addObservation(it->second.mId, matches[0][i]->getIndex().value(), pointId);
-                    map_->addObservation(latest->second.mId, matches[1][i]->getIndex().value(), pointId);
+                    map_->addObservation(neighborFrame.mId, matches[0][i]->getIndex().value(), pointId);
+                    map_->addObservation(frame.mId, matches[1][i]->getIndex().value(), pointId);
                 }
             }
             std::cout << "Triangulated " << numInliers << " new MapPoints!" << std::endl;
-            // TODO look for matches in the other keyframes
         }
     }
 }

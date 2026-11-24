@@ -93,7 +93,7 @@ Config ConfigParser::load(const std::filesystem::path& path) {
     read(n, "minimumVisibilityCount", c.mapPoints.minimumVisibilityCount); read(n, "minimumTrackingSuccessRate", c.mapPoints.minimumTrackingSuccessRate);
     n.reset(section(root, "mapping"));
     read(n, "keyframeMinimumInliers", c.mapping.keyframeMinimumInliers); read(n, "keyframeMaximumInliers", c.mapping.keyframeMaximumInliers);
-    read(n, "keyframeMinimumFrameGapWhenBusy", c.mapping.keyframeMinimumFrameGapWhenBusy); read(n, "triangulationPreviousKeyframes", c.mapping.triangulationPreviousKeyframes);
+    read(n, "keyframeMinimumFrameGapWhenBusy", c.mapping.keyframeMinimumFrameGapWhenBusy); read(n, "triangulationNumNeighbors", c.mapping.triangulationNumNeighbors);
     read(n, "triangulationMatchHammingDistance", c.mapping.triangulationMatchHammingDistance); read(n, "queueCapacity", c.mapping.queueCapacity);
     n.reset(section(root, "optimizer"));
     read(n, "pyramidScaleFactor", c.optimizer.pyramidScaleFactor); read(n, "monocularChi2Threshold", c.optimizer.monocularChi2Threshold);

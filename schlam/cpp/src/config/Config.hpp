@@ -73,8 +73,9 @@ struct MapPoints {
 struct Mapping {
     std::size_t keyframeMinimumInliers = 25;
     std::size_t keyframeMaximumInliers = 100;
-    std::size_t keyframeMinimumFrameGapWhenBusy = 5;
-    std::size_t triangulationPreviousKeyframes = 5;
+    std::size_t keyframeMinimumFrameGapWhenBusy = 3;
+    std::size_t triangulationNumNeighbors = 3;
+    std::size_t triangulationMinimumSharedObservedCount = 10;
     int triangulationMatchHammingDistance = 30;
     std::size_t queueCapacity = 1;
 };
