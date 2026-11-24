@@ -14,6 +14,10 @@
 
 #include <g2o/core/sparse_optimizer.h>
 
+namespace g2o {
+    class EdgeSE3ProjectXYZ;
+}
+
 class Map;
 class KeyFrame;
 
@@ -22,6 +26,12 @@ struct PoseOptimizationResult {
     Eigen::Vector3d translation;
     // Indexes the input observations. Rejected first-pass matches stay rejected.
     std::vector<bool> inliers;
+};
+
+struct ProjectionObservation {
+    MapPointId pointId;
+    g2o::EdgeSE3ProjectXYZ* edge;
+    double inverseVariance;
 };
 
 class Optimizer {

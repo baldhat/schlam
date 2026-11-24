@@ -42,12 +42,12 @@ struct Reconstruction {
     double scoreChi2 = 5.991;
     double reprojectionErrorSquared = 4.0;
     double triangulationCosParallax = 0.99998;
-    double homographyTriangulationCosParallax = 0.9999;
+    double homographyTriangulationCosParallax = 0.99998;
     double solutionAmbiguityRatio = 0.75;
     double minimumTriangulatedRatio = 0.9;
     double minimumParallaxDegrees = 1.0;
     int essentialParallaxRank = 30;
-    int homographyParallaxRank = 50;
+    int homographyParallaxRank = 30;
 };
 
 struct Initialization {
@@ -90,6 +90,8 @@ struct Optimizer {
     std::size_t localMaxVariableKeyframes = 20;
     std::size_t localMaxFixedKeyframes = 40;
     std::uint32_t localMinimumSharedPoints = 15;
+    double localMinimumInlierRatio = 0.75;
+    bool localRemoveOutlierPoints = true;
     std::size_t fullMapMinimumInlierObservations = 2;
     double fullMapMinimumInlierRatio = 0.8;
 };

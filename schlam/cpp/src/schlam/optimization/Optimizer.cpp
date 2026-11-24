@@ -388,11 +388,6 @@ bool Optimizer::optimizeFullMap(Map* map, bool removeOutlierPoints) {
         vertex_id++;
     }
 
-    struct ProjectionObservation {
-        MapPointId pointId;
-        g2o::EdgeSE3ProjectXYZ* edge;
-        double inverseVariance;
-    };
     std::vector<ProjectionObservation> projectionObservations;
 
     // Create edges between poses and points
@@ -613,6 +608,7 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     }
 
 
+    std::vector<ProjectionObservation> projectionObservations;
     // Create edges between poses and points
     for (const auto& pointId : optimizedPoints) {
         const auto& point = map->mPoints.at(pointId);
@@ -632,6 +628,10 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
                 edge->setRobustKernel(new g2o::RobustKernelHuber);
 
                 optimizer.addEdge(edge);
+                if (mSettings.localRemoveOutlierPoints) {
+                    const double inverseVariance = std::pow(mSettings.pyramidScaleFactor, -2.0 * keypoint->getLevel());
+                    projectionObservations.push_back({pointId, edge, inverseVariance});
+                }
             }
         }
     }
@@ -644,8 +644,9 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
     if (!optimizer.initializeOptimization()) return false;
     optimizer.setVerbose(false);
     optimizer.setForceStopFlag(&stopCovisibility_);
-    optimizer.optimize(mSettings.localIterations);
+    auto success = optimizer.optimize(mSettings.localIterations);
     stopCovisibility_ = false;
+    if (!success) return false;
 
     // Validate before publishing to the map
     for (const auto& [frameId, vertexId] : frameToVertexId) {
@@ -673,6 +674,29 @@ bool Optimizer::optimizeCovisibilityGraph(Map* map, KeyFrame& keyframe, std::siz
         Eigen::Vector3d optimized_point = v_point->estimate();
         map->updateMapPointPosition(pointId, optimized_point);
     }
+
+    if (mSettings.localRemoveOutlierPoints) {
+        std::set<MapPointId> outlierPointIds;
+        std::unordered_map<MapPointId, std::size_t> inlierObservationCounts;
+        std::unordered_map<MapPointId, std::size_t> numTested;
+        for (const auto& observation : projectionObservations) {
+            observation.edge->computeError();
+            const double normalizedChi2 = observation.edge->chi2() * observation.inverseVariance;
+            numTested[observation.pointId] = numTested.contains(observation.pointId) ? numTested.at(observation.pointId) + 1 : 1;
+            if (observation.edge->isDepthPositive() && std::isfinite(normalizedChi2) &&
+                normalizedChi2 <= mSettings.monocularChi2Threshold)
+                ++inlierObservationCounts[observation.pointId];
+        }
+        for (const auto& pointId : optimizedPoints) {
+            const auto inlierCount = inlierObservationCounts[pointId];
+            const auto inlierRatio = static_cast<double>(inlierCount) / numTested.at(pointId);
+            if (inlierRatio < mSettings.localMinimumInlierRatio)
+                outlierPointIds.insert(pointId);
+        }
+        for (const auto pointId : outlierPointIds) map->removePoint(pointId);
+        std::cout << "Removed " << outlierPointIds.size() << " outlier map points" << std::endl;
+    }
+
     return true;
 
 }
