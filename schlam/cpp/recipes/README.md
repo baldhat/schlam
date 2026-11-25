@@ -1,6 +1,6 @@
 # Local Conan packages
 
-The application requires two packages built from pinned upstream source:
+The default build uses two packages built from pinned upstream source.
 
 | Package | Upstream revision | Purpose |
 | --- | --- | --- |
@@ -16,7 +16,7 @@ sudo apt-get update
 xargs -r -a schlam/cpp/recipes/system-packages-ubuntu.txt sudo apt-get install -y
 ```
 
-[`system-packages-ubuntu.txt`](system-packages-ubuntu.txt) includes the project's build and graphics dependencies, the apt requirements of the locked `xorg/system`, `xkeyboard-config/system`, `vaapi/system`, and `vdpau/system` recipes, and headers for Pangolin's Wayland backend autodetection. OpenCV's current options enable FFmpeg and Wayland, so these system libraries are needed even when the application uses `DummyPlotter`.
+[`system-packages-ubuntu.txt`](system-packages-ubuntu.txt) includes the project's build and graphics dependencies, the apt requirements of the locked `xorg/system`, `xkeyboard-config/system`, `vaapi/system`, and `vdpau/system` recipes, and headers for Pangolin's Wayland backend autodetection. OpenCV enables FFmpeg and Wayland in both builds, so install their system dependencies for headless builds as well.
 
 Conan checks these packages without installing them on the self hosted runner. The GitHub hosted PR job installs the same list. If the lockfile or dependency options change, review the list against the new recipes' `system_requirements()` methods.
 
@@ -40,6 +40,22 @@ Replace `Release` with `Debug` throughout for a Debug build. Keep your existing 
 Activate `conanrun.sh` in each new shell before building, testing, or running the app. `VirtualRunEnv` supplies the Conan shared-library paths, including Pangolin's transitive libraries. Activation is needed during the build because GoogleTest executes the test binary to discover tests. CI activates it separately in the build, test, and headless steps because steps do not share shell environments.
 
 `conan create --build=missing` exports the recipe and reuses a matching binary from the runner account's Conan cache, normally `~/.conan2` or the configured `CONAN_HOME`. Each build type needs its own binary. Recipe, dependency, and compiler changes can require a new build. Keep the cache between jobs to reuse packages on later pushes.
+
+## Building without Pangolin
+
+After setting up Conan and creating the g2o package as shown above, run these commands from `schlam/cpp`. You can skip `conan create recipes/pangolin`.
+
+```sh
+conan install . -o '&:with_pangolin=False' -s build_type=Release -s compiler.cppstd=23 --lockfile=conan.lock --build=missing
+cmake --preset conan-headless-release
+source build/headless/Release/generators/conanrun.sh
+cmake --build --preset conan-headless-release --parallel "$(nproc)"
+ctest --preset conan-headless-release --output-on-failure
+```
+
+The Conan toolchain sets `SCHLAM_WITH_PANGOLIN=OFF` in CMake. This build omits `PangolinPlotter` and the `tft` visualization executable. `build/headless/Release/app` uses `DummyPlotter` with any YAML config. For Debug, use `build_type=Debug`, the `conan-headless-debug` preset, and `build/headless/Debug`.
+
+## CI and dataset validation
 
 The [GitHub Actions workflow](../../../.github/workflows/cpp.yml) builds and tests both Debug and Release on every push, then runs `config/mav_headless.yaml` and `config/kitti_headless.yaml` for Release. The runner defaults are `MAV_PATH=/home/baldhat/data/mav/vicon_room1` and `KITTI_PATH=/home/baldhat/data/kitti`; repository Actions variables with the same names can override them. The KITTI root must contain `data_odometry_gray`, `data_odometry_calib`, and `data_odometry_poses`.
 

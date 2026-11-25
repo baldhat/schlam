@@ -2,8 +2,12 @@
 #include "data/datasets/KittiDataset.hpp"
 #include "data/datasets/FFMPEGDataset.hpp"
 
-#include "plotting/PangolinPlotter.hpp"
 #include "plotting/DummyPlotter.h"
+
+#if SCHLAM_WITH_PANGOLIN
+#include "plotting/PangolinPlotter.hpp"
+#include <thread>
+#endif
 
 #include "schlam/feature_detection/orb/ORBFeatureDetector.h"
 #include "schlam/optimization/Optimizer.h"
@@ -13,7 +17,7 @@
 #include "config/ConfigParser.hpp"
 #include "random.hpp"
 
-#include <thread>
+#include <iostream>
 #include <stdexcept>
 #include <opencv2/core.hpp>
 
@@ -39,6 +43,7 @@ int main(int argc, char** argv) try {
     }
 
     std::shared_ptr<IPlotter> plotter;
+#if SCHLAM_WITH_PANGOLIN
     std::thread render_loop;
     if (settings.plotter.type == "PangolinPlotter") {
         plotter = std::make_shared<PangolinPlotter>(
@@ -46,7 +51,9 @@ int main(int argc, char** argv) try {
             PangolinPlotter::Theme{}, dataloader->getImageAspectRatio(),
             settings.plotter.zUp);
         render_loop = std::thread([plotter] { plotter->run(); });
-    } else {
+    }
+#endif
+    if (!plotter) {
         plotter = std::make_shared<DummyPlotter>();
     }
 
@@ -94,9 +101,11 @@ int main(int argc, char** argv) try {
         exitCode = 1;
     }
 
+#if SCHLAM_WITH_PANGOLIN
     if (render_loop.joinable()) {
         render_loop.join();
     }
+#endif
     std::cout << "Plotter finished..." << std::endl;
     return exitCode;
 } catch (const std::exception& error) {

@@ -22,10 +22,7 @@ Eigen::Vector3d cameraCenter(const tft::RigidTransform3D& mapToCamera) {
     return -mapToCamera.mRotation.transpose() * mapToCamera.mTranslation;
 }
 
-std::optional<Eigen::Vector2d> projectIntoFrame(
-    const MapPoint& point, const Frame& frame, const tft::RigidTransform3D& mapToCamera) {
-    const Eigen::Vector3d pointInCamera =
-        mapToCamera.mRotation * point.mPosition + mapToCamera.mTranslation;
+std::optional<Eigen::Vector2d> projectIntoFrame(const Eigen::Vector3d& pointInCamera, const Frame& frame) {
     const auto projected = project(pointInCamera, frame.mIntrinsics);
     if (!projected || projected->x() < 0 || projected->x() >= frame.mImage.cols ||
         projected->y() < 0 || projected->y() >= frame.mImage.rows)
@@ -134,8 +131,9 @@ void recordMapPointVisibility(TrackingSnapshot& snapshot, const Frame& frame,
                               const tft::RigidTransform3D& mapToCamera) {
     const auto center = cameraCenter(mapToCamera);
     for (auto& [pointId, point] : snapshot.mapPoints) {
+        auto pointInCamera = mapToCamera.mRotation * point.mPosition + mapToCamera.mTranslation;
         if (point.isViewDirectionCompatible(center) &&
-            projectIntoFrame(point, frame, mapToCamera))
+            projectIntoFrame(pointInCamera, frame))
             snapshot.visibleInTracking.insert_or_assign(pointId, ++point.mVisibleInTracking);
     }
 }
@@ -155,8 +153,13 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
     const auto center = cameraCenter(*mapToCamera);
     for (const auto [pointId, mapPoint] : snapshot.mapPoints) {
         if (!mapPoint.isViewDirectionCompatible(center)) continue;
-        const auto projected = projectIntoFrame(mapPoint, *frame, *mapToCamera);
+
+        auto pointInCamera = mapToCamera->mRotation * mapPoint.mPosition + mapToCamera->mTranslation;
+        const auto projected = projectIntoFrame(pointInCamera, *frame);
         if (!projected) continue;
+
+        auto distance = pointInCamera.norm();
+        
 
         candidates.clear();
         frame->mKeypointTree->getFeatures(

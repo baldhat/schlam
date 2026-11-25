@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(SCHLAM_USE_OPENCV_RECONSTRUCTION
     "Use OpenCV essential-matrix estimation and triangulation for reconstruction" OFF)
+option(SCHLAM_WITH_PANGOLIN "Build the Pangolin viewer and transform demo" ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(SPDLOG_FMT_EXTERNAL)
@@ -17,8 +18,6 @@ find_package(OpenCV REQUIRED)
 find_package(ffmpeg REQUIRED CONFIG)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
-find_package(GLEW REQUIRED)
-find_package(OpenGL REQUIRED COMPONENTS OpenGL EGL)
 find_package(Boost REQUIRED COMPONENTS thread)
 find_package(yaml-cpp REQUIRED)
 find_package(fast-cpp-csv-parser REQUIRED)
@@ -26,7 +25,11 @@ find_package(TBB REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Tracy REQUIRED)
 
-find_package(Pangolin REQUIRED CONFIG)
+if(SCHLAM_WITH_PANGOLIN)
+    find_package(GLEW REQUIRED)
+    find_package(OpenGL REQUIRED COMPONENTS OpenGL EGL)
+    find_package(Pangolin REQUIRED CONFIG)
+endif()
 find_package(g2o REQUIRED CONFIG)
 
 include_directories(
@@ -40,9 +43,6 @@ add_library(${PROJECT_NAME} SHARED
     src/config/Config.hpp
     src/random.cpp
     src/random.hpp
-
-    src/plotting/PangolinPlotter.hpp
-    src/plotting/PangolinPlotter.cpp
 
     src/tft/rigid_transform_3d.cpp
     src/tft/transformable_3d.cpp
@@ -120,7 +120,6 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     spdlog::spdlog
     ${OpenCV_LIBS} 
     Eigen3::Eigen 
-    pango_core pango_display pango_plot pango_image pango_geometry pango_opengl pango_video
     yaml-cpp::yaml-cpp
     Boost::boost Boost::thread
     fast-cpp-csv-parser::fast-cpp-csv-parser
@@ -130,18 +129,30 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     PRIVATE ffmpeg::avformat ffmpeg::avcodec ffmpeg::avutil ffmpeg::swscale
 )
 
+if(SCHLAM_WITH_PANGOLIN)
+    target_sources(${PROJECT_NAME} PRIVATE
+        src/plotting/PangolinPlotter.hpp
+        src/plotting/PangolinPlotter.cpp
+    )
+    target_link_libraries(${PROJECT_NAME} PUBLIC
+        pango_core pango_display pango_plot pango_image pango_geometry pango_opengl pango_video
+    )
+endif()
 
 add_executable(app
     src/main.cpp
     src/tracy_setup.cpp
 )
 target_link_libraries(app PRIVATE ${PROJECT_NAME} ffmpeg::avutil)
-target_compile_definitions(app PRIVATE SCHLAM_DEFAULT_CONFIG_PATH="${PROJECT_SOURCE_DIR}/config/mav.yaml")
-
-add_executable(tft 
-    src/tft/main.cpp
+target_compile_definitions(app PRIVATE
+    SCHLAM_DEFAULT_CONFIG_PATH="${PROJECT_SOURCE_DIR}/config/mav.yaml"
+    SCHLAM_WITH_PANGOLIN=$<BOOL:${SCHLAM_WITH_PANGOLIN}>
 )
-target_link_libraries(tft ${PROJECT_NAME})
+
+if(SCHLAM_WITH_PANGOLIN)
+    add_executable(tft src/tft/main.cpp)
+    target_link_libraries(tft ${PROJECT_NAME})
+endif()
 
 # ----------------------------------------
 # -------------- TESTING -----------------

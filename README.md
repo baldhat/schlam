@@ -53,6 +53,8 @@ ctest --test-dir build/Release --output-on-failure
 
 Replace `Release` with `Debug` throughout to build and test Debug. `conan profile detect --force` replaces the default Conan profile; keep an existing custom profile if you already use one.
 
+Use the Conan option `-o '&:with_pangolin=False'` to build a headless `app` that uses `DummyPlotter` with any YAML config. [Build instructions for the headless variant](schlam/cpp/recipes/README.md#building-without-pangolin).
+
 ### Running
 
 Run these commands from `schlam/cpp`. In each new shell, first run `source build/Release/generators/conanrun.sh` so shared libraries resolve from Conan. This activation is also required during the build because GoogleTest runs the test binary to discover tests. Pass a YAML config as the executable's argument to select the dataset, sequence, plotter, and component parameters:
@@ -150,7 +152,7 @@ schlam/
 │   ├── tests/          # GTest unit tests
 │   ├── config/         # MAV, KITTI, and headless YAML configs
 │   ├── recipes/        # Pinned g2o and Pangolin Conan recipes
-│   ├── conanfile.txt    # Conan dependencies
+│   ├── conanfile.py     # Conan dependencies and build options
 │   └── conan.lock       # Dependency recipe revisions
 └── python/             # PyTorch/pyceres prototype pipeline
 ```

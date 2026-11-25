@@ -116,6 +116,7 @@ void Map::applyTrackingSnapshot(const TrackingSnapshot& snapshot) {
 void Map::addObservation(KeyFrameId keyFrameId, std::size_t featureIndex, MapPointId pointId) {
     std::lock_guard guard(mMutex);
     auto& keyframe = mKeyFrames.at(keyFrameId);
+    if (!mPoints.contains(pointId)) return;
     auto& point = mPoints.at(pointId);
     const auto& feature = keyframe.mKeyPoints.at(featureIndex);
     const auto& existingPoint = keyframe.mObservedPointByFeature.at(featureIndex);
