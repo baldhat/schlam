@@ -313,7 +313,6 @@ void SchlamSystem::localMapping() {
         localMappingIdle_ = false;
         ZoneScoped;
 
-        auto frame = map_->mKeyFrames.at(frameId);
         map_->cullMapPoints();
 
         triangulateUnmatchedFeatures(frameId);
@@ -375,9 +374,10 @@ void SchlamSystem::triangulateUnmatchedFeatures(const std::size_t frameId) {
 
     for (auto& neighbor : neighbors) {
         auto& neighborFrame = map_->mKeyFrames.at(neighbor.first);
-        auto matches = matchUnmatchedFeatures(neighborFrame, frame,
-            settings_.mapping.triangulationMatchHammingDistance);
-        auto transform = frame.mMapToCamera * neighborFrame.mMapToCamera->inverse();
+        const auto neighborToMap = neighborFrame.mMapToCamera->inverse();
+        const auto transform = frame.mMapToCamera * neighborToMap;
+        const auto matches = matchUnmatchedFeatures(neighborFrame, frame,
+            settings_.mapping.triangulationMatchHammingDistance, *transform, settings_.reconstruction.essentialChi2);
         auto optionalResult = reconstructor_.triangulate(matches[0], matches[1], frame.mIntrinsics, transform);
         if (optionalResult.has_value()) {
             // add new MapPoints and observations
@@ -387,7 +387,7 @@ void SchlamSystem::triangulateUnmatchedFeatures(const std::size_t frameId) {
             for (std::size_t i = 0; i < pts.size(); i++) {
                 if (inliers[i]) {
                     numInliers++;
-                    const auto pointInMap = neighborFrame.mMapToCamera->inverse()->apply(pts[i]);
+                    const auto pointInMap = neighborToMap->apply(pts[i]);
                     const auto pointId = map_->addMapPoint(pointInMap, matches[0][i], frame.mId);
                     map_->mPoints.at(pointId).addTriangulationObservation(matches[1][i]->getDescriptor());
                     newMapPointIds.push_back(pointId);

@@ -6,5 +6,5 @@ plotter:
   type: PangolinPlotter
   zUp: true
 
-features:
-  count: 500
+#features:
+#  count: 500

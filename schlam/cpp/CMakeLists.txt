@@ -17,6 +17,7 @@ add_compile_options(-fno-omit-frame-pointer)
 
 find_package(OpenCV REQUIRED)
 find_package(ffmpeg REQUIRED CONFIG)
+find_package(BZip2 REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(Boost REQUIRED COMPONENTS thread)
@@ -127,7 +128,9 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     TBB::tbb
     g2o::core g2o::solver_dense g2o::solver_eigen g2o::types_sim3 g2o::types_slam3d
     Tracy::TracyClient
-    PRIVATE ffmpeg::avformat ffmpeg::avcodec ffmpeg::avutil ffmpeg::swscale
+    PRIVATE
+    ffmpeg::avformat ffmpeg::avcodec ffmpeg::avutil ffmpeg::swscale
+    BZip2::BZip2
 )
 
 if(SCHLAM_WITH_PANGOLIN)

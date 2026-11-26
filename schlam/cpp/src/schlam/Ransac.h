@@ -81,6 +81,9 @@ reconstruct(
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints2,
     const Eigen::Matrix3d &aIntrinsics);
 
+// The pose maps camera 1 into camera 2. The translation is normalized for the epipolar check.
+std::optional<Eigen::Matrix3d> triangulationEssentialMatrix(const tft::RigidTransform3D& pose);
+
 // The transform maps camera 1 into camera 2. Points are in camera 1 and retain
 // correspondence order, including outliers. Epipolar rejects are not triangulated
 // and have zero point entries. Returns nullopt if no point passes the initial

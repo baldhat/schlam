@@ -8,8 +8,13 @@
 #include "helpers/utils.h"
 #include "tft/rigid_transform_3d.hpp"
 #include "Map.h"
+#include "Ransac.h"
 #include "tft/transformer.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <type_traits>
 #include <unordered_set>
 #include <tracy/Tracy.hpp>
 
@@ -190,11 +195,131 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
     return matches;
 }
 
-std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(KeyFrame& frame1, KeyFrame& frame2, const double aMaxDistance) {
-    ZoneScoped;
-    auto unmatched1 = frame1.getUnmatchedFeatures();
-    auto unmatched2 = frame2.getUnmatchedFeatures();
-    auto matches = matchGlobally(unmatched1, unmatched2, aMaxDistance);
+namespace {
+
+struct EpipolarSearch {
+    Eigen::Matrix3d essential;
+    Eigen::Matrix3d inverseIntrinsics;
+    double inverseSigmaSquared;
+    double threshold;
+
+    Eigen::Vector3d normalize(const KeyPoint& point) const {
+        return inverseIntrinsics * Eigen::Vector3d(point.getImgX(), point.getImgY(), 1.0);
+    }
+};
+
+template<class Score, class Distance>
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchKeyFramePair(
+    const KeyFrame& frame1, const KeyFrame& frame2, Score cutoff, const EpipolarSearch* epipolar,
+    const Distance& distance) {
+    std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matches;
+    std::vector<std::size_t> sources;
+    sources.reserve(frame1.mKeyPoints.size());
+    for (std::size_t i = 0; i < frame1.mKeyPoints.size(); ++i) {
+        if (!frame1.mKeyPoints[i]->getMatched()) sources.push_back(i);
+    }
+    std::vector<std::uint8_t> eligible;
+    eligible.reserve(frame2.mKeyPoints.size());
+    for (const auto& point : frame2.mKeyPoints) eligible.push_back(!point->getMatched());
+    auto remainingTargets = std::count(eligible.begin(), eligible.end(), std::uint8_t{1});
+    if (remainingTargets == 0) return matches;
+    std::vector<const KeyPoint*> candidates;
+    const auto targetCount = frame2.mKeyPoints.size();
+
+    for (std::size_t source : sources) {
+        auto bestTarget = targetCount;
+        Score bestDistance = cutoff;
+        const auto consider = [&](std::size_t target, const auto& passesGeometry) {
+            if (!eligible[target]) return false;
+            const auto value = distance(source, target, bestDistance);
+            if (!(value < bestDistance) || !passesGeometry(target)) return false;
+            bestTarget = target;
+            bestDistance = value;
+            return std::is_integral_v<Score> && bestDistance == 0;
+        };
+
+        if (epipolar) {
+            const Eigen::Vector3d p1 = epipolar->normalize(*frame1.mKeyPoints[source]);
+            const Eigen::Vector3d line2 = epipolar->essential * p1;
+            const double normalSquared = line2.head<2>().squaredNorm();
+            if (!(normalSquared >= 1e-9) || !std::isfinite(normalSquared)) continue;
+            const Eigen::Vector3d pixelLine = epipolar->inverseIntrinsics.transpose() * line2;
+            // Keep a half-pixel margin in the tree search. Apply the same symmetric check as triangulation below.
+            const double maxResidual = std::sqrt(epipolar->threshold * (normalSquared / epipolar->inverseSigmaSquared)) +
+                0.5 * pixelLine.head<2>().norm();
+            if (!pixelLine.allFinite() || !std::isfinite(maxResidual)) continue;
+
+            candidates.clear();
+            frame2.mKeypointTree->getFeaturesInBand({pixelLine.x(), pixelLine.y(), pixelLine.z()}, maxResidual, candidates);
+            const auto passesGeometry = [&](std::size_t target) {
+                const Eigen::Vector3d p2 = epipolar->normalize(*frame2.mKeyPoints[target]);
+                const Eigen::Vector3d line1 = epipolar->essential.transpose() * p2;
+                return calculateSymmetricErrorEssential(line2, p2, epipolar->inverseSigmaSquared) <= epipolar->threshold &&
+                       calculateSymmetricErrorEssential(line1, p1, epipolar->inverseSigmaSquared) <= epipolar->threshold;
+            };
+            for (const auto* candidate : candidates) {
+                const auto index = candidate->getIndex();
+                if (index && *index < targetCount && consider(*index, passesGeometry)) break;
+            }
+        } else {
+            for (std::size_t target = 0; target < targetCount; ++target) {
+                if (consider(target, [](std::size_t) { return true; })) break;
+            }
+        }
+        if (bestTarget != targetCount) {
+            matches[0].push_back(frame1.mKeyPoints[source]);
+            matches[1].push_back(frame2.mKeyPoints[bestTarget]);
+            eligible[bestTarget] = false;
+            if (--remainingTargets == 0) break;
+        }
+    }
     return matches;
+}
+
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(
+    KeyFrame& frame1, KeyFrame& frame2, double maxDistance, const EpipolarSearch* epipolar) {
+    const auto& descriptors1 = frame1.packedOrbDescriptors();
+    const auto& descriptors2 = frame2.packedOrbDescriptors();
+    if (descriptors1.size() != frame1.mKeyPoints.size() || descriptors2.size() != frame2.mKeyPoints.size()) {
+        if (!epipolar) return matchGlobally(frame1.getUnmatchedFeatures(), frame2.getUnmatchedFeatures(), maxDistance);
+        return matchKeyFramePair(frame1, frame2, std::min(maxDistance, std::numeric_limits<double>::max()), epipolar,
+            [&](std::size_t source, std::size_t target, double) {
+                return frame1.mKeyPoints[source]->getDescriptor()->getDistance(frame2.mKeyPoints[target]->getDescriptor());
+            });
+    }
+
+    if (!(maxDistance > 0)) return {};
+    // Hamming distances are integers between 0 and 256. Keep the strict floating-point cutoff.
+    const int cutoff = static_cast<int>(std::ceil(std::min(maxDistance, 257.0)));
+    return matchKeyFramePair(frame1, frame2, cutoff, epipolar, [&](std::size_t source, std::size_t target, int limit) {
+        return OrbDescriptor::boundedDistance(descriptors1[source], descriptors2[target], limit);
+    });
+}
+
+} // namespace
+
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(KeyFrame& frame1, KeyFrame& frame2, double maxDistance) {
+    ZoneScoped;
+    return matchUnmatchedFeatures(frame1, frame2, maxDistance, nullptr);
+}
+
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(
+    KeyFrame& source, KeyFrame& target, double maxDistance,
+    const tft::RigidTransform3D& sourceToTarget, double essentialChi2) {
+    ZoneScoped;
+    const auto essential = triangulationEssentialMatrix(sourceToTarget);
+    if (!essential || !essential->allFinite()) return {};
+    if (essentialChi2 == std::numeric_limits<double>::infinity()) {
+        return matchUnmatchedFeatures(source, target, maxDistance, nullptr);
+    }
+    // Keep the normalization used by Reconstructor::triangulate for both views.
+    const Eigen::Matrix3d inverseIntrinsics = target.mIntrinsics.inverse();
+    const double sigma = 1.0 / target.mIntrinsics(0, 0);
+    const double inverseSigmaSquared = 1.0 / (sigma * sigma);
+    if (!inverseIntrinsics.allFinite() ||
+        !(inverseSigmaSquared > 0) || !std::isfinite(inverseSigmaSquared) ||
+        essentialChi2 < 0 || !std::isfinite(essentialChi2)) return {};
+    const EpipolarSearch epipolar{*essential, inverseIntrinsics, inverseSigmaSquared, essentialChi2};
+    return matchUnmatchedFeatures(source, target, maxDistance, &epipolar);
 }
 

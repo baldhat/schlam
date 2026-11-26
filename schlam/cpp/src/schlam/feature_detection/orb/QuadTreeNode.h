@@ -49,6 +49,9 @@ public:
     std::vector<std::shared_ptr<KeyPoint>> getFeatures() const;
     std::vector<std::shared_ptr<KeyPoint>> getFeatures(double xMin, double xMax, double yMin, double yMax) const;
     void getFeatures(double xMin, double xMax, double yMin, double yMax, std::vector<std::shared_ptr<KeyPoint>>& result) const;
+    // Append borrowed features in tree order whose line residual magnitude is at most maxResidual.
+    void getFeaturesInBand(const std::array<double, 3>& line, double maxResidual,
+                           std::vector<const KeyPoint*>& result) const;
 
     void removeChild(const QuadTreeNode* aChild);
 

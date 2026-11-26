@@ -15,6 +15,7 @@ class SchlamConan(ConanFile):
         "eigen/3.4.0",
         "opencv/4.12.0",
         "ffmpeg/7.1.3",
+        "bzip2/1.0.8",
         "boost/1.85.0",
         "yaml-cpp/0.8.0",
         "spdlog/1.13.0",

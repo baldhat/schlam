@@ -82,5 +82,10 @@ matchByProjection(Map* map, std::shared_ptr<Frame> frame,
 
 std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(KeyFrame& frame1, KeyFrame& frame2, const double aMaxDistance);
 
+// Use the known source-to-target pose to restrict matches before triangulation.
+std::array<std::vector<std::shared_ptr<KeyPoint>>, 2> matchUnmatchedFeatures(
+    KeyFrame& source, KeyFrame& target, double maxDistance,
+    const tft::RigidTransform3D& sourceToTarget, double essentialChi2);
+
 
 #endif //SCHLAM_MATCHER_H

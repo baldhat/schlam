@@ -27,6 +27,22 @@ int hamming256(const std::uint8_t* a, const std::uint8_t* b) {
 
 OrbDescriptor::OrbDescriptor(const TDescriptor& descriptor) : mDescriptor(descriptor) {}
 
+OrbDescriptor::Words OrbDescriptor::packedWords() const {
+    return std::bit_cast<Words>(mDescriptor);
+}
+
+#if defined(__x86_64__) && defined(__ELF__) && __has_cpp_attribute(gnu::target_clones)
+[[gnu::target_clones("popcnt", "default")]]
+#endif
+int OrbDescriptor::boundedDistance(const Words& source, const Words& target, int limit) {
+    int distance = 0;
+    for (std::size_t word = 0; word < source.size(); ++word) {
+        distance += std::popcount(source[word] ^ target[word]);
+        if (distance >= limit) return limit;
+    }
+    return distance;
+}
+
 double OrbDescriptor::getDistance(const DescriptorPtr &other) const {
     const auto* orb = dynamic_cast<const OrbDescriptor*>(other.get());
     if (!orb) {

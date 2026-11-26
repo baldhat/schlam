@@ -73,6 +73,18 @@ Reconstructor::reconstructInitial(
     }
 }
 
+std::optional<Eigen::Matrix3d> triangulationEssentialMatrix(const tft::RigidTransform3D& pose) {
+    const double baseline = pose.mTranslation.norm();
+    if (!std::isfinite(baseline) || baseline <= 0) return std::nullopt;
+
+    // E = [t]x R. Normalize t so the epipolar check is independent of baseline scale.
+    const Eigen::Vector3d translation = pose.mTranslation / baseline;
+    Eigen::Matrix3d crossTranslation;
+    crossTranslation << 0, -translation.z(), translation.y(),
+        translation.z(), 0, -translation.x(), -translation.y(), translation.x(), 0;
+    return (crossTranslation * pose.mRotation).eval();
+}
+
 std::optional<std::tuple<std::vector<Eigen::Vector3d>, std::vector<bool>>>
 Reconstructor::triangulate(
     const std::vector<std::shared_ptr<KeyPoint>>& aKeypoints1,
@@ -82,22 +94,16 @@ Reconstructor::triangulate(
     if (!aTransform || aKeypoints1.empty() || aKeypoints1.size() != aKeypoints2.size()) {
         return std::nullopt;
     }
-    const double baseline = aTransform->mTranslation.norm();
-    if (!std::isfinite(baseline) || baseline <= 0) return std::nullopt;
+    const auto essential = triangulationEssentialMatrix(*aTransform);
+    if (!essential) return std::nullopt;
 
     const Eigen::Matrix3d inverseIntrinsics = aIntrinsics.inverse();
     const auto points1 = toNormalized(toEigen(aKeypoints1), inverseIntrinsics);
     const auto points2 = toNormalized(toEigen(aKeypoints2), inverseIntrinsics);
     const Eigen::Matrix4d transform = aTransform->matrix();
 
-    // E = [t]x R. Normalize t so the epipolar check is independent of baseline scale
-    const Eigen::Vector3d translation = aTransform->mTranslation / baseline;
-    Eigen::Matrix3d crossTranslation;
-    crossTranslation << 0, -translation.z(), translation.y(),
-        translation.z(), 0, -translation.x(), -translation.y(), translation.x(), 0;
     std::vector<bool> epipolarInliers;
-    checkEssential(crossTranslation * aTransform->mRotation, {points1, points2},
-                   epipolarInliers, 1.0 / aIntrinsics(0, 0));
+    checkEssential(*essential, {points1, points2}, epipolarInliers, 1.0 / aIntrinsics(0, 0));
 
     std::vector<Eigen::Vector3d> points(points1.size(), Eigen::Vector3d::Zero());
     std::vector<bool> inliers(points1.size(), false);

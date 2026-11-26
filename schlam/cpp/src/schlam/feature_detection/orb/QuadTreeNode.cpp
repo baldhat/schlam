@@ -125,6 +125,28 @@ std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures(double xMin, do
     return result;
 }
 
+void QuadTreeNode::getFeaturesInBand(const std::array<double, 3>& line, double maxResidual,
+                                     std::vector<const KeyPoint*>& result) const {
+    const auto [a, b, c] = line;
+    const double minX = a >= 0 ? mBounds.left : mBounds.right;
+    const double maxX = a >= 0 ? mBounds.right : mBounds.left;
+    const double minY = b >= 0 ? mBounds.top : mBounds.bottom;
+    const double maxY = b >= 0 ? mBounds.bottom : mBounds.top;
+    if (a * minX + b * minY + c > maxResidual || a * maxX + b * maxY + c < -maxResidual) return;
+
+    if (isLeaf()) {
+        for (const auto& feature : mFeatures) {
+            if (std::abs(a * feature->getImgX() + b * feature->getImgY() + c) <= maxResidual) {
+                result.push_back(feature.get());
+            }
+        }
+    } else {
+        for (const auto& child : mChildren) {
+            if (child) child->getFeaturesInBand(line, maxResidual, result);
+        }
+    }
+}
+
 void QuadTreeNode::removeChild(const QuadTreeNode *aChild) {
     for (auto& child : mChildren) {
         if (child.get() == aChild) {

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Frame.h"
+#include "feature_detection/orb/OrbDescriptor.h"
 #include "tft/rigid_transform_3d.hpp"
 
 
@@ -19,7 +20,8 @@ public:
       const KeyFrameId id,
       const Frame& frame);
 
-    std::vector<std::shared_ptr<KeyPoint>> getUnmatchedFeatures();
+    std::vector<std::shared_ptr<KeyPoint>> getUnmatchedFeatures() const;
+    const std::vector<OrbDescriptor::Words>& packedOrbDescriptors() const { return mOrbDescriptors; }
 
     const KeyFrameId mId;
     const utils::TTimestamp mTimestamp;
@@ -31,6 +33,10 @@ public:
     std::unordered_map<KeyFrameId, std::uint32_t> mSharedPointCount;
     std::shared_ptr<tft::RigidTransform3D> mMapToCamera;
     cv::Mat mImageData;
+
+private:
+    // Keyframes are created after feature extraction, when their descriptors are complete.
+    std::vector<OrbDescriptor::Words> mOrbDescriptors;
 };
 
 

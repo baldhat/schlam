@@ -13,14 +13,25 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 
 #include "schlam/feature_detection/orb/OrbDescriptor.h"
 
 namespace {
-KeyPoint describedKeyPoint(double x, double y) {
-    return KeyPoint(x, y, 0, 0, 0, std::make_shared<OrbDescriptor>(TDescriptor{}));
+KeyPoint describedKeyPoint(double x, double y, const TDescriptor& descriptor = {}) {
+    return KeyPoint(x, y, 0, 0, 0, std::make_shared<OrbDescriptor>(descriptor));
+}
+
+KeyFrame matchingKeyFrame(KeyFrameId id, const std::vector<KeyPoint>& points,
+                         const Eigen::Matrix3d& intrinsics = Eigen::Matrix3d::Identity(), bool divide = false) {
+    cv::Mat image(100, 100, CV_8UC1);
+    auto data = std::make_shared<ImageData>(utils::TTimestamp{}, image, intrinsics, "camera");
+    Frame frame(data);
+    frame.mKeypointTree = std::make_shared<QuadTreeNode>(0, 100, 0, 100, points);
+    if (divide) frame.mKeypointTree->divide();
+    return KeyFrame(id, frame);
 }
 }
 
@@ -204,6 +215,61 @@ TEST(MatcherTest, GlobalMatchesOwnFeaturesAndUseEachTargetOnce) {
     target.reset();
     EXPECT_EQ(matches[0][0]->getImgX(), 25);
     EXPECT_EQ(matches[1][0]->getImgY(), 75);
+}
+
+TEST(MatcherTest, PackedKeyFrameMatchingPreservesCutoffsTiesAndFeatureAvailability) {
+    TDescriptor oneBit{}, twoBits{};
+    oneBit[31] = 1;
+    twoBits[31] = 3;
+    auto source = matchingKeyFrame(0, {describedKeyPoint(10, 20), describedKeyPoint(20, 20), describedKeyPoint(30, 20)});
+    auto target = matchingKeyFrame(1, {describedKeyPoint(10, 30, oneBit), describedKeyPoint(20, 30, oneBit),
+        describedKeyPoint(30, 30, twoBits)});
+
+    for (double cutoff : {0.0, 1.0, 1.5, 2.0, 2.5, 256.0, 257.0}) {
+        SCOPED_TRACE(cutoff);
+        EXPECT_EQ(matchUnmatchedFeatures(source, target, cutoff),
+            matchGlobally(source.getUnmatchedFeatures(), target.getUnmatchedFeatures(), cutoff));
+    }
+    auto matches = matchUnmatchedFeatures(source, target, 2);
+    ASSERT_EQ(matches[1].size(), 2);
+    EXPECT_EQ(matches[1][0], target.mKeyPoints[0]);
+    EXPECT_EQ(matches[1][1], target.mKeyPoints[1]);
+
+    target.mKeyPoints[0]->setObservation(42);
+    source.mKeyPoints[0]->setObservation(43);
+    matches = matchUnmatchedFeatures(source, target, 2);
+    ASSERT_EQ(matches[1].size(), 1);
+    EXPECT_EQ(matches[0][0], source.mKeyPoints[1]);
+    EXPECT_EQ(matches[1][0], target.mKeyPoints[1]);
+}
+
+TEST(MatcherTest, EpipolarMatchingFindsTheBestCandidateInsideTheBand) {
+    Eigen::Matrix3d intrinsics;
+    intrinsics << 100, 0, 50, 0, 200, 50, 0, 0, 1;
+    TDescriptor oneBit{};
+    oneBit[0] = 1;
+    auto source = matchingKeyFrame(0, {describedKeyPoint(70, 48)}, intrinsics);
+    auto target = matchingKeyFrame(1, {describedKeyPoint(40, 76), describedKeyPoint(40, 52, oneBit)}, intrinsics, true);
+    const tft::RigidTransform3D sourceToTarget("source", "target", Eigen::Matrix3d::Identity(), Eigen::Vector3d(-1, 0, 0));
+
+    const auto ungated = matchUnmatchedFeatures(source, target, 30);
+    ASSERT_EQ(ungated[1].size(), 1);
+    EXPECT_EQ(ungated[1][0]->getImgY(), 76);
+    EXPECT_EQ(matchUnmatchedFeatures(source, target, 30, sourceToTarget, std::numeric_limits<double>::infinity()), ungated);
+
+    // With unequal focal lengths, this four-pixel vertical residual passes the normalized check.
+    const auto gated = matchUnmatchedFeatures(source, target, 30, sourceToTarget, 5.991);
+    ASSERT_EQ(gated[1].size(), 1);
+    EXPECT_EQ(gated[0][0], source.mKeyPoints[0]);
+    EXPECT_EQ(gated[1][0]->getImgY(), 52);
+    EXPECT_TRUE(matchUnmatchedFeatures(source, target, 30, sourceToTarget, 3.0)[1].empty());
+}
+
+TEST(MatcherTest, EpipolarMatchingSkipsAnUntriangulatableZeroBaseline) {
+    auto source = matchingKeyFrame(0, {describedKeyPoint(20, 20)});
+    auto target = matchingKeyFrame(1, {describedKeyPoint(20, 20)});
+    const auto pose = tft::RigidTransform3D::identity("source", "target");
+    EXPECT_TRUE(matchUnmatchedFeatures(source, target, 30, *pose, 5.991)[1].empty());
 }
 
 TEST(MapPointTest, ViewingAngleUsesSixtyDegreeLimit) {
