@@ -81,7 +81,12 @@ MapSnapshot Map::getSnapshot() const {
 TrackingSnapshot Map::getTrackingSnapshot() const {
     ZoneScoped;
     std::lock_guard guard(mMutex);
-    return {mPoints, {}, {}, mFrame};
+    TrackingSnapshot snapshot;
+    snapshot.frame = mFrame;
+    for (const auto& [id, point] : mPoints) {
+        snapshot.mapPoints.emplace_hint(snapshot.mapPoints.end(), id, point.trackingState());
+    }
+    return snapshot;
 }
 
 void Map::updateMapPointPosition(MapPointId pointId, const Eigen::Vector3d& position) {

@@ -18,9 +18,9 @@
 #include <opencv2/core/core.hpp>
 
 #include "KeyPoint.h"
+#include "MapPoint.hpp"
 #include "tft/rigid_transform_3d.hpp"
 
-class MapPoint;
 struct MapPointMatch;
 class Frame;
 class KeyFrame;
@@ -44,7 +44,7 @@ struct Observation {
 };
 
 struct TrackingSnapshot {
-    std::map<MapPointId, MapPoint> mapPoints;
+    std::map<MapPointId, TrackingMapPoint> mapPoints;
     std::map<MapPointId, Observation> newObservations;
     std::map<MapPointId, std::uint64_t> visibleInTracking;
     std::string frame;

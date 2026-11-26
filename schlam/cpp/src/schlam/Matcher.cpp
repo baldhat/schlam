@@ -151,15 +151,12 @@ matchMapPointsByProjection(TrackingSnapshot& snapshot,
     std::unordered_set<std::shared_ptr<KeyPoint>> matchedTargets;
     std::vector<std::shared_ptr<KeyPoint>> candidates;
     const auto center = cameraCenter(*mapToCamera);
-    for (const auto [pointId, mapPoint] : snapshot.mapPoints) {
+    for (const auto& [pointId, mapPoint] : snapshot.mapPoints) {
         if (!mapPoint.isViewDirectionCompatible(center)) continue;
 
         auto pointInCamera = mapToCamera->mRotation * mapPoint.mPosition + mapToCamera->mTranslation;
         const auto projected = projectIntoFrame(pointInCamera, *frame);
         if (!projected) continue;
-
-        auto distance = pointInCamera.norm();
-        
 
         candidates.clear();
         frame->mKeypointTree->getFeatures(

@@ -4,6 +4,7 @@
 
 #include "FastFeatureDetector.h"
 
+#include <bit>
 #include <stdexcept>
 #include <opencv2/core/utility.hpp>
 #include <tracy/Tracy.hpp>
@@ -32,6 +33,8 @@ namespace schlam {
         const uint8_t* imgData = aImage.data;
 
         const int minCardinalSamples = mNumContinuous / 4;
+        const auto arcWidth = std::bit_floor(static_cast<unsigned>(mNumContinuous));
+        const auto remaining = mNumContinuous - arcWidth;
 
         std::array<std::ptrdiff_t, 16> offsets;
         for (int k = 0; k < 16; ++k) {
@@ -82,25 +85,24 @@ namespace schlam {
                                 darker < minCardinalSamples)
                                 continue;
 
-                            int pos_count = 0;
-                            int neg_count = 0;
-
-                            for (int k = 0;
-                                 k < 16 + mNumContinuous - 1; ++k) {
-
-                                const int idx = k < 16 ? k : k - 16;
-                                const int p = *(centerPtr + offsets[idx]);
-
-                                pos_count = p > t_high ? pos_count + 1 : 0;
-                                neg_count = p < t_low ? neg_count + 1 : 0;
-
-                                if (pos_count >= mNumContinuous ||
-                                    neg_count >= mNumContinuous) {
-                                    localFeatures.emplace_back(
-                                        static_cast<uint32_t>(j),
-                                        static_cast<uint32_t>(i));
-                                    break;
-                                }
+                            std::uint32_t brightMask = 0;
+                            std::uint32_t darkMask = 0;
+                            for (unsigned k = 0; k < offsets.size(); ++k) {
+                                const int p = *(centerPtr + offsets[k]);
+                                brightMask |= static_cast<std::uint32_t>(p > t_high) << k;
+                                darkMask |= static_cast<std::uint32_t>(p < t_low) << k;
+                            }
+                            // Repeat the ring so arcs can cross from sample 15 to sample 0.
+                            brightMask |= brightMask << 16;
+                            darkMask |= darkMask << 16;
+                            // Each intersection doubles the length of the runs it represents.
+                            for (unsigned width = 1; width < arcWidth; width *= 2) {
+                                brightMask &= brightMask >> width;
+                                darkMask &= darkMask >> width;
+                            }
+                            if ((brightMask & (brightMask >> remaining)) ||
+                                (darkMask & (darkMask >> remaining))) {
+                                localFeatures.emplace_back(static_cast<uint32_t>(j), static_cast<uint32_t>(i));
                             }
                         }
                     }

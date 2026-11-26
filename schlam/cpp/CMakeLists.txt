@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(SCHLAM_USE_OPENCV_RECONSTRUCTION
     "Use OpenCV essential-matrix estimation and triangulation for reconstruction" OFF)
 option(SCHLAM_WITH_PANGOLIN "Build the Pangolin viewer and transform demo" ON)
+option(SCHLAM_TRACY_TRACK_ALLOCATIONS "Trace app allocations and frees with Tracy" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(SPDLOG_FMT_EXTERNAL)
@@ -139,10 +140,10 @@ if(SCHLAM_WITH_PANGOLIN)
     )
 endif()
 
-add_executable(app
-    src/main.cpp
-    src/tracy_setup.cpp
-)
+add_executable(app src/main.cpp)
+if(SCHLAM_TRACY_TRACK_ALLOCATIONS)
+    target_sources(app PRIVATE src/tracy_setup.cpp)
+endif()
 target_link_libraries(app PRIVATE ${PROJECT_NAME} ffmpeg::avutil)
 target_compile_definitions(app PRIVATE
     SCHLAM_DEFAULT_CONFIG_PATH="${PROJECT_SOURCE_DIR}/config/mav.yaml"

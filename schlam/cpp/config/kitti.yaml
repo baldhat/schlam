@@ -5,3 +5,6 @@ dataset:
 plotter:
   type: PangolinPlotter
   zUp: false
+
+features:
+  count: 500

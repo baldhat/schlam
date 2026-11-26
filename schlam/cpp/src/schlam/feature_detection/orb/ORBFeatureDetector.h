@@ -67,14 +67,11 @@ private:
 
     std::tuple<double, double> applyGradKernels(const cv::Mat &aImage, int x, int y);
 
-    std::unique_ptr<QuadTreeNode> filterWithOctree(std::vector<KeyPoint> &aFeatures, const std::uint32_t aWidth,
-                                                           const std::uint32_t aHeight,
-                                                           const std::uint32_t aNumFeatures);
+    std::vector<std::shared_ptr<KeyPoint>> selectLevelFeatures(std::vector<KeyPoint>& aFeatures,
+        std::uint32_t aWidth, std::uint32_t aHeight, std::uint32_t aNumFeatures);
 
     void rescaleFeatures(std::vector<std::shared_ptr<KeyPoint>>& aFeatures, const double aScale,
                          const std::uint32_t aLevel);
-
-    void retainTopN(QuadTreeNode* aTree, std::uint32_t aTopN);
 
     void distributeFeaturesToLevels();
 };

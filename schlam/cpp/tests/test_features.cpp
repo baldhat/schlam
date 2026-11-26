@@ -29,7 +29,7 @@ protected:
     ORBFeatureDetector detector{1000, nullptr, 1};
 
     auto filter(std::vector<KeyPoint> points, uint32_t count) {
-        return detector.filterWithOctree(points, 100, 100, count);
+        return detector.selectLevelFeatures(points, 100, 100, count);
     }
 
     auto detect(const cv::Mat& image) {
@@ -218,6 +218,28 @@ TEST(MapPointTest, ViewingAngleUsesSixtyDegreeLimit) {
         std::sin(61.0 * radians), 0, std::cos(61.0 * radians))));
 }
 
+TEST(MapPointTest, TrackingSnapshotOwnsTheStateItUsesForMatching) {
+    Map map("world");
+    const auto source = std::make_shared<KeyPoint>(describedKeyPoint(12, 20));
+    const Eigen::Vector3d initialPosition(0, 0, 5);
+    const auto id = map.addMapPoint(initialPosition, source, 0);
+    auto& point = map.mPoints.at(id);
+    point.mVisibleInTracking = 3;
+    point.addViewingObservation(Eigen::Vector3d::Zero());
+
+    const auto snapshot = map.getTrackingSnapshot();
+    map.updateMapPointPosition(id, Eigen::Vector3d(0, 0, -5));
+    point.mVisibleInTracking = 4;
+
+    const auto& captured = snapshot.mapPoints.at(id);
+    EXPECT_EQ(captured.mPosition, initialPosition);
+    EXPECT_EQ(captured.mDescriptor, source->getDescriptor());
+    EXPECT_EQ(captured.mLastInlierDescriptor, source->getDescriptor());
+    EXPECT_EQ(captured.mVisibleInTracking, 3);
+    EXPECT_TRUE(captured.isViewDirectionCompatible(Eigen::Vector3d::Zero()));
+    EXPECT_FALSE(point.isViewDirectionCompatible(Eigen::Vector3d::Zero()));
+}
+
 TEST(MatcherTest, ViewingAngleGatesMatchesAndAcceptedVisibility) {
     cv::Mat image(100, 100, CV_8UC1, cv::Scalar(0));
     Eigen::Matrix3d intrinsics;
@@ -271,15 +293,15 @@ TEST(MatcherTest, WindowMaskIncludesUnmatchedSourcesAtTheirOriginalIndices) {
 }
 
 TEST_F(ORBFeatureDetectorTest, SparseInputPreservesFeatures) {
-    auto tree = filter({KeyPoint(25, 25), KeyPoint(75, 75)}, 1000);
-    EXPECT_EQ(tree->getFeatures().size(), 2);
-    EXPECT_EQ(tree->getFeatures(0, 100, 0, 100).size(), 2);
+    const auto points = filter({KeyPoint(25, 25, 0, 1), KeyPoint(75, 75, 0, 2)}, 1000);
+    ASSERT_EQ(points.size(), 2);
+    EXPECT_EQ(points[0]->getImgX(), 75);
+    EXPECT_EQ(points[1]->getImgX(), 25);
 }
 
 TEST_F(ORBFeatureDetectorTest, FilteringRetainsSingletonLeavesAndHonorsBudget) {
-    auto tree = filter({KeyPoint(25, 25, 0, 4), KeyPoint(75, 25, 0, 3),
+    const auto points = filter({KeyPoint(25, 25, 0, 4), KeyPoint(75, 25, 0, 3),
                         KeyPoint(25, 75, 0, 2), KeyPoint(75, 75, 0, 1)}, 3);
-    auto points = tree->getFeatures();
     ASSERT_EQ(points.size(), 3);
     EXPECT_TRUE(std::all_of(points.begin(), points.end(), [](const auto& point) {
         return point->getScore() >= 2;
@@ -287,15 +309,24 @@ TEST_F(ORBFeatureDetectorTest, FilteringRetainsSingletonLeavesAndHonorsBudget) {
 }
 
 TEST_F(ORBFeatureDetectorTest, FilteringTerminatesForCoincidentFeatures) {
-    auto tree = filter({KeyPoint(25, 25, 0, 1), KeyPoint(25, 25, 0, 3),
+    const auto points = filter({KeyPoint(25, 25, 0, 1), KeyPoint(25, 25, 0, 3),
                         KeyPoint(25, 25, 0, 2)}, 2);
-    ASSERT_EQ(tree->getFeatures().size(), 1);
-    EXPECT_EQ(tree->getFeatures()[0]->getScore(), 3);
+    ASSERT_EQ(points.size(), 1);
+    EXPECT_EQ(points[0]->getScore(), 3);
 }
 
-TEST_F(ORBFeatureDetectorTest, EmptyInputAndZeroBudgetReturnEmptyTrees) {
-    EXPECT_TRUE(filter({}, 1000)->getFeatures().empty());
-    EXPECT_TRUE(filter({KeyPoint(25, 25)}, 0)->getFeatures().empty());
+TEST_F(ORBFeatureDetectorTest, FilteringPreservesQuadrantOrderAfterPruning) {
+    const auto points = filter({KeyPoint(25, 25, 0, 8), KeyPoint(50, 25, 0, 6),
+        KeyPoint(24, 24, 0, 7), KeyPoint(50, 50, 0, 10), KeyPoint(25, 75, 0, 1)}, 3);
+    ASSERT_EQ(points.size(), 3);
+    EXPECT_EQ(points[0]->getScore(), 8);
+    EXPECT_EQ(points[1]->getScore(), 6);
+    EXPECT_EQ(points[2]->getScore(), 10);
+}
+
+TEST_F(ORBFeatureDetectorTest, EmptyInputAndZeroBudgetReturnNoFeatures) {
+    EXPECT_TRUE(filter({}, 1000).empty());
+    EXPECT_TRUE(filter({KeyPoint(25, 25)}, 0).empty());
 }
 
 TEST_F(ORBFeatureDetectorTest, BlankImageHasNoFeatures) {
@@ -317,6 +348,26 @@ TEST_F(ORBFeatureDetectorTest, HarrisResponsesMatchOpenCVForCornerEdgeAndFlatReg
         const int y = static_cast<int>(point.getImgY());
         EXPECT_TRUE(std::isfinite(point.getScore()));
         EXPECT_NEAR(point.getScore(), reference.at<float>(y, x), 1e-7);
+    }
+}
+
+TEST_F(ORBFeatureDetectorTest, ByteHarrisScoresMatchFloatScoresAtHorizontalBorders) {
+    cv::Mat byteImage(21, 23, CV_8UC1);
+    cv::RNG rng(4623);
+    rng.fill(byteImage, cv::RNG::UNIFORM, 0, 256);
+    cv::Mat floatImage;
+    byteImage.convertTo(floatImage, CV_32F);
+    const cv::Rect area(4, 3, 14, 15);
+    const std::vector<KeyPoint> points{KeyPoint(0, 4), KeyPoint(12, 7), KeyPoint(5, 9)};
+    const auto byteView = byteImage(area);
+    const auto floatView = floatImage(area);
+    const auto actual = harris(byteView.clone(), points);
+    const auto expected = harris(floatView.clone(), points);
+    const auto actualWithParent = harris(byteView, points);
+    const auto expectedWithParent = harris(floatView, points);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        EXPECT_EQ(actual[i].getScore(), expected[i].getScore());
+        EXPECT_EQ(actualWithParent[i].getScore(), expectedWithParent[i].getScore());
     }
 }
 

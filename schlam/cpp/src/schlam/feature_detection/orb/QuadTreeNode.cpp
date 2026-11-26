@@ -5,16 +5,16 @@
 #include "QuadTreeNode.h"
 #include "../../KeyPoint.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <utility>
 #include <tracy/Tracy.hpp>
 
 QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
                            const double aTop, const double aBottom,
                            const std::vector<KeyPoint> &aFeatures)
-    : mLeft(aLeft), mRight(aRight), mTop(aTop), mBottom(aBottom),
-      mHalfX(std::floor((mRight - mLeft) / 2.0)),
-      mHalfY(std::floor((mBottom - mTop) / 2.0)),
+    : mBounds{aLeft, aRight, aTop, aBottom},
       mMaxScore(aFeatures.empty() ? -std::numeric_limits<double>::max() : aFeatures[0].getScore()) {
     mFeatures.reserve(aFeatures.size());
     for (const auto& feature : aFeatures) {
@@ -24,64 +24,50 @@ QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
 
 QuadTreeNode::QuadTreeNode(const double aLeft, const double aRight,
                            const double aTop, const double aBottom,
-                           const std::vector<std::shared_ptr<KeyPoint>>& aFeatures,
+                           std::vector<std::shared_ptr<KeyPoint>> aFeatures,
                            QuadTreeNode *aParent)
-    : mLeft(aLeft), mRight(aRight), mTop(aTop), mBottom(aBottom),
-      mFeatures(aFeatures),
-      mHalfX(std::floor((mRight - mLeft) / 2.0)),
-      mHalfY(std::floor((mBottom - mTop) / 2.0)),
+    : mBounds{aLeft, aRight, aTop, aBottom},
       mMaxScore(aFeatures.empty() ? -std::numeric_limits<double>::max() : aFeatures[0]->getScore()),
-      mParent(aParent) {
+      mParent(aParent),
+      mFeatures(std::move(aFeatures)) {
 }
 
+QuadTreeNode::Split::Split(Bounds bounds)
+    : xMid(bounds.left + std::floor((bounds.right - bounds.left) / 2.0)),
+      yMid(bounds.top + std::floor((bounds.bottom - bounds.top) / 2.0)),
+      quadrants{{
+          {bounds.left, xMid, bounds.top, yMid},
+          {xMid, bounds.right, bounds.top, yMid},
+          {bounds.left, xMid, yMid, bounds.bottom},
+          {xMid, bounds.right, yMid, bounds.bottom},
+      }} {
+}
+
+bool QuadTreeNode::canDivide(Bounds bounds) {
+    return bounds.right - bounds.left > 1 || bounds.bottom - bounds.top > 1;
+}
 
 void QuadTreeNode::divide() {
     ZoneScoped;
-    if (!isLeaf() || mFeatures.size() < 2 ||
-        (mRight - mLeft <= 1 && mBottom - mTop <= 1)) {
+    if (!isLeaf() || mFeatures.size() < 2 || !canDivide(mBounds)) {
         return;
     }
-    std::vector<std::shared_ptr<KeyPoint>> featuresTL;
-    std::vector<std::shared_ptr<KeyPoint>> featuresTR;
-    std::vector<std::shared_ptr<KeyPoint>> featuresBL;
-    std::vector<std::shared_ptr<KeyPoint>> featuresBR;
-
-    for (const auto &feature: mFeatures) {
-        const bool left = feature->getImgX() < (mLeft + mHalfX);
-        const bool top = feature->getImgY() < (mTop + mHalfY);
-        if (left) {
-            if (top) {
-                featuresTL.push_back(feature);
-            } else {
-                featuresBL.push_back(feature);
-            }
-        } else {
-            if (top) {
-                featuresTR.push_back(feature);
-            } else {
-                featuresBR.push_back(feature);
-            }
-        }
+    const Split split(mBounds);
+    std::array<std::vector<std::shared_ptr<KeyPoint>>, 4> buckets;
+    for (const auto& feature : mFeatures) {
+        buckets[split.quadrant(feature->getImgX(), feature->getImgY())].push_back(feature);
     }
 
-    if (!featuresTL.empty()) {
-        mTL = std::make_unique<QuadTreeNode>(mLeft, mLeft + mHalfX, mTop,
-                                             mTop + mHalfY, featuresTL, this);
-    }
-    if (!featuresTR.empty()) {
-        mTR = std::make_unique<QuadTreeNode>(mLeft + mHalfX, mRight, mTop,
-                                             mTop + mHalfY, featuresTR, this);
-    }
-    if (!featuresBL.empty()) {
-        mBL = std::make_unique<QuadTreeNode>(mLeft, mLeft + mHalfX, mTop + mHalfY,
-                                             mBottom, featuresBL, this);
-    }
-    if (!featuresBR.empty()) {
-        mBR = std::make_unique<QuadTreeNode>(mLeft + mHalfX, mRight, mTop + mHalfY,
-                                             mBottom, featuresBR, this);
+    std::array<std::unique_ptr<QuadTreeNode>, 4> children;
+    for (std::size_t quadrant = 0; quadrant < buckets.size(); ++quadrant) {
+        if (buckets[quadrant].empty()) continue;
+        const auto& bounds = split.quadrants[quadrant];
+        children[quadrant] = std::make_unique<QuadTreeNode>(bounds.left, bounds.right,
+            bounds.top, bounds.bottom, std::move(buckets[quadrant]), this);
     }
 
-    mFeatures.clear();
+    mChildren = std::move(children);
+    std::vector<std::shared_ptr<KeyPoint>>{}.swap(mFeatures);
 }
 
 std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures() const {
@@ -110,7 +96,8 @@ void QuadTreeNode::collectFeatures(std::vector<std::shared_ptr<KeyPoint>>& featu
 }
 
 bool QuadTreeNode::overlaps(double xMin, double xMax, double yMin, double yMax) const {
-    return mLeft <= xMax && mRight >= xMin && mTop <= yMax && mBottom >= yMin;
+    return mBounds.left <= xMax && mBounds.right >= xMin &&
+           mBounds.top <= yMax && mBounds.bottom >= yMin;
 }
 
 
@@ -123,7 +110,7 @@ void QuadTreeNode::getFeatures(double xMin, double xMax, double yMin, double yMa
             }
         }
     } else {
-        for (const auto* child : {mTL.get(), mTR.get(), mBL.get(), mBR.get()}) {
+        for (const auto& child : mChildren) {
             if (child && child->overlaps(xMin, xMax, yMin, yMax)) {
                 child->getFeatures(xMin, xMax, yMin, yMax, result);
             }
@@ -139,34 +126,23 @@ std::vector<std::shared_ptr<KeyPoint>> QuadTreeNode::getFeatures(double xMin, do
 }
 
 void QuadTreeNode::removeChild(const QuadTreeNode *aChild) {
-    if (aChild == mTL.get()) {
-        mTL.reset();
-    } else if (aChild == mTR.get()) {
-        mTR.reset();
-    } else if (aChild == mBL.get()) {
-        mBL.reset();
-    } else if (aChild == mBR.get()) {
-        mBR.reset();
-    } else {
-        std::cout << "WARN: Didn't find child to be deleted!" << std::endl;
+    for (auto& child : mChildren) {
+        if (child.get() == aChild) {
+            child.reset();
+            return;
+        }
     }
+    std::cout << "WARN: Didn't find child to be deleted!" << std::endl;
 }
 
-bool QuadTreeNode::isLeaf() const { return !mTL && !mTR && !mBL && !mBR; }
+bool QuadTreeNode::isLeaf() const {
+    return std::ranges::none_of(mChildren, [](const auto& child) { return child != nullptr; });
+}
 
-std::vector<QuadTreeNode *> QuadTreeNode::getChildren() const {
-    std::vector<QuadTreeNode *> children;
-    if (mTL) {
-        children.push_back(mTL.get());
-    }
-    if (mTR) {
-        children.push_back(mTR.get());
-    }
-    if (mBL) {
-        children.push_back(mBL.get());
-    }
-    if (mBR) {
-        children.push_back(mBR.get());
+QuadTreeNode::Children QuadTreeNode::getChildren() const {
+    Children children;
+    for (const auto& child : mChildren) {
+        if (child) children.mNodes[children.mCount++] = child.get();
     }
     return children;
 }

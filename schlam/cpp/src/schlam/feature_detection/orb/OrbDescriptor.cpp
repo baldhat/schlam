@@ -4,10 +4,15 @@
 
 #include "OrbDescriptor.h"
 
+#include <bit>
 #include <cstring>
 
-inline int hamming256(const std::uint8_t* a,
-                      const std::uint8_t* b) {
+namespace {
+
+#if defined(__x86_64__) && defined(__ELF__) && __has_cpp_attribute(gnu::target_clones)
+[[gnu::target_clones("popcnt", "default")]]
+#endif
+int hamming256(const std::uint8_t* a, const std::uint8_t* b) {
     int distance = 0;
     for (int i = 0; i < 4; ++i) {
         std::uint64_t x, y;
@@ -17,6 +22,8 @@ inline int hamming256(const std::uint8_t* a,
     }
     return distance;
 }
+
+} // namespace
 
 OrbDescriptor::OrbDescriptor(const TDescriptor& descriptor) : mDescriptor(descriptor) {}
 

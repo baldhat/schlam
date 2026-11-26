@@ -17,7 +17,7 @@ class Frame;
 class Map;
 class KeyPoint;
 class QuadTreeNode;
-class TrackingSnapshot;
+struct TrackingSnapshot;
 class KeyFrame;
 
 namespace tft {

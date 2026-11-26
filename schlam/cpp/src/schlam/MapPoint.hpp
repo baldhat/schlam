@@ -15,6 +15,16 @@
 #include "config/Config.hpp"
 #include "feature_detection/IDescriptor.h"
 
+struct TrackingMapPoint {
+    Eigen::Vector3d mPosition;
+    DescriptorPtr mDescriptor;
+    DescriptorPtr mLastInlierDescriptor;
+    std::uint64_t mVisibleInTracking;
+    Eigen::Vector3d mViewingDirectionSum;
+    double mMaximumViewingAngleDegrees;
+
+    bool isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const;
+};
 
 class MapPoint {
 public:
@@ -25,6 +35,7 @@ public:
     void addTriangulationObservation(const DescriptorPtr& descriptor);
     void addViewingObservation(const Eigen::Vector3d& cameraCenter);
     bool isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const;
+    TrackingMapPoint trackingState() const;
 
     Eigen::Vector3d mPosition;
     // descriptor with the lowest median Hamming distance to the history

@@ -35,16 +35,34 @@ void MapPoint::addViewingObservation(const Eigen::Vector3d& cameraCenter) {
         mViewingDirectionSum += direction / length;
 }
 
-bool MapPoint::isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const {
-    const double meanLength = mViewingDirectionSum.norm();
+namespace {
+
+bool viewingDirectionCompatible(const Eigen::Vector3d& position, const Eigen::Vector3d& viewingDirectionSum,
+                                double maximumAngleDegrees, const Eigen::Vector3d& cameraCenter) {
+    const double meanLength = viewingDirectionSum.norm();
     if (!std::isfinite(meanLength) || meanLength <= 1e-9) return true;
 
-    const Eigen::Vector3d direction = cameraCenter - mPosition;
+    const Eigen::Vector3d direction = cameraCenter - position;
     const double length = direction.norm();
     if (!std::isfinite(length) || length <= 1e-9) return false;
-    const double cosMaxViewingAngle = std::cos(mSettings.maximumViewingAngleDegrees * std::numbers::pi / 180.0);
-    return direction.dot(mViewingDirectionSum) >=
+    const double cosMaxViewingAngle = std::cos(maximumAngleDegrees * std::numbers::pi / 180.0);
+    return direction.dot(viewingDirectionSum) >=
            cosMaxViewingAngle * length * meanLength;
+}
+
+} // namespace
+
+bool MapPoint::isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const {
+    return viewingDirectionCompatible(mPosition, mViewingDirectionSum, mSettings.maximumViewingAngleDegrees, cameraCenter);
+}
+
+TrackingMapPoint MapPoint::trackingState() const {
+    return {mPosition, mDescriptor, mLastInlierDescriptor, mVisibleInTracking,
+        mViewingDirectionSum, mSettings.maximumViewingAngleDegrees};
+}
+
+bool TrackingMapPoint::isViewDirectionCompatible(const Eigen::Vector3d& cameraCenter) const {
+    return viewingDirectionCompatible(mPosition, mViewingDirectionSum, mMaximumViewingAngleDegrees, cameraCenter);
 }
 
 void MapPoint::updateDescriptor(const DescriptorPtr& descriptor) {

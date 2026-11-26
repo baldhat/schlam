@@ -313,7 +313,8 @@ Reconstructor::checkHomography(const Eigen::Matrix3d &aHomography,
     const size_t nPoints = aAllPoints[0].size();
 
     aInliers.assign(nPoints, false);
-    auto homographyInv = aHomography.inverse();
+    if (nPoints == 0) return score;
+    const Eigen::Matrix3d homographyInv = aHomography.inverse();
 
     const double threshold = mSettings.homographyChi2;
     const double homographyScore = mSettings.scoreChi2;

@@ -41,6 +41,10 @@ Activate `conanrun.sh` in each new shell before building, testing, or running th
 
 `conan create --build=missing` exports the recipe and reuses a matching binary from the runner account's Conan cache, normally `~/.conan2` or the configured `CONAN_HOME`. Each build type needs its own binary. Recipe, dependency, and compiler changes can require a new build. Keep the cache between jobs to reuse packages on later pushes.
 
+## Tracy allocation tracking
+
+Tracy timing zones and plots are enabled in the standard build. Allocation tracking for `app` is off by default. To collect allocation and free events, add `-DSCHLAM_TRACY_TRACK_ALLOCATIONS=ON` to the CMake configure command, then rebuild `app`. Set the option to `OFF` when configuring again for timing profiles.
+
 ## Building without Pangolin
 
 After setting up Conan and creating the g2o package as shown above, run these commands from `schlam/cpp`. You can skip `conan create recipes/pangolin`.

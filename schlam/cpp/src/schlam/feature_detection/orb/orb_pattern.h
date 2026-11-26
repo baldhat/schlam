@@ -8,7 +8,7 @@
 #include <array>
 #include <cstdint>
 
-std::array<std::int8_t, 1024> gOrbBitPattern31 ={
+inline constexpr std::array<std::int8_t, 1024> gOrbBitPattern31 ={
 8,-3, 9,5/*mean (0), correlation (0)*/,
 4,2, 7,-12/*mean (1.12461e-05), correlation (0.0437584)*/,
 -11,9, -8,2/*mean (3.37382e-05), correlation (0.0617409)*/,
